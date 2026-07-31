@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Passo 1 — os quatro entitlements exigidos pelo prompt mestre.
+	     Nada além disso: cada entitlement extra é superfície de revisão na
+	     Mac App Store. Process Taps (Passo 2) e CloudKit (Passo 13) entram
+	     nos seus passos, não antes. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Passo 12 — perfil opcional. Não é a identidade do CloudKit (Passo 13). -->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!-- Passo 13 — CloudKit puro para espaços de equipe. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.papagaio.Papagaio</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<!-- CKSyncEngine usa notificações remotas para sincronizar em segundo plano. -->
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Lembra a pasta de modelos escolhida pelo usuário entre execuções.
+	     Sem isto, quem já tem os GGUF no disco teria de reescolher a pasta a
+	     cada abertura — ou baixar 13,6 GB de cópias. -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

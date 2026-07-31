@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Plist base, mesclado com o que o GENERATE_INFOPLIST_FILE gera.
+	     Existe por um motivo específico: `INFOPLIST_KEY_…` só entrega chaves
+	     de uma lista conhecida do Xcode, e NSAudioCaptureUsageDescription não
+	     está nela — era descartada em silêncio, e o app crasharia ao criar o
+	     process tap. Ver D-2.4. -->
+	<key>CKSharingSupported</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>O Papagaio grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
+</dict>
+</plist>

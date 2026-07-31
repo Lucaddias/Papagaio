@@ -1,0 +1,5 @@
+# XCFrameworks de whisper.cpp e llama.cpp — ~1 GB, baixados por
+# Scripts/bootstrap-runtimes.sh com versão e SHA-256 fixados.
+PapagaioCore/Frameworks/
+.build/
+*.xcuserdatad/
