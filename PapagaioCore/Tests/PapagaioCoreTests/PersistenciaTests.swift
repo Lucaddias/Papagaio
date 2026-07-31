@@ -1,0 +1,232 @@
+import Foundation
+import SwiftData
+import Testing
+@testable import PapagaioCore
+
+/// Container em memória: os testes não podem tocar o banco real do usuário.
+private func repositorioDeTeste() throws -> SwiftDataRepository {
+    let container = try SwiftDataRepository.containerLocal(
+        nome: "PapagaioTeste-\(UUID().uuidString)",
+        emMemoria: true
+    )
+    return SwiftDataRepository(modelContainer: container)
+}
+
+private func arquivoDeExemplo(
+    titulo: String,
+    espaco: EspacoID,
+    trechos: [Trecho] = [],
+    resumo: Resumo? = nil
+) -> Arquivo {
+    Arquivo(
+        titulo: titulo,
+        duracao: 120,
+        pastaRelativa: "Gravacoes/\(UUID().uuidString)",
+        espaco: espaco,
+        trechos: trechos,
+        resumo: resumo,
+        engineTranscricao: "whisper-large-v3",
+        engineResumo: "qwen2.5-14b-instruct-q5_k_m"
+    )
+}
+
+// MARK: - Passo 8
+
+@Test("Salvar e listar preserva trechos, resumo e metadados das engines")
+func persistenciaRoundTrip() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+
+    let resumo = Resumo(
+        titulo: "Kickoff",
+        visaoGeral: "Alinhamento de escopo e prazo.",
+        temas: [Tema(titulo: "Prazo", detalhe: "Entrega em setembro.")],
+        citacoes: [Citacao(texto: "vamos manter o Whisper", speaker: Speaker.eu, start: 91.2)],
+        proximosPassos: [ProximoPasso(descricao: "fechar o contrato", responsavel: "Luca")]
+    )
+    let original = arquivoDeExemplo(
+        titulo: "Reunião de kickoff",
+        espaco: espaco,
+        trechos: [
+            Trecho(start: 0, end: 40, texto: "abertura", speaker: Speaker.eu),
+            Trecho(start: 40, end: 82, texto: "resposta", speaker: Speaker.interlocutor),
+        ],
+        resumo: resumo
+    )
+
+    try await repo.salvar(original)
+    let listados = try await repo.listar(espaco: espaco)
+
+    #expect(listados.count == 1)
+    let volta = try #require(listados.first)
+
+    #expect(volta.id == original.id)
+    #expect(volta.titulo == "Reunião de kickoff")
+    #expect(volta.engineTranscricao == "whisper-large-v3")
+    #expect(volta.engineResumo == "qwen2.5-14b-instruct-q5_k_m")
+
+    // Trechos voltam ordenados por tempo, com o falante do canal.
+    #expect(volta.trechos.count == 2)
+    #expect(volta.trechos[0].speaker == Speaker.eu)
+    #expect(volta.trechos[1].speaker == Speaker.interlocutor)
+    #expect(volta.trechos[0].start < volta.trechos[1].start)
+
+    // O resumo é reconstruído a partir dos insights.
+    #expect(volta.resumo?.titulo == "Kickoff")
+    #expect(volta.resumo?.temas.first?.detalhe == "Entrega em setembro.")
+    #expect(volta.resumo?.citacoes.first?.start == 91.2)
+    #expect(volta.resumo?.proximosPassos.first?.responsavel == "Luca")
+}
+
+@Test("Caminho guardado é sempre relativo")
+func persistenciaCaminhoRelativo() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    try await repo.salvar(arquivoDeExemplo(titulo: "qualquer", espaco: espaco))
+
+    let volta = try #require(try await repo.listar(espaco: espaco).first)
+    #expect(!volta.pastaRelativa.hasPrefix("/"))
+    #expect(volta.pastaRelativa.hasPrefix("Gravacoes/"))
+}
+
+@Test("Salvar duas vezes atualiza, não duplica")
+func persistenciaIdempotente() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    var arquivo = arquivoDeExemplo(
+        titulo: "primeiro título", espaco: espaco,
+        trechos: [Trecho(start: 0, end: 30, texto: "um", speaker: nil)]
+    )
+
+    try await repo.salvar(arquivo)
+    arquivo.titulo = "título corrigido"
+    arquivo.trechos = [
+        Trecho(start: 0, end: 30, texto: "um", speaker: nil),
+        Trecho(start: 30, end: 60, texto: "dois", speaker: nil),
+    ]
+    try await repo.salvar(arquivo)
+
+    let listados = try await repo.listar(espaco: espaco)
+    #expect(listados.count == 1)
+    #expect(listados.first?.titulo == "título corrigido")
+    // Trechos são reescritos por inteiro, sem acumular os antigos.
+    #expect(listados.first?.trechos.count == 2)
+}
+
+@Test("Espaços diferentes não se enxergam")
+func persistenciaIsolaEspacos() async throws {
+    let repo = try repositorioDeTeste()
+    let meu = EspacoID()
+    let outro = EspacoID()
+
+    try await repo.salvar(arquivoDeExemplo(titulo: "meu", espaco: meu))
+    try await repo.salvar(arquivoDeExemplo(titulo: "outro", espaco: outro))
+
+    #expect(try await repo.listar(espaco: meu).count == 1)
+    #expect(try await repo.listar(espaco: meu).first?.titulo == "meu")
+    #expect(try await repo.listar(espaco: outro).count == 1)
+}
+
+@Test("Apagar remove o registro e o .m4a do disco")
+func persistenciaApagaArquivoEmDisco() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+
+    // Cria a pasta de verdade sob a raiz real para exercitar a remoção.
+    let armazenamento = try Armazenamento.padrao()
+    let id = UUID()
+    let pasta = try armazenamento.criarPastaDaGravacao(id: id)
+    let m4a = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
+    try Data("audio".utf8).write(to: m4a)
+    #expect(FileManager.default.fileExists(atPath: m4a.path))
+
+    let arquivo = Arquivo(
+        id: ArquivoID(rawValue: id),
+        titulo: "para apagar",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: id),
+        espaco: espaco
+    )
+    try await repo.salvar(arquivo)
+    try await repo.apagar(arquivo.id)
+
+    #expect(try await repo.listar(espaco: espaco).isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: m4a.path))
+    #expect(!FileManager.default.fileExists(atPath: pasta.path))
+}
+
+@Test("Apagar id inexistente não explode")
+func persistenciaApagaInexistente() async throws {
+    let repo = try repositorioDeTeste()
+    try await repo.apagar(ArquivoID())
+}
+
+// MARK: - Passo 9 — busca
+
+@Test("Título tem prioridade sobre corpo, sem duplicar")
+func buscaPrioridadeDeTitulo() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+
+    // O termo aparece no título de um e no corpo de vários outros.
+    try await repo.salvar(arquivoDeExemplo(
+        titulo: "Revisão de orçamento", espaco: espaco,
+        trechos: [Trecho(start: 0, end: 30, texto: "orçamento apertado", speaker: nil)]
+    ))
+    for i in 1...3 {
+        try await repo.salvar(arquivoDeExemplo(
+            titulo: "Reunião \(i)", espaco: espaco,
+            trechos: [Trecho(start: 0, end: 30, texto: "falamos de orçamento", speaker: nil)]
+        ))
+    }
+
+    let resultados = try await repo.buscar(termo: "orçamento")
+
+    #expect(resultados.count == 4)
+    #expect(resultados.first?.titulo == "Revisão de orçamento")
+    // Nenhum duplicado, mesmo estando nos dois buckets.
+    #expect(Set(resultados.map(\.id)).count == resultados.count)
+}
+
+@Test("Busca com e sem acento devolve o mesmo")
+func buscaIgnoraAcento() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    try await repo.salvar(arquivoDeExemplo(titulo: "Revisão de Orçamento", espaco: espaco))
+
+    let comAcento = try await repo.buscar(termo: "orçamento")
+    let semAcento = try await repo.buscar(termo: "orcamento")
+    let caixaAlta = try await repo.buscar(termo: "ORCAMENTO")
+
+    #expect(comAcento.count == 1)
+    #expect(semAcento.map(\.id) == comAcento.map(\.id))
+    #expect(caixaAlta.map(\.id) == comAcento.map(\.id))
+}
+
+@Test("Busca acha no resumo e no insight, não só no trecho")
+func buscaNoResumoEInsight() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+
+    try await repo.salvar(arquivoDeExemplo(
+        titulo: "Sem menção no título", espaco: espaco,
+        resumo: Resumo(
+            titulo: "Resumo",
+            visaoGeral: "Discutimos a migração para CloudKit.",
+            proximosPassos: [ProximoPasso(descricao: "avaliar Brightworks")]
+        )
+    ))
+
+    #expect(try await repo.buscar(termo: "CloudKit").count == 1)
+    #expect(try await repo.buscar(termo: "brightworks").count == 1)
+}
+
+@Test("Termo vazio ou sem correspondência devolve lista vazia")
+func buscaVazia() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    try await repo.salvar(arquivoDeExemplo(titulo: "alguma coisa", espaco: espaco))
+
+    #expect(try await repo.buscar(termo: "").isEmpty)
+    #expect(try await repo.buscar(termo: "   ").isEmpty)
+    #expect(try await repo.buscar(termo: "termo-que-nao-existe").isEmpty)
+}

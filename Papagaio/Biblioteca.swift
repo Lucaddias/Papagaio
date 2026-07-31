@@ -18,6 +18,14 @@ final class Biblioteca {
     private(set) var fases: [UUID: PipelineDeArquivo.Fase] = [:]
     private(set) var erros: [UUID: String] = [:]
 
+    /// O Whisper e o Qwen juntos podem ocupar 13,7 GB. A fila mantém os
+    /// pedidos em ordem de chegada e permite que somente um deles carregue os
+    /// modelos por vez.
+    private var filaDeProcessamento: [ArquivoID] = []
+    private var arquivoEmProcessamento: ArquivoID?
+    private var identificadorDaExecucao: UUID?
+    private var tarefaDeProcessamento: Task<Void, Never>?
+
     let armazenamento: Armazenamento
 
     /// De onde os pesos são carregados. A `ContentView` mantém isto igual à
@@ -69,7 +77,7 @@ final class Biblioteca {
 
     // MARK: - Entrada de áudio
 
-    /// Registra um áudio recém-gravado ou importado e já dispara o processamento.
+    /// Registra um áudio recém-gravado ou importado e o coloca na fila.
     func registrar(titulo: String, pastaRelativa: String, duracao: TimeInterval) async {
         let arquivo = Arquivo(
             titulo: titulo,
@@ -84,13 +92,19 @@ final class Biblioteca {
             return
         }
         arquivos.insert(arquivo, at: 0)
-        await processar(arquivo)
+        enfileirarProcessamento(arquivo)
     }
 
     func apagar(_ arquivo: Arquivo) async {
+        // Não remover o arquivo que o pipeline está lendo. A ação fica
+        // desabilitada na interface, mas esta proteção mantém a regra também
+        // para outras chamadas futuras.
+        guard arquivoEmProcessamento != arquivo.id else { return }
+
         do {
             try await repositorio.apagar(arquivo.id)
             arquivos.removeAll { $0.id == arquivo.id }
+            filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
         } catch {
@@ -100,11 +114,49 @@ final class Biblioteca {
 
     // MARK: - Processamento
 
-    var processando: Bool { !fases.isEmpty }
+    var processando: Bool {
+        arquivoEmProcessamento != nil || !filaDeProcessamento.isEmpty
+    }
 
-    func processar(_ arquivo: Arquivo) async {
+    func enfileirarProcessamento(_ arquivo: Arquivo) {
+        guard arquivoEmProcessamento != arquivo.id,
+              !filaDeProcessamento.contains(arquivo.id) else { return }
+
+        erros[arquivo.id.rawValue] = nil
+        filaDeProcessamento.append(arquivo.id)
+        iniciarProximoProcessamentoSeNecessario()
+    }
+
+    func estaProcessando(_ arquivo: Arquivo) -> Bool {
+        arquivoEmProcessamento == arquivo.id
+    }
+
+    func estaNaFila(_ arquivo: Arquivo) -> Bool {
+        filaDeProcessamento.contains(arquivo.id)
+    }
+
+    private func iniciarProximoProcessamentoSeNecessario() {
+        guard arquivoEmProcessamento == nil else { return }
+
+        while let proximoID = filaDeProcessamento.first {
+            filaDeProcessamento.removeFirst()
+            guard let arquivo = arquivos.first(where: { $0.id == proximoID }) else {
+                continue
+            }
+
+            let execucao = UUID()
+            arquivoEmProcessamento = proximoID
+            identificadorDaExecucao = execucao
+            tarefaDeProcessamento = Task { [weak self] in
+                await self?.executarProcessamento(arquivo, execucao: execucao)
+            }
+            return
+        }
+    }
+
+    private func executarProcessamento(_ arquivo: Arquivo, execucao: UUID) async {
         let chave = arquivo.id.rawValue
-        guard fases[chave] == nil else { return }
+        defer { finalizarProcessamento(chave, execucao: execucao) }
 
         // Sem os pesos, o Whisper falharia lá dentro com um erro de carga. Dizer
         // o que falta é mais útil que repassar o erro do llama.cpp.
@@ -136,7 +188,10 @@ final class Biblioteca {
 
         do {
             let final = try await pipeline.processar(arquivo) { fase in
-                Task { @MainActor in self.fases[chave] = fase }
+                Task { @MainActor [weak self] in
+                    guard self?.identificadorDaExecucao == execucao else { return }
+                    self?.fases[chave] = fase
+                }
             }
             substituir(final)
             if final.trechos.isEmpty {
@@ -146,9 +201,18 @@ final class Biblioteca {
             erros[chave] = "\(error)"
         }
 
-        fases[chave] = nil
         // 13,7 GB não podem ficar residentes depois que o trabalho acabou.
         await motores.descarregarTudo()
+    }
+
+    private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
+        guard identificadorDaExecucao == execucao else { return }
+
+        fases[chave] = nil
+        arquivoEmProcessamento = nil
+        identificadorDaExecucao = nil
+        tarefaDeProcessamento = nil
+        iniciarProximoProcessamentoSeNecessario()
     }
 
     private func substituir(_ arquivo: Arquivo) {
@@ -174,6 +238,9 @@ final class Biblioteca {
     func estado(de arquivo: Arquivo) -> String {
         let chave = arquivo.id.rawValue
         if let fase = fases[chave] { return fase.descricao }
+        if let posicao = filaDeProcessamento.firstIndex(of: arquivo.id) {
+            return "na fila (posição \(posicao + 1))"
+        }
         if let erro = erros[chave] { return erro }
         if arquivo.resumo != nil { return "transcrito e resumido" }
         if !arquivo.trechos.isEmpty { return "transcrito" }

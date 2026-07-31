@@ -1017,6 +1017,94 @@ e o file provider põe `com.apple.FinderInfo` no bundle `.xctest` dentro de
 vez e é o que se faria num projeto de equipe — fica como sugestão, não como
 mudança feita sem review.
 
+## D-10.4 — Trecho inicia reprodução e player Liquid Glass contextual (2026-07-31)
+
+**Decidido:** selecionar um trecho da aba Transcrição chama
+`tocar(aPartirDe:)`: executa o `seek` com tolerância zero e só então inicia o
+áudio. A tela revela uma barra flutuante centralizada na base, disponível também
+nas abas Resumo e Próximos passos.
+
+**Escopo da barra:** é um transporte compacto, não uma tela de música completa:
+play/pause, título, posição atual, duração e slider. A implementação atual usa
+o Liquid Glass nativo do macOS 26 — `.glassEffect(.regular, in: Capsule())` —
+e botão de play/pause com `.glassProminent`. O slider só confirma o seek ao fim
+do arraste, evitando uma sequência concorrente de seeks enquanto a pessoa o move.
+Cada trecho é um `Button` com estilo visual neutro, em vez de um gesto solto,
+para preservar foco de teclado e semântica do VoiceOver; a apresentação e a
+rolagem respeitam a preferência de reduzir movimento.
+
+**Descartado visualmente:** `regularMaterial`, borda e sombra manuais. Eles só
+imitariam uma superfície translúcida e impediriam o sistema de aplicar o efeito
+Liquid Glass apropriado ao contexto.
+
+**Descartado:** letras sincronizadas ou controles de letra, faixa anterior ou
+próxima, avançar/voltar, fila, arte de álbum e envio para TV. Nenhum desses
+controles ajuda a revisar a gravação a partir da transcrição.
+
+**Por quê:** o clique no texto passou a ser uma ação de escuta, não somente de
+navegação. Manter o transporte fora das abas evita obrigar a pessoa a voltar para
+Áudio para pausar ou ajustar a posição, sem tapar o fim do conteúdo rolável.
+
+---
+
+## D-10.5 — A interface opera o pipeline individual local (2026-07-31)
+
+**Decidido:** `ContentView` mantém `Biblioteca` e `ModelosViewModel`; gravação,
+importação e o comando de reprocessar registram o `Arquivo` no
+`SwiftDataRepository` e disparam `PipelineDeArquivo`. A interface mostra as
+fases de transcrição/resumo, usa a pasta de modelos ativa e atualiza a biblioteca
+com o resultado persistido.
+
+**Por quê:** transcrição, segmentação e resumo não podem permanecer somente na
+CLI: a gravação feita pelo app precisa chegar ao mesmo pipeline local e voltar
+como trechos navegáveis. Os modelos são criados por execução e descarregados ao
+fim, respeitando o orçamento de memória já definido.
+
+**Limite preservado:** isto integra somente o espaço individual local. O
+`CloudKitRepository` existe no Core, mas ainda não há interface para criar,
+entrar ou gerenciar um espaço de equipe.
+
+---
+
+## D-10.6 — Estados vazios ocupam o centro da área de conteúdo (2026-07-31)
+
+**Decidido:** título e abas ficam no topo da tela de detalhe. A área abaixo das
+abas ocupa o espaço restante: quando não houver resumo, transcrição ou próximos
+passos, o respectivo `ContentUnavailableView` fica centralizado nela. Quando há
+conteúdo, ele continua alinhado ao topo e rolável. A aba Áudio também usa essa
+área central para uma orientação ampliada, com ícone de waveform, título e
+instrução para usar a barra fixa ou iniciar por um trecho da transcrição.
+
+**Por quê:** mostrar a ausência no canto superior parecia conteúdo truncado ou
+falha de layout. O centro comunica claramente que a seção está aguardando o
+processamento, sem deslocar a barra de áudio flutuante.
+
+---
+
+## D-10.7 — Fila serial para transcrição e resumo (2026-07-31)
+
+**Decidido:** todo áudio novo e todo comando de reprocessar entra numa fila FIFO
+em memória. Apenas o primeiro item da fila cria `MotoresLocais` e executa
+`PipelineDeArquivo`; o próximo só começa depois que a execução atual termina e
+`descarregarTudo()` libera os modelos. Assim, Whisper e Qwen nunca são
+carregados simultaneamente por dois arquivos.
+
+**Feedback:** a biblioteca mostra a fase real para o item ativo e “na fila
+(posição N)” para os demais, com um ícone de relógio. O mesmo arquivo não pode
+ser enfileirado duas vezes; reprocessar e apagar ficam indisponíveis enquanto ele
+está ativo. Um arquivo ainda na fila pode ser apagado, o que também o remove da
+fila.
+
+**Limite assumido:** a fila existe somente durante a sessão. Ao encerrar o app,
+itens ainda não processados continuam salvos como “aguardando processamento” e
+podem ser reenviados manualmente. Não iniciamos trabalhos automaticamente ao
+abrir o app, pois isso poderia surpreender a pessoa e carregar os modelos sem
+uma ação explícita.
+
+**Por quê:** os dois modelos podem usar cerca de 13,7 GB; iniciar duas
+transcrições/resumos em paralelo em um Mac com a margem mínima de memória do
+app arrisca encerramento pelo sistema.
+
 ---
 
 ## Passo 11 — Exportação Markdown (2026-07-31)
@@ -1079,10 +1167,27 @@ erro `ASAuthorizationError 1000` anterior desapareceu.
 profile de desenvolvimento foi regenerado com esse container e com o serviço
 `CloudKit`; o entitlement assinado foi conferido no bundle.
 
-**Bloqueio de continuidade:** `CKSyncEngine` exige também Remote Notifications.
-O profile ainda não contém `aps-environment`, portanto Push Notifications precisa
-ser habilitado no App ID antes de implementar o motor de sync. O teste de aceite
-continua exigindo duas contas iCloud em duas máquinas reais.
+**Atualização:** Push Notifications foi habilitado no App ID. O profile regenerado
+passou a conter `com.apple.developer.aps-environment = development`, além de
+`CloudKit`; ambos foram conferidos no bundle assinado.
+
+---
+
+## D-13.2 — Repositório de equipe usa custom zone e CKSyncEngine
+
+**Decidido:** cada `EspacoID` é uma custom zone privada `espaco-<UUID>`. O
+`CloudKitRepository` serializa o arquivo, envia áudio e Markdown como `CKAsset`,
+persiste a serialização de estado do `CKSyncEngine` e cria um `CKShare` para a
+zone inteira. A identidade de CloudKit continua sendo `userRecordID`, sem relação
+com Sign in with Apple.
+
+**Aceite adiado por decisão do usuário (2026-07-31):** não há um segundo
+dispositivo disponível. Portanto não foram executados o convite/aceite entre duas
+contas iCloud, a propagação de alteração em menos de um minuto, a resolução de
+conflito, a remoção de participante nem a apresentação de `QuotaExceeded`.
+Também permanece pendente a interface para criar/entrar em espaços. Build assinado
+e teste unitário do contrato passaram, mas não substituem o ensaio em duas
+máquinas; este passo deve ser reaberto antes de distribuir o recurso de equipe.
 
 ---
 
@@ -1105,4 +1210,5 @@ continua exigindo duas contas iCloud em duas máquinas reais.
 | **R-15** | **Passo 6 (harness de medição) não executado** — depende do corpus com transcrição manual (R-5). Sem ele não há WER nem acurácia de entidades: a qualidade está avaliada só por inspeção de um áudio. | Aberto. Bloqueado em R-5. |
 | **R-9** | Toolchain é um **Xcode beta**, e beta muda de comportamento entre releases. Ver D-0.9. | Parte do local frágil (`~/Downloads`) **resolvida** — movido para `/Applications` durante o Passo 1. Continua aceito quanto ao beta: revalidar R-8 a cada atualização. |
 | **R-10** | ~~Sem Apple Developer Team utilizável.~~ | **Resolvido em 2026-07-31.** Conta configurada no Xcode: assinatura automática, Team `8CTC75M93B`, certificado Apple Development. Desbloqueia também os Passos 12 e 13. |
-| **R-16** | **A interface não tem caminho para produzir transcrição nem resumo.** Os Passos 4, 5 e 7 existem só em `PapagaioCore` e na CLI `papagaio-eval`, que roda **fora do sandbox**. Dentro do app, os pesos teriam que estar no container (13,6 GB pelo fluxo de download do Passo 3, nunca executado no app — o container está vazio). Consequência imediata: o Passo 10 entrega player e navegação, mas **a lista de trechos na tela é vazia**, e o critério "clique em 3 trechos" só foi verificado por teste, não por clique. Também não há persistência na interface (Passo 8 está só no core). | **Aberto.** Precisa de uma decisão de escopo: ligar pipeline + persistência à interface antes de seguir para o Passo 11, ou seguir e ligar tudo de uma vez depois. |
+| **R-16** | ~~A interface não tem caminho para produzir transcrição nem resumo.~~ `ContentView` passou a ligar captura/importação à `Biblioteca`, ao download ou seleção dos pesos, ao `PipelineDeArquivo` e ao `SwiftDataRepository`; o resultado volta para a lista e para a tela de detalhe. | **Resolvido no código em 2026-07-31** por D-10.5. A validação manual completa com pesos reais e uma gravação continua necessária, mas não há mais lacuna arquitetural entre a interface e o pipeline. |
+| **R-17** | O fluxo CloudKit de equipe não foi validado entre duas contas iCloud porque não há segundo dispositivo. Não foram exercitados convite, aceite, conflito, remoção de participante ou `QuotaExceeded`. | **Aberto e aceito temporariamente pelo usuário em 2026-07-31.** Reabrir o Passo 13 antes de disponibilizar espaços de equipe. |

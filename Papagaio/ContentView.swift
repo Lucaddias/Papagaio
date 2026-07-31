@@ -176,16 +176,19 @@ struct ContentView: View {
                         LinhaDaBiblioteca(
                             arquivo: arquivo,
                             estado: biblioteca.estado(de: arquivo),
-                            processando: biblioteca.fases[arquivo.id.rawValue] != nil
+                            processando: biblioteca.estaProcessando(arquivo),
+                            naFila: biblioteca.estaNaFila(arquivo)
                         )
                     }
                     .contextMenu {
                         Button("Processar de novo") {
-                            Task { await biblioteca.processar(arquivo) }
+                            biblioteca.enfileirarProcessamento(arquivo)
                         }
+                        .disabled(biblioteca.estaProcessando(arquivo) || biblioteca.estaNaFila(arquivo))
                         Button("Apagar", role: .destructive) {
                             Task { await biblioteca.apagar(arquivo) }
                         }
+                        .disabled(biblioteca.estaProcessando(arquivo))
                     }
                 }
                 .listStyle(.inset)
@@ -199,11 +202,17 @@ private struct LinhaDaBiblioteca: View {
     let arquivo: Arquivo
     let estado: String
     let processando: Bool
+    let naFila: Bool
 
     var body: some View {
         HStack(spacing: 10) {
             if processando {
                 ProgressView().controlSize(.small)
+                    .accessibilityLabel("Processando")
+            } else if naFila {
+                Image(systemName: "clock")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Na fila de processamento")
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(arquivo.resumo?.titulo ?? arquivo.titulo)
