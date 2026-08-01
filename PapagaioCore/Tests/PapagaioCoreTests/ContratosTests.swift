@@ -38,11 +38,6 @@ func qwenEngineContrato() {
     #expect(engine.identifier == "qwen2.5-14b-instruct-q5_k_m")
 }
 
-@Test("CloudKitRepository usa o container da equipe")
-func repositorioDeEquipeUsaContainerConfigurado() {
-    #expect(CloudKitRepository.containerIdentifier == "iCloud.com.papagaio.Papagaio")
-}
-
 @Test("Resumo faz round-trip de JSON")
 func resumoCodable() throws {
     let original = Resumo(

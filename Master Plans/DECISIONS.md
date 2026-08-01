@@ -1192,9 +1192,8 @@ usuário.
 **Modelo e persistência:** `NotaDaConversa` é uma entidade própria — texto,
 instante, tipo (`nota` ou `marcador`) e criticidade — e não um insight gerado
 pelo resumo. Ela acompanha o `Arquivo` antes de entrar na fila serial, é
-persistida como relação em SwiftData, incluída no envelope CloudKit com leitura
-compatível de arquivos antigos e indexada na busca local. O pipeline preserva
-essas notas quando atualiza transcrição e resumo.
+persistida como relação em SwiftData e indexada na busca local. O pipeline
+preserva essas notas quando atualiza transcrição e resumo.
 
 **Consulta:** o detalhe agora inclui a seção **Notas**, ao lado de Resumo,
 Transcrição, Áudio e Próximos passos. Cada nota mostra o tempo, tipo e estado
@@ -1205,7 +1204,7 @@ com a transcrição e o resumo.
 **Qualidade:** o painel usa controles semânticos, rótulos para VoiceOver,
 tipografia dinâmica e feedback visível de notas registradas. A mudança foi
 validada por build do app e testes focados de duração por amostras,
-persistência/atualização, compatibilidade CloudKit, busca e exportação.
+persistência/atualização, busca e exportação.
 
 ---
 
@@ -1246,9 +1245,8 @@ apenas o `user` da credencial no Keychain e, em toda abertura, chama
 para uma credencial de sessão. Também foi descartado bloquear qualquer fluxo do
 app até o login: o perfil é opcional e o Papagaio continua funcionando sem ele.
 
-**Limite importante:** Sign in with Apple é perfil do app. Não identifica o
-usuário do CloudKit; o Passo 13 mantém `CKContainer.userRecordID()` como a
-identidade de sync.
+**Limite importante:** Sign in with Apple é perfil opcional do app. Ele não
+identifica nem sincroniza arquivos, que permanecem locais nesta versão.
 
 **Provisionamento verificado:** o Mac foi registrado no Team `8CTC75M93B` e o
 Xcode gerou `Mac Team Provisioning Profile: com.papagaio.Papagaio`. O bundle
@@ -1293,6 +1291,33 @@ máquinas; este passo deve ser reaberto antes de distribuir o recurso de equipe.
 
 ---
 
+## D-13.3 — CloudKit e espaços de equipe removidos antes da distribuição (2026-08-01)
+
+**Decidido:** esta versão do Papagaio é exclusivamente local. O
+`CloudKitRepository`, o container `iCloud.com.papagaio.Papagaio`, o compartilhamento
+por `CKShare` e a capacidade de Push Notifications associada ao sync deixam de
+fazer parte do target distribuído.
+
+**Por quê:** o recurso de equipe não ganhou interface nem validação entre duas
+contas iCloud. Em contrapartida, o container pertence a um Apple Developer Team
+específico e bloqueia a assinatura automática quando outra pessoa precisa gerar
+um archive/TestFlight. Manter essa dependência sem entregar colaboração ao
+usuário cria risco de distribuição, sem benefício na versão atual.
+
+**Consequência:** biblioteca, lixeira, fila serial, gravações, transcrição,
+resumo e notas continuam no SwiftData local. Não há envio de áudio, Markdown ou
+metadados a iCloud. A configuração de assinatura não fixa Developer Team nem
+certificado: quem publicar escolhe o próprio time no Xcode, registra o bundle
+identifier correspondente e deixa a assinatura automática selecionar a
+identidade de distribuição correta para o archive.
+
+**Futuro:** uma versão com colaboração deve voltar como projeto próprio, com
+organização responsável pelo container, migração explícita dos dados locais,
+interface de convites e teste real entre duas contas. O código removido não deve
+ser reativado apenas adicionando de volta o entitlement.
+
+---
+
 ## Riscos abertos
 
 | # | Risco | Estado |
@@ -1301,7 +1326,7 @@ máquinas; este passo deve ser reaberto antes de distribuir o recurso de equipe.
 | **R-2** | Distribuição de Core Audio Process Taps pela Mac App Store não confirmada. D-0.1 depende disso. | **Continua aberto.** O Passo 2 foi implementado por decisão do usuário sem essa confirmação. Tecnicamente a API funciona nesta máquina; o risco é de revisão da App Store, não de viabilidade. |
 | **R-11** | **O tap do sistema entrega silêncio.** Confirmado em gravação real: 126,6 s de zeros exatos no canal do sistema, com o microfone correto na mesma sessão. 9 configurações testadas, todas iguais. Sem esse canal **não há áudio do interlocutor**, e o posicionamento "app de reunião online" (D-0.1) não se sustenta. | **Aberto e bloqueante para o Passo 2.** Próximo teste depende de R-10 (assinatura real). Ver D-2.6. |
 | **R-12** | `kAudioAggregateDeviceTapAutoStartKey = true` **impede** os callbacks do `IOProc` no macOS 27.0 beta — só com `false` o áudio flui. O código de produção usa `true`. | A corrigir junto com R-11, quando houver como validar. |
-| **R-3** | Escopo somado nos dois eixos (Process Taps + equipe + modelos locais) sem contrapartida de corte, e sem ordem de corte (D-0.8). | Aceito conscientemente. Sem mitigação planejada. |
+| **R-3** | Escopo somado nos dois eixos (Process Taps + modelos locais) ainda exige bastante validação de hardware. | **Reduzido em 2026-08-01:** o eixo de equipes/CloudKit foi removido por D-13.3. |
 | **R-4** | ~~`Qwen2.5-14B-Q5_K_M` é GGUF/llama.cpp, incompatível com a stack e com o sandbox.~~ | **Resolvido por D-0.5/D-0.6.** Modelo confirmado como GGUF; sandbox resolvido via linkagem de biblioteca, não subprocess. |
 | **R-5** | Corpus do Passo 6 exige 5 gravações reais em PT-BR com ground truth **transcrito à mão**. Sem isso, todas as métricas são ficção. Não há decisão sobre quem produz nem quando. | A decidir antes do Passo 6. |
 | **R-6** | Guideline 2.5.2 da App Store proíbe baixar código executável. Pesos de modelo são dados e o precedente favorece, mas é interpretação do revisor. Aplica desde o Passo 3, não mais como risco de "fase 2". | Aceito. |
@@ -1311,6 +1336,6 @@ máquinas; este passo deve ser reaberto antes de distribuir o recurso de equipe.
 | **R-14** | O Qwen preenche `Citacao.speaker` com **nomes próprios** tirados do conteúdo, não com `"eu"`/`"interlocutor"`, e **inventa `start`** (uma citação apontou 256 s num áudio de 193 s). A gramática garante o tipo, não a veracidade. | Aberto. Mitigação provável: validar `start` contra o intervalo dos trechos e mapear o falante pelo trecho mais próximo, em vez de confiar no modelo. |
 | **R-15** | **Passo 6 (harness de medição) não executado** — depende do corpus com transcrição manual (R-5). Sem ele não há WER nem acurácia de entidades: a qualidade está avaliada só por inspeção de um áudio. | Aberto. Bloqueado em R-5. |
 | **R-9** | Toolchain é um **Xcode beta**, e beta muda de comportamento entre releases. Ver D-0.9. | Parte do local frágil (`~/Downloads`) **resolvida** — movido para `/Applications` durante o Passo 1. Continua aceito quanto ao beta: revalidar R-8 a cada atualização. |
-| **R-10** | ~~Sem Apple Developer Team utilizável.~~ | **Resolvido em 2026-07-31.** Conta configurada no Xcode: assinatura automática, Team `8CTC75M93B`, certificado Apple Development. Desbloqueia também os Passos 12 e 13. |
+| **R-10** | ~~Sem Apple Developer Team utilizável.~~ | **Resolvido em 2026-07-31.** Uma equipe com assinatura automática foi validada. Desde D-13.3 o projeto não fixa Team: cada publicador seleciona o seu no Xcode. |
 | **R-16** | ~~A interface não tem caminho para produzir transcrição nem resumo.~~ `ContentView` passou a ligar captura/importação à `Biblioteca`, ao download ou seleção dos pesos, ao `PipelineDeArquivo` e ao `SwiftDataRepository`; o resultado volta para a lista e para a tela de detalhe. | **Resolvido no código em 2026-07-31** por D-10.5. A validação manual completa com pesos reais e uma gravação continua necessária, mas não há mais lacuna arquitetural entre a interface e o pipeline. |
-| **R-17** | O fluxo CloudKit de equipe não foi validado entre duas contas iCloud porque não há segundo dispositivo. Não foram exercitados convite, aceite, conflito, remoção de participante ou `QuotaExceeded`. | **Aberto e aceito temporariamente pelo usuário em 2026-07-31.** Reabrir o Passo 13 antes de disponibilizar espaços de equipe. |
+| **R-17** | ~~O fluxo CloudKit de equipe não foi validado entre duas contas iCloud porque não há segundo dispositivo.~~ | **Fechado em 2026-08-01:** CloudKit e espaços de equipe foram removidos antes da distribuição (D-13.3). |

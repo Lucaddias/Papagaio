@@ -34,7 +34,7 @@ public enum FormatoAudio {
     public static let bitrateArquivamento = 48_000
 
     /// Formato de arquivamento: AAC mono 16 kHz.
-    /// WAV daria ~350 MB/h e inviabilizaria `CKAsset` no espaço de equipe.
+    /// WAV daria ~350 MB/h e ocuparia espaço demais na biblioteca local.
     ///
     /// Computada, não `let`: um `[String: Any]` estático não é `Sendable` e o
     /// Swift 6 em modo `complete` recusa como estado global mutável.

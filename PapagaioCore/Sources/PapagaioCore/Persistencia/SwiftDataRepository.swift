@@ -1,11 +1,9 @@
 import Foundation
 import SwiftData
 
-/// Espaço individual, local. Sem CloudKit: `cloudKitDatabase: .none`.
+/// Repositório local da biblioteca.
 ///
-/// O espaço de equipe é outro store (`CloudKitRepository`, Passo 13) atrás do
-/// mesmo protocolo — SwiftData com CloudKit suporta só a private database, sem
-/// `CKShare`, então não dá para usar um só (D-0.3).
+/// A configuração explícita `.none` mantém os dados somente neste dispositivo.
 ///
 /// `@ModelActor` porque `ModelContext` não é `Sendable`: o ator garante que
 /// todo acesso ao contexto acontece numa mesma fila.

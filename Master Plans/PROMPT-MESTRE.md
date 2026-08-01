@@ -1,23 +1,24 @@
-# Papagaio — Prompt mestre de execução (v4)
+# Papagaio — Prompt mestre de execução (v5)
 
 Cole isto como primeira mensagem de uma sessão de desenvolvimento. Ele governa a
 sequência inteira; não tenta fazer tudo de uma vez **dentro de uma sessão** — mas
-não existe mais "v1" e "fase 2" como versões separadas do produto. Todo o escopo
-abaixo (Passo 0 a 13) é uma entrega única. A execução continua sendo passo a
-passo, por disciplina de engenharia — não porque parte do escopo foi adiada.
+não existe mais "v1" e "fase 2" como versões separadas do produto. O escopo
+atual vai do Passo 0 ao 12; o antigo Passo 13 (CloudKit e espaços de equipe) foi
+removido antes da distribuição, conforme D-13.3 em `DECISIONS.md`. A execução
+continua sendo passo a passo, por disciplina de engenharia.
 
 ## CONTEXTO
 
 Você é um engenheiro sênior Apple construindo o Papagaio: app macOS 26+, Apple
 Silicon, distribuído na Mac App Store, que grava **reuniões online**, transcreve
-e resume 100% on-device, com espaços individuais e de equipe.
+e resume 100% on-device, com biblioteca local no dispositivo.
 
 **Stack única (não existe stack de "fase 2"):**
 
 SwiftUI · Swift Concurrency · AVFoundation + Core Audio Process Taps · **whisper.cpp**
 (Whisper large-v3, GGUF, linkado como biblioteca) · **llama.cpp** (Qwen2.5-14B-Instruct-Q5_K_M,
-GGUF, linkado como biblioteca) · SwiftData · CloudKit (`CKSyncEngine` + `CKShare`) ·
-AuthenticationServices · UniformTypeIdentifiers
+GGUF, linkado como biblioteca) · SwiftData local · AuthenticationServices ·
+UniformTypeIdentifiers
 
 Estes são **os modelos que já estão em uso no código** (`WhisperCppRunner.swift` e
 `QwenSummarizer.swift` do `InterviewLab`). Não trocam. O que muda é a forma de
@@ -36,7 +37,8 @@ entregam mais qualidade sem depender de nenhuma feature futura da Apple.
 `SpeechAnalyzer`/`FoundationModels` como engine principal · `WhisperKit`/`MLX Swift`
 (trocam os pesos já escolhidos por conversões Core ML diferentes — fora de escopo
 enquanto os modelos atuais atenderem) · `whisper-cli`/`llama-cli` via subprocess
-(não roda em App Sandbox) · Ollama · SwiftData+CloudKit para equipes · ffmpeg
+(não roda em App Sandbox) · Ollama · CloudKit e espaços de equipe nesta versão ·
+ffmpeg
 
 **Restrições que valem em todos os passos:**
 
@@ -48,9 +50,9 @@ enquanto os modelos atuais atenderem) · `whisper-cli`/`llama-cli` via subproces
 * Janela do Qwen = **32k tokens**. Passe único é o padrão; map-reduce só entra
   para reuniões que estourem isso (~3h+). Não é o mesmo problema que era com o
   modelo de 4k da Apple — não trate como se fosse.
-* SwiftData + CloudKit não suporta database compartilhado. Equipe usa CloudKit puro.
-* Identidade de sync = `CKContainer.userRecordID`. Sign in with Apple é perfil,
-  não sync.
+* Dados de arquivos são locais em SwiftData. Não adicione sync, container iCloud
+  ou colaboração sem uma nova decisão de produto, plano de migração e validação
+  entre contas.
 * Swift 6, strict concurrency. `actor` para o pipeline — e também para envolver
   `whisper_context`/`llama_context`, que não são thread-safe.
 * O app grava **microfone e áudio do sistema** (Core Audio Process Taps). Caso de
@@ -387,29 +389,17 @@ Fazer: `ASAuthorizationAppleIDProvider`, credencial no Keychain,
 Teste: logar, fechar, reabrir; revogar acesso em Ajustes do sistema e reabrir.
 Aceite: sessão persiste; revogação é detectada e tratada sem crash; o app
 funciona sem login.
-Lembrete: esta identidade não é a de sync. Ver Passo 13.
+Lembrete: esta identidade é somente o perfil opcional do app; ela não controla
+os arquivos locais.
 
-## PASSO 13 — Espaços de equipe (CloudKit)
+## PASSO 13 — Cancelado: espaços de equipe (CloudKit)
 
-Maior risco do projeto. Ver skill `papagaio-persistence-sync`.
-
-Fazer:
-
-* `CKContainer.accountStatus` antes de oferecer o espaço de equipe
-* Identidade = `CKContainer.default().userRecordID`, não o Sign in with Apple
-* Custom zone (zona default não é compartilhável)
-* `CKRecord` + `CKAsset` para áudio e `.md`
-* `CKShare` com link de convite; aceite via `CKShareMetadata` no delegate
-* `CKSyncEngine` para sync e resolução de conflito
-* `CloudKitRepository: ArquivoRepository`
-
-Teste: duas contas iCloud reais em duas máquinas. Convide, aceite, altere de um
-lado.
-Aceite: convite aceito; alteração propaga em <1 min; conflito resolve sem
-perda; participante removido perde acesso; `QuotaExceeded` mostra mensagem útil
-sem perder dado local.
-Armadilha: o usuário pode estar logado no app com um Apple ID e no iCloud do
-sistema com outro. Detecte e avise.
+Não implementar nem reativar neste repositório. O recurso foi removido antes da
+distribuição porque não tinha interface/validação real e bloqueava a assinatura
+por depender de um container associado a um Developer Team específico. Uma
+futura colaboração precisa começar com um novo plano: organização responsável
+pelo container, migração explícita dos dados locais, convite/aceite e teste em
+duas contas reais. Ver D-13.3.
 
 ---
 

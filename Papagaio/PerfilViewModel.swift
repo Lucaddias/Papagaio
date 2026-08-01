@@ -6,8 +6,8 @@ import Security
 
 /// Identidade opcional do perfil local.
 ///
-/// O identificador do Sign in with Apple nunca é usado para CloudKit: o sync
-/// de equipe continua usando `CKContainer.userRecordID()` no Passo 13.
+/// O identificador do Sign in with Apple serve apenas ao perfil deste app;
+/// arquivos, gravações e notas permanecem locais neste lançamento.
 @MainActor
 @Observable
 final class PerfilViewModel: NSObject {

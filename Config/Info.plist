@@ -7,8 +7,6 @@
 	     de uma lista conhecida do Xcode, e NSAudioCaptureUsageDescription não
 	     está nela — era descartada em silêncio, e o app crasharia ao criar o
 	     process tap. Ver D-2.4. -->
-	<key>CKSharingSupported</key>
-	<true/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Papagaio grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
 </dict>

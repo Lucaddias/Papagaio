@@ -21,7 +21,7 @@ func exportacaoMarkdownCompleta() {
         ],
         resumo: Resumo(
             titulo: "Decisões da reunião",
-            visaoGeral: "A equipe aprovou o orçamento.",
+            visaoGeral: "A decisão registrada aprovou o orçamento.",
             temas: [Tema(titulo: "Orçamento", detalhe: "Aprovar R$ 9.600")],
             citacoes: [Citacao(texto: "Fechamos hoje.", speaker: Speaker.interlocutor, start: 12)],
             proximosPassos: [ProximoPasso(descricao: "Enviar contrato", responsavel: "Luca")]

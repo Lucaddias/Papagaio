@@ -41,9 +41,8 @@ public protocol SummarizationEngine: Sendable {
 
 // MARK: - Persistência
 
-/// Contrato de repositório, com duas implementações previstas:
-/// `SwiftDataRepository` (individual, Passo 8) e `CloudKitRepository`
-/// (equipe, Passo 13). Ver skill `papagaio-persistence-sync`.
+/// Contrato de repositório da biblioteca local, implementado por
+/// `SwiftDataRepository`.
 ///
 /// A assinatura de `buscar` precisa sobreviver a uma eventual migração para
 /// FTS5 sem mudar — ver Passo 9.

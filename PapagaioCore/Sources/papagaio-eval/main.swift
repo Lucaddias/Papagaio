@@ -35,7 +35,7 @@ case "contratos":
     )
     print("TranscriptionEngine  -> \(transcricao.identifier)")
     print("SummarizationEngine  -> \(resumo.identifier)")
-    print("ArquivoRepository    -> SwiftDataRepository (Passo 8), CloudKitRepository (Passo 13)")
+    print("ArquivoRepository    -> SwiftDataRepository (biblioteca local)")
 
 case "runtime":
     let info = RuntimeInfo.coletar()

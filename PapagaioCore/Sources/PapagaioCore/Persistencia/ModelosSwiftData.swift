@@ -6,10 +6,8 @@ import SwiftData
 // `ArquivoRepository` (D-1.2). Aqui vivem as classes `@Model`, que são de
 // referência e não são `Sendable`.
 //
-// A modelagem já respeita as restrições do CloudKit, mesmo com
-// `cloudKitDatabase: .none` hoje: **tudo opcional ou com default**, nenhum
-// `@Attribute(.unique)`, relações opcionais com `inverse`. Migrar schema depois
-// que já há dado sincronizado é o pior lugar possível para estar (D-0.3).
+// Defaults e relações opcionais mantêm o schema tolerante à introdução de novos
+// campos e facilitam a evolução da biblioteca local.
 
 @Model
 public final class EspacoPersistido {
@@ -43,17 +41,15 @@ public final class ArquivoPersistido {
 
     /// Soft delete da biblioteca individual. A data opcional preserva o
     /// registro e a pasta de áudio até a pessoa escolher apagar para sempre.
-    /// É opcional para manter compatibilidade com as regras de migração do
-    /// SwiftData/CloudKit descritas acima.
+    /// É opcional para manter compatibilidade com registros locais já salvos.
     public var apagadoEm: Date?
 
     /// Título e visão geral do resumo. O resto do `Resumo` vira `InsightPersistido`.
     ///
     /// **Não opcionais, com default.** Um `String?` obrigaria o predicado de
     /// busca a usar `?? ""`, que o CoreData traduz para um `TERNARY` e recusa
-    /// com "unimplemented SQL generation for predicate". Ter default também é o
-    /// que o CloudKit exige (D-0.3). `temResumo` distingue "sem resumo" de
-    /// "resumo vazio".
+    /// com "unimplemented SQL generation for predicate". `temResumo` distingue
+    /// "sem resumo" de "resumo vazio".
     public var temResumo: Bool = false
     public var resumoTitulo: String = ""
     public var resumoVisaoGeral: String = ""
@@ -68,7 +64,7 @@ public final class ArquivoPersistido {
 
     /// Anotações feitas durante a gravação. A relação é opcional e todos os
     /// campos de `NotaPersistida` têm defaults para continuar compatível com
-    /// as regras de schema do CloudKit, mesmo no store local atual.
+    /// registros locais que ainda não continham notas.
     @Relationship(deleteRule: .cascade, inverse: \NotaPersistida.arquivo)
     public var notas: [NotaPersistida]? = []
 

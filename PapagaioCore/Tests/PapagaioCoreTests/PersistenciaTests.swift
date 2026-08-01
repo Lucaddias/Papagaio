@@ -32,20 +32,6 @@ private func arquivoDeExemplo(
     )
 }
 
-/// Formato do envelope salvo antes das notas temporizadas existirem.
-private struct EnvelopeCloudKitLegado: Codable {
-    let id: UUID
-    let titulo: String
-    let criadoEm: Date
-    let duracao: TimeInterval
-    let pastaRelativa: String
-    let espaco: UUID
-    let trechos: [Trecho]
-    let resumo: Resumo?
-    let engineTranscricao: String?
-    let engineResumo: String?
-}
-
 // MARK: - Passo 8
 
 @Test("Salvar e listar preserva trechos, resumo e metadados das engines")
@@ -105,7 +91,7 @@ func persistenciaNotasRoundTrip() async throws {
         tipo: .marcador
     )
     let nota = NotaDaConversa(
-        texto: "Confirmar o prazo com a equipe.",
+        texto: "Confirmar o prazo.",
         start: 12,
         tipo: .nota
     )
@@ -142,41 +128,6 @@ func persistenciaAtualizaNotas() async throws {
 
     let volta = try #require(try await repo.listar(espaco: espaco).first)
     #expect(volta.notas == [atualizada])
-}
-
-@Test("Envelope CloudKit antigo sem notas continua decodificável")
-func cloudKitEnvelopeLegadoSemNotas() throws {
-    let legado = EnvelopeCloudKitLegado(
-        id: UUID(),
-        titulo: "Registro antigo",
-        criadoEm: Date(timeIntervalSince1970: 1_700_000_000),
-        duracao: 30,
-        pastaRelativa: "Gravacoes/antigo",
-        espaco: UUID(),
-        trechos: [Trecho(start: 0, end: 2, texto: "conteúdo")],
-        resumo: nil,
-        engineTranscricao: "whisper-large-v3",
-        engineResumo: nil
-    )
-
-    let dados = try JSONEncoder().encode(legado)
-    let envelope = try JSONDecoder().decode(CloudKitRepository.Envelope.self, from: dados)
-
-    #expect(envelope.arquivo.titulo == legado.titulo)
-    #expect(envelope.arquivo.notas.isEmpty)
-}
-
-@Test("Envelope CloudKit preserva notas novas")
-func cloudKitEnvelopePreservaNotas() throws {
-    let notas = [
-        NotaDaConversa(texto: "Ponto crítico", start: 9.5, critica: true, tipo: .marcador),
-    ]
-    let arquivo = arquivoDeExemplo(titulo: "Registro novo", espaco: EspacoID(), notas: notas)
-
-    let dados = try JSONEncoder().encode(CloudKitRepository.Envelope(arquivo: arquivo))
-    let envelope = try JSONDecoder().decode(CloudKitRepository.Envelope.self, from: dados)
-
-    #expect(envelope.arquivo.notas == notas)
 }
 
 @Test("Caminho guardado é sempre relativo")
@@ -382,12 +333,12 @@ func buscaNoResumoEInsight() async throws {
         titulo: "Sem menção no título", espaco: espaco,
         resumo: Resumo(
             titulo: "Resumo",
-            visaoGeral: "Discutimos a migração para CloudKit.",
+            visaoGeral: "Discutimos a migração do armazenamento local.",
             proximosPassos: [ProximoPasso(descricao: "avaliar Brightworks")]
         )
     ))
 
-    #expect(try await repo.buscar(termo: "CloudKit").count == 1)
+    #expect(try await repo.buscar(termo: "armazenamento").count == 1)
     #expect(try await repo.buscar(termo: "brightworks").count == 1)
 }
 
