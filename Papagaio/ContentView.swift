@@ -102,8 +102,13 @@ struct ContentView: View {
             // A gravação entrega o áudio; a biblioteca salva e processa. Esta
             // ligação permanece na raiz para não desaparecer ao redesenhar uma
             // subview de biblioteca.
-            modelo.aoProduzirAudio = { titulo, pasta, duracao in
-                await nova.registrar(titulo: titulo, pastaRelativa: pasta, duracao: duracao)
+            modelo.aoProduzirAudio = { titulo, pasta, duracao, notas in
+                await nova.registrar(
+                    titulo: titulo,
+                    pastaRelativa: pasta,
+                    duracao: duracao,
+                    notas: notas
+                )
             }
             await nova.preparar()
         } catch {

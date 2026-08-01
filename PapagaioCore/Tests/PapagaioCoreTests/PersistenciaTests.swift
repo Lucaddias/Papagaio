@@ -16,6 +16,7 @@ private func arquivoDeExemplo(
     titulo: String,
     espaco: EspacoID,
     trechos: [Trecho] = [],
+    notas: [NotaDaConversa] = [],
     resumo: Resumo? = nil
 ) -> Arquivo {
     Arquivo(
@@ -24,10 +25,25 @@ private func arquivoDeExemplo(
         pastaRelativa: "Gravacoes/\(UUID().uuidString)",
         espaco: espaco,
         trechos: trechos,
+        notas: notas,
         resumo: resumo,
         engineTranscricao: "whisper-large-v3",
         engineResumo: "qwen2.5-14b-instruct-q5_k_m"
     )
+}
+
+/// Formato do envelope salvo antes das notas temporizadas existirem.
+private struct EnvelopeCloudKitLegado: Codable {
+    let id: UUID
+    let titulo: String
+    let criadoEm: Date
+    let duracao: TimeInterval
+    let pastaRelativa: String
+    let espaco: UUID
+    let trechos: [Trecho]
+    let resumo: Resumo?
+    let engineTranscricao: String?
+    let engineResumo: String?
 }
 
 // MARK: - Passo 8
@@ -76,6 +92,91 @@ func persistenciaRoundTrip() async throws {
     #expect(volta.resumo?.temas.first?.detalhe == "Entrega em setembro.")
     #expect(volta.resumo?.citacoes.first?.start == 91.2)
     #expect(volta.resumo?.proximosPassos.first?.responsavel == "Luca")
+}
+
+@Test("Salvar e listar preserva notas temporizadas e seus marcadores")
+func persistenciaNotasRoundTrip() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let marcador = NotaDaConversa(
+        texto: "",
+        start: 74.5,
+        critica: true,
+        tipo: .marcador
+    )
+    let nota = NotaDaConversa(
+        texto: "Confirmar o prazo com a equipe.",
+        start: 12,
+        tipo: .nota
+    )
+    let arquivo = arquivoDeExemplo(
+        titulo: "Entrevista",
+        espaco: espaco,
+        // A persistência entrega cronologicamente, mesmo que a coleção venha
+        // de uma edição em ordem diferente.
+        notas: [marcador, nota]
+    )
+
+    try await repo.salvar(arquivo)
+    let volta = try #require(try await repo.listar(espaco: espaco).first)
+
+    #expect(volta.notas == [nota, marcador])
+    #expect(volta.notas[1].critica)
+    #expect(volta.notas[1].tipo == .marcador)
+}
+
+@Test("Salvar novamente substitui notas antigas, sem acumulá-las")
+func persistenciaAtualizaNotas() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    var arquivo = arquivoDeExemplo(
+        titulo: "Reunião",
+        espaco: espaco,
+        notas: [NotaDaConversa(texto: "primeira", start: 3)]
+    )
+    try await repo.salvar(arquivo)
+
+    let atualizada = NotaDaConversa(texto: "segunda", start: 8, critica: true)
+    arquivo.notas = [atualizada]
+    try await repo.salvar(arquivo)
+
+    let volta = try #require(try await repo.listar(espaco: espaco).first)
+    #expect(volta.notas == [atualizada])
+}
+
+@Test("Envelope CloudKit antigo sem notas continua decodificável")
+func cloudKitEnvelopeLegadoSemNotas() throws {
+    let legado = EnvelopeCloudKitLegado(
+        id: UUID(),
+        titulo: "Registro antigo",
+        criadoEm: Date(timeIntervalSince1970: 1_700_000_000),
+        duracao: 30,
+        pastaRelativa: "Gravacoes/antigo",
+        espaco: UUID(),
+        trechos: [Trecho(start: 0, end: 2, texto: "conteúdo")],
+        resumo: nil,
+        engineTranscricao: "whisper-large-v3",
+        engineResumo: nil
+    )
+
+    let dados = try JSONEncoder().encode(legado)
+    let envelope = try JSONDecoder().decode(CloudKitRepository.Envelope.self, from: dados)
+
+    #expect(envelope.arquivo.titulo == legado.titulo)
+    #expect(envelope.arquivo.notas.isEmpty)
+}
+
+@Test("Envelope CloudKit preserva notas novas")
+func cloudKitEnvelopePreservaNotas() throws {
+    let notas = [
+        NotaDaConversa(texto: "Ponto crítico", start: 9.5, critica: true, tipo: .marcador),
+    ]
+    let arquivo = arquivoDeExemplo(titulo: "Registro novo", espaco: EspacoID(), notas: notas)
+
+    let dados = try JSONEncoder().encode(CloudKitRepository.Envelope(arquivo: arquivo))
+    let envelope = try JSONDecoder().decode(CloudKitRepository.Envelope.self, from: dados)
+
+    #expect(envelope.arquivo.notas == notas)
 }
 
 @Test("Caminho guardado é sempre relativo")
@@ -288,6 +389,20 @@ func buscaNoResumoEInsight() async throws {
 
     #expect(try await repo.buscar(termo: "CloudKit").count == 1)
     #expect(try await repo.buscar(termo: "brightworks").count == 1)
+}
+
+@Test("Busca acha texto de nota temporizada")
+func buscaNasNotas() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let arquivo = arquivoDeExemplo(
+        titulo: "Sem menção no título",
+        espaco: espaco,
+        notas: [NotaDaConversa(texto: "Revisar a cláusula de confidencialidade.", start: 22)]
+    )
+    try await repo.salvar(arquivo)
+
+    #expect(try await repo.buscar(termo: "confidencialidade").map(\.id) == [arquivo.id])
 }
 
 @Test("Termo vazio ou sem correspondência devolve lista vazia")

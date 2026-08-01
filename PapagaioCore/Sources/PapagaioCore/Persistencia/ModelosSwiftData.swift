@@ -66,6 +66,12 @@ public final class ArquivoPersistido {
     @Relationship(deleteRule: .cascade, inverse: \InsightPersistido.arquivo)
     public var insights: [InsightPersistido]? = []
 
+    /// Anotações feitas durante a gravação. A relação é opcional e todos os
+    /// campos de `NotaPersistida` têm defaults para continuar compatível com
+    /// as regras de schema do CloudKit, mesmo no store local atual.
+    @Relationship(deleteRule: .cascade, inverse: \NotaPersistida.arquivo)
+    public var notas: [NotaPersistida]? = []
+
     public init(id: UUID = UUID()) {
         self.id = id
     }
@@ -102,6 +108,27 @@ public final class InsightPersistido {
     /// Âncora de tempo, quando houver — o player do Passo 10 salta para cá.
     public var start: TimeInterval?
     public var speaker: String?
+    public var ordem: Int = 0
+
+    public var arquivo: ArquivoPersistido?
+
+    public init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
+/// Representação SwiftData de `NotaDaConversa`.
+///
+/// `ordem` desempata notas adicionadas no mesmo instante e preserva a ordem da
+/// interface quando o arquivo é salvo novamente.
+@Model
+public final class NotaPersistida {
+    public var id: UUID = UUID()
+    public var texto: String = ""
+    public var start: TimeInterval = 0
+    public var critica: Bool = false
+    /// Raw value de `TipoDeNotaDaConversa`.
+    public var tipo: String = TipoDeNotaDaConversa.nota.rawValue
     public var ordem: Int = 0
 
     public var arquivo: ArquivoPersistido?

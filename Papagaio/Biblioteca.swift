@@ -87,13 +87,21 @@ final class Biblioteca {
 
     // MARK: - Entrada de áudio
 
-    /// Registra um áudio recém-gravado ou importado e o coloca na fila.
-    func registrar(titulo: String, pastaRelativa: String, duracao: TimeInterval) async {
+    /// Registra um áudio recém-gravado ou importado e o coloca na fila. As
+    /// notas são criadas antes da fila, para que os saves do pipeline apenas
+    /// as preservem junto de transcrição e resumo.
+    func registrar(
+        titulo: String,
+        pastaRelativa: String,
+        duracao: TimeInterval,
+        notas: [NotaDaConversa] = []
+    ) async {
         let arquivo = Arquivo(
             titulo: titulo,
             duracao: duracao,
             pastaRelativa: pastaRelativa,
-            espaco: espaco
+            espaco: espaco,
+            notas: notas
         )
         do {
             try await repositorio.salvar(arquivo)

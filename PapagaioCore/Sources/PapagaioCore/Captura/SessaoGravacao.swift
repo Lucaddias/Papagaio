@@ -83,6 +83,27 @@ public actor SessaoGravacao {
     /// Nível do microfone para a waveform ao vivo.
     public nonisolated var nivelMicrofone: NivelAudio { microfone.nivel }
 
+    /// Tempo do áudio efetivamente mixado até agora.
+    ///
+    /// Não usa `Date` nem um cronômetro de parede: uma pausa do processo ou a
+    /// latência do início da captura não pode gerar um timestamp que não exista
+    /// no arquivo final. Drenar antes da leitura incorpora o lote que ainda
+    /// estava no ring buffer, o que mantém os marcadores próximos ao instante
+    /// real da gravação.
+    public func tempoDecorrido() -> TimeInterval {
+        if arquivoMixagem != nil {
+            drenar()
+        }
+        return Self.duracao(paraAmostras: amostrasMixadas)
+    }
+
+    /// Fator comum entre a duração em andamento e a duração final da sessão.
+    /// Mantido interno para poder ser coberto sem solicitar acesso ao microfone
+    /// em teste unitário.
+    static func duracao(paraAmostras amostras: Int) -> TimeInterval {
+        Double(max(0, amostras)) / FormatoAudio.taxaCanonica
+    }
+
     // MARK: - Ciclo de vida
 
     public func iniciar() throws {
@@ -175,7 +196,7 @@ public actor SessaoGravacao {
             todosAvisos.append("Áudio do sistema: \(perdaSis) amostras descartadas por buffer cheio.")
         }
 
-        let duracao = Double(amostrasMixadas) / FormatoAudio.taxaCanonica
+        let duracao = Self.duracao(paraAmostras: amostrasMixadas)
 
         // Clique acidental: apaga em vez de deixar lixo na biblioteca.
         if duracao < Self.duracaoMinima, let pasta {

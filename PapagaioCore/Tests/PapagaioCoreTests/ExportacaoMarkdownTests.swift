@@ -11,6 +11,14 @@ func exportacaoMarkdownCompleta() {
         pastaRelativa: "Gravacoes/id",
         espaco: EspacoID(),
         trechos: [Trecho(start: 12, end: 20, texto: "Vamos fechar o orçamento.", speaker: Speaker.eu)],
+        notas: [
+            NotaDaConversa(
+                texto: "Validar o risco jurídico.",
+                start: 35,
+                critica: true,
+                tipo: .marcador
+            ),
+        ],
         resumo: Resumo(
             titulo: "Decisões da reunião",
             visaoGeral: "A equipe aprovou o orçamento.",
@@ -29,7 +37,9 @@ func exportacaoMarkdownCompleta() {
     #expect(markdown.contains("## Temas"))
     #expect(markdown.contains("## Citações"))
     #expect(markdown.contains("## Próximos passos"))
+    #expect(markdown.contains("## Notas"))
     #expect(markdown.contains("## Transcrição"))
+    #expect(markdown.contains("**[0:35 · Marcador · Crítica]** Validar o risco jurídico."))
     #expect(markdown.contains("**[0:12 · Eu]** Vamos fechar o orçamento."))
     #expect(markdown.contains("- [ ] Enviar contrato — Luca"))
 }

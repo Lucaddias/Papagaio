@@ -20,6 +20,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             ArquivoPersistido.self,
             TrechoPersistido.self,
             InsightPersistido.self,
+            NotaPersistida.self,
             EspacoPersistido.self,
         ])
         let configuracao = ModelConfiguration(
@@ -56,13 +57,16 @@ public actor SwiftDataRepository: ArquivoRepository {
 
         if existente == nil { modelContext.insert(persistido) }
 
-        // Trechos e insights são reescritos por inteiro: são derivados da
-        // transcrição e do resumo, e reconciliar item a item custaria mais que
-        // regravar.
+        // Trechos, insights e notas são reescritos por inteiro. Eles chegam
+        // como valores no `Arquivo` de domínio, e reconciliar item a item
+        // custaria mais que regravar. `ordem` preserva a sequência de notas
+        // quando duas compartilham o mesmo timestamp.
         for antigo in persistido.trechos ?? [] { modelContext.delete(antigo) }
         for antigo in persistido.insights ?? [] { modelContext.delete(antigo) }
+        for antiga in persistido.notas ?? [] { modelContext.delete(antiga) }
         persistido.trechos = []
         persistido.insights = []
+        persistido.notas = []
 
         for trecho in a.trechos {
             let t = TrechoPersistido(id: trecho.id)
@@ -76,6 +80,17 @@ public actor SwiftDataRepository: ArquivoRepository {
 
         if let resumo = a.resumo {
             inserirInsights(de: resumo, em: persistido)
+        }
+
+        for (ordem, nota) in a.notas.enumerated() {
+            let persistida = NotaPersistida(id: nota.id)
+            persistida.texto = nota.texto
+            persistida.start = nota.start
+            persistida.critica = nota.critica
+            persistida.tipo = nota.tipo.rawValue
+            persistida.ordem = ordem
+            persistida.arquivo = persistido
+            modelContext.insert(persistida)
         }
 
         try modelContext.save()
@@ -104,14 +119,14 @@ public actor SwiftDataRepository: ArquivoRepository {
             predicate: #Predicate { $0.titulo.localizedStandardContains(limpo) },
             sortBy: ordem
         )
-        porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
+        porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
         let bucketA = try modelContext.fetch(porTitulo).filter { $0.apagadoEm == nil }
         let idsDoTitulo = Set(bucketA.map(\.id))
 
-        // Bucket B — o termo está no corpo: visão geral, trecho ou insight.
+        // Bucket B — o termo está no corpo: visão geral, trecho, insight ou nota.
         //
-        // Três consultas separadas, unidas depois. Um `#Predicate` único com as
-        // três condições em `||` (duas delas sobre relação) **não compila**:
+        // Quatro consultas separadas, unidas depois. Um `#Predicate` único com
+        // as quatro condições em `||` (três delas sobre relações) **não compila**:
         // "the compiler is unable to type-check this expression in reasonable
         // time". Separar é mais rápido de compilar e mais fácil de ler.
         var porCorpo: [ArquivoPersistido] = []
@@ -128,7 +143,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             predicate: #Predicate { $0.resumoVisaoGeral.localizedStandardContains(limpo) },
             sortBy: ordem
         )
-        porVisaoGeral.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
+        porVisaoGeral.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
         acrescentar(try modelContext.fetch(porVisaoGeral).filter { $0.apagadoEm == nil })
 
         let porTrecho = FetchDescriptor<TrechoPersistido>(
@@ -149,6 +164,15 @@ public actor SwiftDataRepository: ArquivoRepository {
                 .filter { $0.apagadoEm == nil }
         )
 
+        let porNota = FetchDescriptor<NotaPersistida>(
+            predicate: #Predicate { $0.texto.localizedStandardContains(limpo) }
+        )
+        acrescentar(
+            try modelContext.fetch(porNota)
+                .compactMap(\.arquivo)
+                .filter { $0.apagadoEm == nil }
+        )
+
         porCorpo.sort { $0.criadoEm > $1.criadoEm }
         return (bucketA + porCorpo).map(Self.paraDominio)
     }
@@ -159,7 +183,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             predicate: #Predicate { $0.espaco?.id == alvo && $0.apagadoEm == nil },
             sortBy: [SortDescriptor(\.criadoEm, order: .reverse)]
         )
-        descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
+        descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
         return try modelContext.fetch(descritor).map(Self.paraDominio)
     }
 
@@ -170,7 +194,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         var descritor = FetchDescriptor<ArquivoPersistido>(
             predicate: #Predicate { $0.espaco?.id == alvo && $0.apagadoEm != nil }
         )
-        descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
+        descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
 
         return try modelContext.fetch(descritor)
             .sorted { ($0.apagadoEm ?? .distantPast) > ($1.apagadoEm ?? .distantPast) }
@@ -277,6 +301,21 @@ public actor SwiftDataRepository: ArquivoRepository {
                           texto: $0.texto, speaker: $0.speaker) }
 
         let insights = (p.insights ?? []).sorted { $0.ordem < $1.ordem }
+        let notas = (p.notas ?? [])
+            .sorted {
+                $0.start == $1.start
+                    ? $0.ordem < $1.ordem
+                    : $0.start < $1.start
+            }
+            .map {
+                NotaDaConversa(
+                    id: $0.id,
+                    texto: $0.texto,
+                    start: $0.start,
+                    critica: $0.critica,
+                    tipo: TipoDeNotaDaConversa(rawValue: $0.tipo) ?? .nota
+                )
+            }
         var resumo: Resumo?
         if p.temResumo {
             resumo = Resumo(
@@ -299,6 +338,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             pastaRelativa: p.pastaRelativa,
             espaco: EspacoID(rawValue: p.espaco?.id ?? UUID()),
             trechos: trechos,
+            notas: notas,
             resumo: resumo,
             engineTranscricao: p.engineTranscricao,
             engineResumo: p.engineResumo,

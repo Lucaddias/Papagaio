@@ -87,6 +87,13 @@ func nivelRMS() {
     #expect(silencio.normalizado == 0)
 }
 
+@Test("Duração da sessão é calculada pelas amostras mixadas")
+func duracaoDaSessaoPorAmostras() {
+    #expect(SessaoGravacao.duracao(paraAmostras: 0) == 0)
+    #expect(SessaoGravacao.duracao(paraAmostras: 40_000) == 2.5)
+    #expect(SessaoGravacao.duracao(paraAmostras: -1) == 0)
+}
+
 // MARK: - Armazenamento
 
 @Test("Caminho da gravação é relativo e fica sob a raiz")

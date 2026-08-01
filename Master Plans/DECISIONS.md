@@ -1174,6 +1174,41 @@ quatro testes da lixeira passaram em
 
 ---
 
+## D-10.10 — Notas temporizadas capturadas durante a gravação (2026-08-01)
+
+**Decidido:** uma gravação ativa oferece um painel de **Notas da conversa**
+com editor, marcador e sinalização de criticidade. O texto digitado pode ser
+salvo por botão ou `⌘↩`; o rascunho também é convertido em nota ao finalizar a
+gravação. Marcadores não exigem texto e servem para assinalar pontos relevantes
+da conversa.
+
+**Sincronização:** o carimbo de tempo não vem de `Date` nem de um cronômetro de
+interface. `SessaoGravacao` expõe a duração das amostras que já chegaram à
+mixagem; assim a nota aponta para o mesmo ponto do áudio que será reproduzido,
+mesmo quando buffers de captura atrasam a atualização visual. Uma gravação
+descartada por ser curta demais também descarta suas notas e comunica isso ao
+usuário.
+
+**Modelo e persistência:** `NotaDaConversa` é uma entidade própria — texto,
+instante, tipo (`nota` ou `marcador`) e criticidade — e não um insight gerado
+pelo resumo. Ela acompanha o `Arquivo` antes de entrar na fila serial, é
+persistida como relação em SwiftData, incluída no envelope CloudKit com leitura
+compatível de arquivos antigos e indexada na busca local. O pipeline preserva
+essas notas quando atualiza transcrição e resumo.
+
+**Consulta:** o detalhe agora inclui a seção **Notas**, ao lado de Resumo,
+Transcrição, Áudio e Próximos passos. Cada nota mostra o tempo, tipo e estado
+crítico; selecioná-la abre a barra flutuante e inicia o áudio naquele instante.
+As notas também entram na exportação Markdown para que o contexto manual viaje
+com a transcrição e o resumo.
+
+**Qualidade:** o painel usa controles semânticos, rótulos para VoiceOver,
+tipografia dinâmica e feedback visível de notas registradas. A mudança foi
+validada por build do app e testes focados de duração por amostras,
+persistência/atualização, compatibilidade CloudKit, busca e exportação.
+
+---
+
 ## Passo 11 — Exportação Markdown (2026-07-31)
 
 ## D-11.1 — `fileExporter` salva o Markdown; o áudio é copiado depois

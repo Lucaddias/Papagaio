@@ -78,7 +78,11 @@ public actor CloudKitRepository: ArquivoRepository {
         let query = CKQuery(recordType: Self.tipoArquivo, predicate: NSPredicate(value: true))
         let todos = try await registros(matching: query).map { try decodificar($0) }
         return todos
-            .filter { $0.titulo.localizedStandardContains(limpo) || $0.trechos.contains { $0.texto.localizedStandardContains(limpo) } }
+            .filter {
+                $0.titulo.localizedStandardContains(limpo)
+                    || $0.trechos.contains { $0.texto.localizedStandardContains(limpo) }
+                    || $0.notas.contains { $0.texto.localizedStandardContains(limpo) }
+            }
             .sorted { $0.criadoEm > $1.criadoEm }
     }
 
@@ -162,7 +166,13 @@ public actor CloudKitRepository: ArquivoRepository {
         return arquivo
     }
 
-    private struct Envelope: Codable, Sendable {
+    /// Payload portátil do record de equipe.
+    ///
+    /// O tipo fica interno para que os testes possam decodificar um payload
+    /// legado. A leitura de `notas` usa `decodeIfPresent`: records gravados
+    /// antes da introdução das notas não possuem essa chave e devem continuar
+    /// abrindo como uma coleção vazia.
+    struct Envelope: Codable, Sendable {
         let id: UUID
         let titulo: String
         let criadoEm: Date
@@ -173,18 +183,41 @@ public actor CloudKitRepository: ArquivoRepository {
         let resumo: Resumo?
         let engineTranscricao: String?
         let engineResumo: String?
+        let notas: [NotaDaConversa]
+
+        private enum CodingKeys: String, CodingKey {
+            case id, titulo, criadoEm, duracao, pastaRelativa, espaco, trechos
+            case resumo, engineTranscricao, engineResumo, notas
+        }
 
         init(arquivo: Arquivo) {
             id = arquivo.id.rawValue; titulo = arquivo.titulo; criadoEm = arquivo.criadoEm
             duracao = arquivo.duracao; pastaRelativa = arquivo.pastaRelativa; espaco = arquivo.espaco.rawValue
             trechos = arquivo.trechos; resumo = arquivo.resumo
             engineTranscricao = arquivo.engineTranscricao; engineResumo = arquivo.engineResumo
+            notas = arquivo.notas
+        }
+
+        init(from decoder: any Decoder) throws {
+            let valores = try decoder.container(keyedBy: CodingKeys.self)
+            id = try valores.decode(UUID.self, forKey: .id)
+            titulo = try valores.decode(String.self, forKey: .titulo)
+            criadoEm = try valores.decode(Date.self, forKey: .criadoEm)
+            duracao = try valores.decode(TimeInterval.self, forKey: .duracao)
+            pastaRelativa = try valores.decode(String.self, forKey: .pastaRelativa)
+            espaco = try valores.decode(UUID.self, forKey: .espaco)
+            trechos = try valores.decode([Trecho].self, forKey: .trechos)
+            resumo = try valores.decodeIfPresent(Resumo.self, forKey: .resumo)
+            engineTranscricao = try valores.decodeIfPresent(String.self, forKey: .engineTranscricao)
+            engineResumo = try valores.decodeIfPresent(String.self, forKey: .engineResumo)
+            notas = try valores.decodeIfPresent([NotaDaConversa].self, forKey: .notas) ?? []
         }
 
         var arquivo: Arquivo {
             Arquivo(id: ArquivoID(rawValue: id), titulo: titulo, criadoEm: criadoEm, duracao: duracao,
                     pastaRelativa: pastaRelativa, espaco: EspacoID(rawValue: espaco), trechos: trechos,
-                    resumo: resumo, engineTranscricao: engineTranscricao, engineResumo: engineResumo)
+                    notas: notas, resumo: resumo, engineTranscricao: engineTranscricao,
+                    engineResumo: engineResumo)
         }
     }
 }

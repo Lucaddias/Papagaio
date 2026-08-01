@@ -51,6 +51,23 @@ public enum ExportacaoMarkdown {
             }
         }
 
+        if !arquivo.notas.isEmpty {
+            linhas += ["", "## Notas", ""]
+            linhas += arquivo.notas
+                .enumerated()
+                .sorted { esquerda, direita in
+                    esquerda.element.start == direita.element.start
+                        ? esquerda.offset < direita.offset
+                        : esquerda.element.start < direita.element.start
+                }
+                .map { _, nota in
+                    let tipo = nota.tipo == .marcador ? "Marcador" : "Nota"
+                    let criticidade = nota.critica ? " · Crítica" : ""
+                    let prefixo = "- **[\(tempo(nota.start)) · \(tipo)\(criticidade)]**"
+                    return nota.texto.isEmpty ? prefixo : "\(prefixo) \(nota.texto)"
+                }
+        }
+
         if !arquivo.trechos.isEmpty {
             linhas += ["", "## Transcrição", ""]
             linhas += arquivo.trechos.map { trecho in

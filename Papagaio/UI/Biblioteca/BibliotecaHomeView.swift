@@ -123,8 +123,11 @@ struct BibliotecaHomeView: View {
                 if gravador.gravando {
                     PainelDeGravacao(
                         waveform: gravador.waveform,
+                        tempoDeGravacao: gravador.tempoDeGravacao,
                         aoFinalizar: aoAlternarGravacao
                     )
+
+                    PainelDeNotasDuranteGravacao(gravador: gravador)
                 }
 
                 if !gravador.avisos.isEmpty {
@@ -502,6 +505,7 @@ private struct CapaDeConversa: View {
 
 private struct PainelDeGravacao: View {
     let waveform: [Float]
+    let tempoDeGravacao: TimeInterval
     let aoFinalizar: () async -> Void
 
     var body: some View {
@@ -517,6 +521,10 @@ private struct PainelDeGravacao: View {
                 Text("A conversa será salva e adicionada à fila ao finalizar.")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
+                Text(tempoCurto(tempoDeGravacao))
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .monospacedDigit()
             }
 
             Waveform(amostras: waveform, ativo: true)
@@ -530,6 +538,11 @@ private struct PainelDeGravacao: View {
         .padding(18)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
+    }
+
+    private func tempoCurto(_ segundos: TimeInterval) -> String {
+        let total = max(0, Int(segundos))
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }
 

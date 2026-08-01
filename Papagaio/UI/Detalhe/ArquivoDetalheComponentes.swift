@@ -7,6 +7,7 @@ import SwiftUI
 enum SecaoDoDetalhe: String, CaseIterable, Identifiable {
     case resumo = "Resumo"
     case transcricao = "Transcrição"
+    case notas = "Notas"
     case audio = "Áudio"
     case proximosPassos = "Próximos passos"
 
@@ -16,6 +17,7 @@ enum SecaoDoDetalhe: String, CaseIterable, Identifiable {
         switch self {
         case .resumo: "text.alignleft"
         case .transcricao: "text.quote"
+        case .notas: "note.text"
         case .audio: "waveform"
         case .proximosPassos: "checklist"
         }
@@ -41,6 +43,8 @@ struct BarraDeSecoesDaConversa: View {
                         Label(secao.rawValue, systemImage: secao.simbolo)
                             .labelStyle(.titleAndIcon)
                             .font(.callout.weight(estaSelecionada ? .semibold : .regular))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                             .foregroundStyle(
                                 estaSelecionada
                                     ? PapagaioTema.destaqueEscuro

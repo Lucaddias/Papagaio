@@ -23,12 +23,15 @@ struct ArquivoDetalheView: View {
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
     private var trechos: [Trecho] { arquivo.trechos }
+    private var notas: [NotaDaConversa] { arquivo.notas }
     private var exibindoEstadoVazio: Bool {
         switch secaoSelecionada {
         case .resumo:
             arquivo.resumo == nil
         case .transcricao:
             trechos.isEmpty
+        case .notas:
+            notas.isEmpty
         case .audio:
             true
         case .proximosPassos:
@@ -184,6 +187,8 @@ struct ArquivoDetalheView: View {
             resumo
         case .transcricao:
             transcricao
+        case .notas:
+            notasDaConversa
         case .audio:
             secaoDeAudio
         case .proximosPassos:
@@ -334,6 +339,16 @@ struct ArquivoDetalheView: View {
         }
     }
 
+    private func tocar(_ nota: NotaDaConversa) {
+        guard let reprodutor else { return }
+        let inicio = min(max(0, nota.start), reprodutor.duracao)
+        revelarPlayer()
+        Task { @MainActor in
+            await reprodutor.saltar(paraSegundo: inicio)
+            reprodutor.tocar()
+        }
+    }
+
     private func concluirEdicaoDaPosicao(_ reprodutor: ReprodutorDeArquivo) {
         guard let destino = tempoEmEdicao else { return }
         Task { @MainActor in
@@ -352,6 +367,19 @@ struct ArquivoDetalheView: View {
     }
 
     // MARK: - Transcrição
+
+    @ViewBuilder
+    private var notasDaConversa: some View {
+        if notas.isEmpty {
+            CartaoDeEstadoVazio(
+                simbolo: "note.text",
+                titulo: "Sem notas nesta conversa",
+                mensagem: "As observações registradas durante a gravação aparecerão aqui."
+            )
+        } else {
+            ListaDeNotasDaConversa(notas: notas, aoSelecionar: tocar)
+        }
+    }
 
     @ViewBuilder
     private var transcricao: some View {

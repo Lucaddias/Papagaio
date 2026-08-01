@@ -59,6 +59,46 @@ public enum Speaker {
     public static let interlocutor = "interlocutor"
 }
 
+// MARK: - Notas da conversa
+
+/// O tipo visual de uma anotação feita durante a gravação.
+///
+/// O marcador registra um instante importante mesmo quando não há texto; a
+/// criticidade é uma propriedade separada de `NotaDaConversa`, pois tanto uma
+/// nota quanto um marcador podem ser críticos.
+public enum TipoDeNotaDaConversa: String, Sendable, Codable, CaseIterable {
+    case nota
+    case marcador
+}
+
+/// Uma anotação criada enquanto a conversa ainda está sendo gravada.
+///
+/// `start` é medido em segundos a partir do início do áudio e pode ser
+/// ajustado para a duração final real quando a sessão é encerrada. Não é uma
+/// posição textual da transcrição: deve continuar apontando para o áudio mesmo
+/// antes de a transcrição terminar.
+public struct NotaDaConversa: Sendable, Identifiable, Codable, Equatable {
+    public let id: UUID
+    public var texto: String
+    public var start: TimeInterval
+    public var critica: Bool
+    public var tipo: TipoDeNotaDaConversa
+
+    public init(
+        id: UUID = UUID(),
+        texto: String,
+        start: TimeInterval,
+        critica: Bool = false,
+        tipo: TipoDeNotaDaConversa = .nota
+    ) {
+        self.id = id
+        self.texto = texto
+        self.start = start
+        self.critica = critica
+        self.tipo = tipo
+    }
+}
+
 // MARK: - Resumo
 
 /// Saída estruturada da sumarização. O formato é forçado na decodificação por
@@ -133,6 +173,8 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
     public var pastaRelativa: String
     public var espaco: EspacoID
     public var trechos: [Trecho]
+    /// Anotações e marcadores criados durante a gravação, ancorados no áudio.
+    public var notas: [NotaDaConversa]
     public var resumo: Resumo?
     /// Identificadores das engines que produziram este arquivo, para os
     /// metadados exigidos nos Passos 4 e 7.
@@ -151,6 +193,7 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         pastaRelativa: String,
         espaco: EspacoID,
         trechos: [Trecho] = [],
+        notas: [NotaDaConversa] = [],
         resumo: Resumo? = nil,
         engineTranscricao: String? = nil,
         engineResumo: String? = nil,
@@ -163,6 +206,7 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         self.pastaRelativa = pastaRelativa
         self.espaco = espaco
         self.trechos = trechos
+        self.notas = notas
         self.resumo = resumo
         self.engineTranscricao = engineTranscricao
         self.engineResumo = engineResumo
