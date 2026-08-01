@@ -12,6 +12,9 @@ import PapagaioCore
 @Observable
 final class Biblioteca {
     private(set) var arquivos: [Arquivo] = []
+    /// Arquivos removidos da listagem principal, mas ainda recuperáveis. A
+    /// mídia continua no container até a exclusão definitiva.
+    private(set) var arquivosNaLixeira: [Arquivo] = []
 
     /// Fase corrente por arquivo. Chaveado pelo `UUID` cru porque é o que a view
     /// tem em mãos na navegação.
@@ -25,6 +28,12 @@ final class Biblioteca {
     private var arquivoEmProcessamento: ArquivoID?
     private var identificadorDaExecucao: UUID?
     private var tarefaDeProcessamento: Task<Void, Never>?
+
+    /// Uma operação de lixeira pode suspender ao salvar no SwiftData. Rastrear
+    /// os itens em transição evita dois cliques concorrentes e também impede
+    /// que um item seja re-enfileirado enquanto está sendo removido.
+    private var operacoesDeLixeiraEmAndamento: Set<ArquivoID> = []
+    private(set) var erroDaLixeira: String?
 
     let armazenamento: Armazenamento
 
@@ -70,6 +79,7 @@ final class Biblioteca {
     func carregar() async {
         do {
             arquivos = try await repositorio.listar(espaco: espaco)
+            arquivosNaLixeira = try await repositorio.listarNaLixeira(espaco: espaco)
         } catch {
             erros[UUID()] = "Não foi possível abrir a biblioteca: \(error)"
         }
@@ -95,21 +105,113 @@ final class Biblioteca {
         enfileirarProcessamento(arquivo)
     }
 
-    func apagar(_ arquivo: Arquivo) async {
-        // Não remover o arquivo que o pipeline está lendo. A ação fica
-        // desabilitada na interface, mas esta proteção mantém a regra também
-        // para outras chamadas futuras.
-        guard arquivoEmProcessamento != arquivo.id else { return }
+    // MARK: - Lixeira
+
+    /// Move um arquivo para a lixeira. O item ativo nunca pode ser movido:
+    /// o pipeline pode estar lendo seu áudio. Para um item aguardando na fila,
+    /// removemos a entrada **antes** do primeiro `await`; caso contrário o
+    /// pipeline poderia iniciá-lo enquanto o SwiftData salva o soft delete.
+    func moverParaLixeira(_ arquivo: Arquivo) async {
+        guard arquivoEmProcessamento != arquivo.id,
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+        else { return }
+
+        let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
+        if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
+
+        let chave = arquivo.id.rawValue
+        let faseAnterior = fases[chave]
+        let erroAnterior = erros[chave]
+        fases[chave] = nil
+        erros[chave] = nil
+        erroDaLixeira = nil
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
+
+        do {
+            try await repositorio.moverParaLixeira(arquivo.id)
+            arquivos.removeAll { $0.id == arquivo.id }
+
+            var movido = arquivo
+            movido.apagadoEm = Date()
+            arquivosNaLixeira.removeAll { $0.id == arquivo.id }
+            arquivosNaLixeira.insert(movido, at: 0)
+        } catch {
+            // O registro continuou ativo porque o soft delete não foi salvo;
+            // devolvemos a posição anterior da fila em vez de perder trabalho.
+            fases[chave] = faseAnterior
+            erros[chave] = erroAnterior
+            if let indiceNaFila {
+                filaDeProcessamento.insert(
+                    arquivo.id,
+                    at: min(indiceNaFila, filaDeProcessamento.count)
+                )
+                iniciarProximoProcessamentoSeNecessario()
+            }
+            erroDaLixeira = "Não foi possível mover o arquivo para a lixeira: \(error.localizedDescription)"
+        }
+    }
+
+    /// Restaura o arquivo para Todos os arquivos sem iniciar processamento de
+    /// novo. Se ele tiver sido removido enquanto aguardava, a pessoa escolhe
+    /// explicitamente quando reprocessá-lo — nunca carregamos modelos de surpresa.
+    @discardableResult
+    func restaurarDaLixeira(_ arquivo: Arquivo) async -> Bool {
+        guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return false }
+
+        erroDaLixeira = nil
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
+
+        do {
+            try await repositorio.restaurar(arquivo.id)
+            arquivosNaLixeira.removeAll { $0.id == arquivo.id }
+
+            var restaurado = arquivo
+            restaurado.apagadoEm = nil
+            arquivos.removeAll { $0.id == arquivo.id }
+            arquivos.append(restaurado)
+            arquivos.sort { $0.criadoEm > $1.criadoEm }
+            return true
+        } catch {
+            erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Exclusão irreversível. O repositório remove o registro, a pasta relativa
+    /// correta e todos os arquivos derivados apenas neste ponto.
+    func apagarDefinitivamente(_ arquivo: Arquivo) async {
+        guard arquivo.apagadoEm != nil,
+              arquivosNaLixeira.contains(where: { $0.id == arquivo.id }),
+              arquivoEmProcessamento != arquivo.id,
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+        else {
+            erroDaLixeira = "Mova o arquivo para a lixeira antes de apagá-lo definitivamente."
+            return
+        }
+
+        erroDaLixeira = nil
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
 
         do {
             try await repositorio.apagar(arquivo.id)
-            arquivos.removeAll { $0.id == arquivo.id }
+            arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
         } catch {
-            erros[arquivo.id.rawValue] = "Não foi possível apagar: \(error)"
+            erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
+    }
+
+    func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
+        operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+    }
+
+    func dispensarErroDaLixeira() {
+        erroDaLixeira = nil
     }
 
     // MARK: - Processamento
@@ -120,6 +222,7 @@ final class Biblioteca {
 
     func enfileirarProcessamento(_ arquivo: Arquivo) {
         guard arquivoEmProcessamento != arquivo.id,
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id),
               !filaDeProcessamento.contains(arquivo.id) else { return }
 
         erros[arquivo.id.rawValue] = nil

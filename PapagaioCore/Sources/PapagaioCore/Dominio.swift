@@ -138,6 +138,10 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
     /// metadados exigidos nos Passos 4 e 7.
     public var engineTranscricao: String?
     public var engineResumo: String?
+    /// `nil` enquanto aparece em Todos os arquivos. Quando preenchido, o
+    /// registro está na lixeira: seus dados e áudio ainda existem e podem ser
+    /// restaurados antes da exclusão definitiva.
+    public var apagadoEm: Date?
 
     public init(
         id: ArquivoID = ArquivoID(),
@@ -149,7 +153,8 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         trechos: [Trecho] = [],
         resumo: Resumo? = nil,
         engineTranscricao: String? = nil,
-        engineResumo: String? = nil
+        engineResumo: String? = nil,
+        apagadoEm: Date? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -161,5 +166,6 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         self.resumo = resumo
         self.engineTranscricao = engineTranscricao
         self.engineResumo = engineResumo
+        self.apagadoEm = apagadoEm
     }
 }

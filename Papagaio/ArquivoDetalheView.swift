@@ -7,23 +7,6 @@ import UniformTypeIdentifiers
 /// Clicar num trecho salta o áudio para o `start` dele; o trecho que está
 /// tocando fica destacado e a lista rola sozinha até ele.
 struct ArquivoDetalheView: View {
-    private enum Secao: String, CaseIterable, Identifiable {
-        case resumo = "Resumo"
-        case transcricao = "Transcrição"
-        case audio = "Áudio"
-        case proximosPassos = "Próximos passos"
-
-        var id: Self { self }
-        var simbolo: String {
-            switch self {
-            case .resumo: "text.alignleft"
-            case .transcricao: "text.quote"
-            case .audio: "waveform"
-            case .proximosPassos: "checklist"
-            }
-        }
-    }
-
     let arquivo: Arquivo
     let audio: URL
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
@@ -31,7 +14,7 @@ struct ArquivoDetalheView: View {
     let estado: String
 
     @State private var reprodutor: ReprodutorDeArquivo?
-    @State private var secaoSelecionada: Secao = .resumo
+    @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
     @State private var mostrandoPlayer = false
     @State private var tempoEmEdicao: TimeInterval?
     @State private var mostrandoExportador = false
@@ -55,14 +38,28 @@ struct ArquivoDetalheView: View {
     private var animacaoDeInterface: Animation? {
         reduzirMovimento ? nil : .easeInOut(duration: 0.2)
     }
+    private var estiloDoEstado: EstiloDoStatus {
+        let texto = estado.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+
+        if texto.contains("falhou") || texto.contains("erro") {
+            return .erro
+        }
+        if texto.contains("transcrito e resumido") {
+            return .sucesso
+        }
+        if texto.contains("aguardando") || texto.contains("fila") {
+            return .aviso
+        }
+        if texto.contains("transcrevendo") || texto.contains("resumindo") || texto.contains("processando") {
+            return .destaque
+        }
+        return .neutro
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(titulo).font(.title2.bold())
-                    Text(estado).font(.caption).foregroundStyle(.secondary)
-                }
+            VStack(alignment: .leading, spacing: 24) {
+                cabecalho
 
                 seletorDeSecao
 
@@ -74,17 +71,19 @@ struct ArquivoDetalheView: View {
                         ScrollView {
                             conteudoDaSecao
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(.bottom, mostrandoPlayer ? 88 : 0)
+                                .padding(.bottom, mostrandoPlayer ? 104 : 0)
                         }
                     }
                 }
             }
-            .padding(24)
+            .larguraDeConteudoPapagaio()
+            .padding(.horizontal, PapagaioTema.espacamentoDePagina)
+            .padding(.vertical, PapagaioTema.espacamentoDePagina)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if mostrandoPlayer, let reprodutor {
                 barraFlutuante(reprodutor)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, 20)
                     .transition(
                         reduzirMovimento
                             ? .opacity
@@ -92,6 +91,7 @@ struct ArquivoDetalheView: View {
                     )
             }
         }
+        .background(PapagaioTema.fundo)
         .frame(minWidth: 520, minHeight: 420, alignment: .topLeading)
         .navigationTitle(titulo)
         .toolbar {
@@ -99,6 +99,7 @@ struct ArquivoDetalheView: View {
                 Button("Exportar Markdown…", systemImage: "square.and.arrow.up") {
                     mostrandoExportador = true
                 }
+                .tint(PapagaioTema.destaqueEscuro)
                 .disabled(arquivo.resumo == nil)
                 .accessibilityHint(
                     arquivo.resumo == nil
@@ -144,33 +145,35 @@ struct ArquivoDetalheView: View {
 
     // MARK: - Navegação por conteúdo
 
-    private var seletorDeSecao: some View {
-        HStack(spacing: 0) {
-            ForEach(Secao.allCases) { secao in
-                Button {
-                    withAnimation(animacaoDeInterface) {
-                        secaoSelecionada = secao
-                        if secao == .audio { mostrandoPlayer = true }
-                    }
-                } label: {
-                    VStack(spacing: 7) {
-                        Label(secao.rawValue, systemImage: secao.simbolo)
-                            .labelStyle(.titleAndIcon)
-                            .font(.callout.weight(secaoSelecionada == secao ? .semibold : .regular))
-                            .foregroundStyle(secaoSelecionada == secao ? Color.accentColor : .secondary)
-                            .frame(maxWidth: .infinity)
-                        Rectangle()
-                            .fill(secaoSelecionada == secao ? Color.accentColor : .clear)
-                            .frame(height: 2)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(secaoSelecionada == secao ? .isSelected : [])
+    private var cabecalho: some View {
+        HStack(alignment: .bottom, spacing: 20) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(titulo)
+                    .font(.system(size: 30, weight: .bold, design: .default))
+                    .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(2)
+
+                Label(tempoCurto(arquivo.duracao), systemImage: "clock")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
             }
+
+            Spacer(minLength: 16)
+
+            SeloDeStatus(
+                texto: estado,
+                simbolo: "waveform",
+                estilo: estiloDoEstado
+            )
         }
-        .padding(.top, 4)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(.quaternary).frame(height: 1)
+    }
+
+    private var seletorDeSecao: some View {
+        BarraDeSecoesDaConversa(secaoSelecionada: secaoSelecionada) { secao in
+            withAnimation(animacaoDeInterface) {
+                secaoSelecionada = secao
+                if secao == .audio { mostrandoPlayer = true }
+            }
         }
     }
 
@@ -195,14 +198,21 @@ struct ArquivoDetalheView: View {
         if let resumo = arquivo.resumo {
             VStack(alignment: .leading, spacing: 12) {
                 Text(resumo.visaoGeral)
+                    .font(.body)
+                    .foregroundStyle(PapagaioTema.texto)
 
                 if !resumo.temas.isEmpty {
                     secao("Temas") {
                         ForEach(Array(resumo.temas.enumerated()), id: \.offset) { _, tema in
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(tema.titulo).font(.callout.weight(.medium))
-                                Text(tema.detalhe).font(.callout).foregroundStyle(.secondary)
+                                Text(tema.titulo)
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(PapagaioTema.texto)
+                                Text(tema.detalhe)
+                                    .font(.callout)
+                                    .foregroundStyle(PapagaioTema.textoSecundario)
                             }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
@@ -216,11 +226,13 @@ struct ArquivoDetalheView: View {
                 }
 
             }
+            .padding(24)
+            .cartaoPapagaio()
         } else {
-            ContentUnavailableView(
-                "Resumo indisponível",
-                systemImage: "text.alignleft",
-                description: Text("O resumo aparecerá depois do processamento.")
+            CartaoDeEstadoVazio(
+                simbolo: "text.alignleft",
+                titulo: "Resumo indisponível",
+                mensagem: "O resumo aparecerá depois do processamento."
             )
         }
     }
@@ -229,7 +241,9 @@ struct ArquivoDetalheView: View {
     private var proximosPassos: some View {
         if let resumo = arquivo.resumo, !resumo.proximosPassos.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Próximos passos").font(.headline)
+                Text("Próximos passos")
+                    .font(.headline)
+                    .foregroundStyle(PapagaioTema.texto)
                 ForEach(Array(resumo.proximosPassos.enumerated()), id: \.offset) { _, passo in
                     Label {
                         Text(
@@ -238,15 +252,20 @@ struct ArquivoDetalheView: View {
                         )
                     } icon: {
                         Image(systemName: "checkmark.circle")
+                            .foregroundStyle(PapagaioTema.destaqueEscuro)
                     }
                     .font(.callout)
+                    .foregroundStyle(PapagaioTema.texto)
+                    .padding(.vertical, 4)
                 }
             }
+            .padding(24)
+            .cartaoPapagaio()
         } else {
-            ContentUnavailableView(
-                "Sem próximos passos",
-                systemImage: "checklist",
-                description: Text("As ações identificadas no resumo aparecerão aqui.")
+            CartaoDeEstadoVazio(
+                simbolo: "checklist",
+                titulo: "Sem próximos passos",
+                mensagem: "As ações identificadas no resumo aparecerão aqui."
             )
         }
     }
@@ -254,10 +273,13 @@ struct ArquivoDetalheView: View {
     private func secao<Conteudo: View>(
         _ titulo: String, @ViewBuilder _ conteudo: () -> Conteudo
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(titulo).font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(titulo)
+                .font(.headline)
+                .foregroundStyle(PapagaioTema.texto)
             conteudo()
         }
+        .padding(.top, 8)
     }
 
     /// A citação tem âncora de tempo — clicar leva o áudio até a origem dela.
@@ -269,45 +291,32 @@ struct ArquivoDetalheView: View {
             trechos.contains { inicio >= $0.start && inicio <= $0.end } ? inicio : nil
         }
         HStack(alignment: .top, spacing: 8) {
-            Rectangle().frame(width: 3).foregroundStyle(.quaternary)
+            Rectangle()
+                .frame(width: 3)
+                .foregroundStyle(PapagaioTema.destaque)
             VStack(alignment: .leading, spacing: 2) {
-                Text(citacao.texto).font(.callout).italic()
+                Text(citacao.texto)
+                    .font(.callout)
+                    .italic()
+                    .foregroundStyle(PapagaioTema.texto)
                 if let ancora {
                     Button(tempoCurto(ancora)) {
                         Task { await reprodutor?.saltar(paraSegundo: ancora) }
                     }
                     .buttonStyle(.link)
                     .font(.caption)
+                    .tint(PapagaioTema.destaqueEscuro)
                 }
             }
         }
+        .padding(12)
+        .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     // MARK: - Transporte
 
     private var secaoDeAudio: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "waveform")
-                .font(.system(size: 40, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.secondary)
-
-            Text("Áudio")
-                .font(.title2.bold())
-
-            Text(
-                "Use a barra fixa abaixo para ouvir a gravação. Na aba Transcrição, selecione um trecho para iniciar a reprodução daquele ponto."
-            )
-            .font(.title3)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: 720)
-        }
-        .padding(24)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "Áudio. Use a barra fixa abaixo para ouvir a gravação. Na aba Transcrição, selecione um trecho para iniciar a reprodução daquele ponto."
-        )
+        OrientacaoDeAudio()
     }
 
     private func revelarPlayer() {
@@ -325,13 +334,6 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    private func posicaoDoPlayer(_ reprodutor: ReprodutorDeArquivo) -> Binding<TimeInterval> {
-        Binding(
-            get: { tempoEmEdicao ?? reprodutor.tempo },
-            set: { tempoEmEdicao = $0 }
-        )
-    }
-
     private func concluirEdicaoDaPosicao(_ reprodutor: ReprodutorDeArquivo) {
         guard let destino = tempoEmEdicao else { return }
         Task { @MainActor in
@@ -341,50 +343,12 @@ struct ArquivoDetalheView: View {
     }
 
     private func barraFlutuante(_ reprodutor: ReprodutorDeArquivo) -> some View {
-        HStack(spacing: 12) {
-            Button {
-                reprodutor.alternar()
-            } label: {
-                Image(systemName: reprodutor.tocando ? "pause.fill" : "play.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(.accentColor)
-            .accessibilityLabel(reprodutor.tocando ? "Pausar" : "Tocar")
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(titulo)
-                        .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text("\(tempoCurto(reprodutor.tempo)) / \(tempoCurto(reprodutor.duracao))")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-                Slider(
-                    value: posicaoDoPlayer(reprodutor),
-                    in: 0...max(reprodutor.duracao, 0.1),
-                    onEditingChanged: { editando in
-                        if editando {
-                            tempoEmEdicao = reprodutor.tempo
-                        } else {
-                            concluirEdicaoDaPosicao(reprodutor)
-                        }
-                    }
-                )
-                .accessibilityLabel("Posição do áudio")
-                .accessibilityValue("\(tempoLongo(reprodutor.tempo)) de \(tempoLongo(reprodutor.duracao))")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(maxWidth: 680)
-        .glassEffect(.regular, in: Capsule())
-        .padding(.horizontal, 24)
+        BarraDeAudioDaConversa(
+            titulo: titulo,
+            reprodutor: reprodutor,
+            tempoEmEdicao: $tempoEmEdicao,
+            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) }
+        )
     }
 
     // MARK: - Transcrição
@@ -392,14 +356,14 @@ struct ArquivoDetalheView: View {
     @ViewBuilder
     private var transcricao: some View {
         if trechos.isEmpty {
-            ContentUnavailableView(
-                "Transcrição indisponível",
-                systemImage: "text.quote",
-                description: Text("A transcrição aparecerá depois do processamento.")
+            CartaoDeEstadoVazio(
+                simbolo: "text.quote",
+                titulo: "Transcrição indisponível",
+                mensagem: "A transcrição aparecerá depois do processamento."
             )
         } else if let reprodutor {
             ScrollViewReader { rolagem in
-                LazyVStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(trechos.enumerated()), id: \.element.id) { indice, trecho in
                         Button {
                             tocar(trecho, no: reprodutor)
@@ -424,33 +388,7 @@ struct ArquivoDetalheView: View {
     }
 
     private func linha(_ trecho: Trecho, ativo: Bool) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text(tempoCurto(trecho.start))
-                .font(.system(.caption, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(ativo ? Color.accentColor : .secondary)
-                .frame(width: 48, alignment: .trailing)
-
-            VStack(alignment: .leading, spacing: 2) {
-                if let speaker = trecho.speaker {
-                    Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-                Text(trecho.texto)
-                    .fontWeight(ativo ? .medium : .regular)
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ativo ? Color.accentColor.opacity(0.12) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 6)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(tempoLongo(trecho.start)). \(trecho.texto)")
-        .accessibilityAddTraits(ativo ? [.isSelected] : [])
+        LinhaDeTranscricao(trecho: trecho, ativo: ativo)
     }
 
     // MARK: - Exportação

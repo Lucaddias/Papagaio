@@ -41,6 +41,12 @@ public final class ArquivoPersistido {
     public var engineTranscricao: String?
     public var engineResumo: String?
 
+    /// Soft delete da biblioteca individual. A data opcional preserva o
+    /// registro e a pasta de áudio até a pessoa escolher apagar para sempre.
+    /// É opcional para manter compatibilidade com as regras de migração do
+    /// SwiftData/CloudKit descritas acima.
+    public var apagadoEm: Date?
+
     /// Título e visão geral do resumo. O resto do `Resumo` vira `InsightPersistido`.
     ///
     /// **Não opcionais, com default.** Um `String?` obrigaria o predicado de

@@ -127,15 +127,17 @@ func persistenciaIsolaEspacos() async throws {
     #expect(try await repo.listar(espaco: outro).count == 1)
 }
 
-@Test("Apagar remove o registro e o .m4a do disco")
-func persistenciaApagaArquivoEmDisco() async throws {
+@Test("Lixeira preserva dados e áudio até a exclusão definitiva")
+func persistenciaMoveRestauraEApagaDefinitivamente() async throws {
     let repo = try repositorioDeTeste()
     let espaco = EspacoID()
 
-    // Cria a pasta de verdade sob a raiz real para exercitar a remoção.
+    // Cria uma pasta de verdade para garantir que o soft delete não toca no
+    // áudio e que apenas a confirmação definitiva remove a mídia.
     let armazenamento = try Armazenamento.padrao()
     let id = UUID()
     let pasta = try armazenamento.criarPastaDaGravacao(id: id)
+    defer { try? FileManager.default.removeItem(at: pasta) }
     let m4a = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
     try Data("audio".utf8).write(to: m4a)
     #expect(FileManager.default.fileExists(atPath: m4a.path))
@@ -147,9 +149,27 @@ func persistenciaApagaArquivoEmDisco() async throws {
         espaco: espaco
     )
     try await repo.salvar(arquivo)
+
+    try await repo.moverParaLixeira(arquivo.id)
+    #expect(try await repo.listar(espaco: espaco).isEmpty)
+
+    let naLixeira = try #require(try await repo.listarNaLixeira(espaco: espaco).first)
+    #expect(naLixeira.id == arquivo.id)
+    #expect(naLixeira.apagadoEm != nil)
+    #expect(FileManager.default.fileExists(atPath: m4a.path))
+
+    try await repo.restaurar(arquivo.id)
+    let restaurado = try #require(try await repo.listar(espaco: espaco).first)
+    #expect(restaurado.id == arquivo.id)
+    #expect(restaurado.apagadoEm == nil)
+    #expect(try await repo.listarNaLixeira(espaco: espaco).isEmpty)
+    #expect(FileManager.default.fileExists(atPath: m4a.path))
+
+    try await repo.moverParaLixeira(arquivo.id)
     try await repo.apagar(arquivo.id)
 
     #expect(try await repo.listar(espaco: espaco).isEmpty)
+    #expect(try await repo.listarNaLixeira(espaco: espaco).isEmpty)
     #expect(!FileManager.default.fileExists(atPath: m4a.path))
     #expect(!FileManager.default.fileExists(atPath: pasta.path))
 }
@@ -158,6 +178,56 @@ func persistenciaApagaArquivoEmDisco() async throws {
 func persistenciaApagaInexistente() async throws {
     let repo = try repositorioDeTeste()
     try await repo.apagar(ArquivoID())
+}
+
+@Test("Exclusão definitiva exige que o arquivo esteja na lixeira")
+func persistenciaExclusaoDefinitivaExigeLixeira() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let arquivo = arquivoDeExemplo(titulo: "ativo", espaco: espaco)
+    try await repo.salvar(arquivo)
+
+    await #expect(throws: ErroLixeira.self) {
+        try await repo.apagar(arquivo.id)
+    }
+
+    #expect(try await repo.listar(espaco: espaco).map(\.id) == [arquivo.id])
+}
+
+@Test("Busca normal não mostra arquivos na lixeira")
+func buscaIgnoraArquivosNaLixeira() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let arquivo = arquivoDeExemplo(titulo: "Reunião de orçamento", espaco: espaco)
+    try await repo.salvar(arquivo)
+
+    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+
+    try await repo.moverParaLixeira(arquivo.id)
+    #expect(try await repo.buscar(termo: "orçamento").isEmpty)
+
+    try await repo.restaurar(arquivo.id)
+    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+}
+
+@Test("Salvar uma atualização tardia não restaura arquivo da lixeira")
+func persistenciaNaoRessuscitaArquivoDaLixeira() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    var arquivo = arquivoDeExemplo(titulo: "Entrevista", espaco: espaco)
+    try await repo.salvar(arquivo)
+    try await repo.moverParaLixeira(arquivo.id)
+
+    // Simula uma atualização que foi criada antes da ação de lixeira, como a
+    // persistência final de um pipeline já iniciado. Ela não pode reativar o
+    // item por ter `apagadoEm == nil` em memória.
+    arquivo.titulo = "Entrevista atualizada"
+    try await repo.salvar(arquivo)
+
+    #expect(try await repo.listar(espaco: espaco).isEmpty)
+    let naLixeira = try #require(try await repo.listarNaLixeira(espaco: espaco).first)
+    #expect(naLixeira.id == arquivo.id)
+    #expect(naLixeira.apagadoEm != nil)
 }
 
 // MARK: - Passo 9 — busca

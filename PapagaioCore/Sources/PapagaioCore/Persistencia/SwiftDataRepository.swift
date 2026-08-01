@@ -43,6 +43,12 @@ public actor SwiftDataRepository: ArquivoRepository {
         persistido.pastaRelativa = a.pastaRelativa
         persistido.engineTranscricao = a.engineTranscricao
         persistido.engineResumo = a.engineResumo
+        // Uma atualização tardia do pipeline não pode ressuscitar um item que
+        // já foi movido para a lixeira. Restauração é uma operação explícita
+        // (`restaurar`), não um efeito colateral de `salvar`.
+        if existente == nil || a.apagadoEm != nil {
+            persistido.apagadoEm = a.apagadoEm
+        }
         persistido.temResumo = a.resumo != nil
         persistido.resumoTitulo = a.resumo?.titulo ?? ""
         persistido.resumoVisaoGeral = a.resumo?.visaoGeral ?? ""
@@ -99,7 +105,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
-        let bucketA = try modelContext.fetch(porTitulo)
+        let bucketA = try modelContext.fetch(porTitulo).filter { $0.apagadoEm == nil }
         let idsDoTitulo = Set(bucketA.map(\.id))
 
         // Bucket B — o termo está no corpo: visão geral, trecho ou insight.
@@ -123,17 +129,25 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porVisaoGeral.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
-        acrescentar(try modelContext.fetch(porVisaoGeral))
+        acrescentar(try modelContext.fetch(porVisaoGeral).filter { $0.apagadoEm == nil })
 
         let porTrecho = FetchDescriptor<TrechoPersistido>(
             predicate: #Predicate { $0.texto.localizedStandardContains(limpo) }
         )
-        acrescentar(try modelContext.fetch(porTrecho).compactMap(\.arquivo))
+        acrescentar(
+            try modelContext.fetch(porTrecho)
+                .compactMap(\.arquivo)
+                .filter { $0.apagadoEm == nil }
+        )
 
         let porInsight = FetchDescriptor<InsightPersistido>(
             predicate: #Predicate { $0.texto.localizedStandardContains(limpo) }
         )
-        acrescentar(try modelContext.fetch(porInsight).compactMap(\.arquivo))
+        acrescentar(
+            try modelContext.fetch(porInsight)
+                .compactMap(\.arquivo)
+                .filter { $0.apagadoEm == nil }
+        )
 
         porCorpo.sort { $0.criadoEm > $1.criadoEm }
         return (bucketA + porCorpo).map(Self.paraDominio)
@@ -142,28 +156,65 @@ public actor SwiftDataRepository: ArquivoRepository {
     public func listar(espaco: EspacoID) async throws -> [Arquivo] {
         let alvo = espaco.rawValue
         var descritor = FetchDescriptor<ArquivoPersistido>(
-            predicate: #Predicate { $0.espaco?.id == alvo },
+            predicate: #Predicate { $0.espaco?.id == alvo && $0.apagadoEm == nil },
             sortBy: [SortDescriptor(\.criadoEm, order: .reverse)]
         )
         descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
         return try modelContext.fetch(descritor).map(Self.paraDominio)
     }
 
-    /// Apaga o registro **e os arquivos em disco**.
+    /// Itens removidos da biblioteca continuam persistidos e com o áudio no
+    /// disco até que a pessoa confirme a exclusão definitiva na lixeira.
+    public func listarNaLixeira(espaco: EspacoID) async throws -> [Arquivo] {
+        let alvo = espaco.rawValue
+        var descritor = FetchDescriptor<ArquivoPersistido>(
+            predicate: #Predicate { $0.espaco?.id == alvo && $0.apagadoEm != nil }
+        )
+        descritor.relationshipKeyPathsForPrefetching = [\.trechos, \.insights]
+
+        return try modelContext.fetch(descritor)
+            .sorted { ($0.apagadoEm ?? .distantPast) > ($1.apagadoEm ?? .distantPast) }
+            .map(Self.paraDominio)
+    }
+
+    /// Move o registro para a lixeira sem alterar `pastaRelativa`. Mover a
+    /// pasta de mídia aqui tornaria a restauração mais frágil e não traz ganho:
+    /// ela já está isolada no container do app.
+    public func moverParaLixeira(_ id: ArquivoID) async throws {
+        guard let persistido = try buscarPersistido(id: id) else { return }
+        guard persistido.apagadoEm == nil else { return }
+        persistido.apagadoEm = Date()
+        try modelContext.save()
+    }
+
+    /// Devolve o mesmo registro — incluindo trechos, resumo e pasta de áudio —
+    /// à listagem normal.
+    public func restaurar(_ id: ArquivoID) async throws {
+        guard let persistido = try buscarPersistido(id: id) else { return }
+        guard persistido.apagadoEm != nil else { return }
+        persistido.apagadoEm = nil
+        try modelContext.save()
+    }
+
+    /// Apaga o registro **e os arquivos em disco** de maneira definitiva.
     ///
-    /// Critério de aceite do Passo 8: apagar um arquivo apaga também o `.m4a`.
-    /// Deixar o áudio órfão no container é vazamento de disco que o usuário não
-    /// tem como limpar.
+    /// Critério de aceite da lixeira: apenas esta ação apaga também a pasta de
+    /// mídia. Deixar o áudio órfão no container é vazamento de disco que a
+    /// pessoa não tem como limpar.
     public func apagar(_ id: ArquivoID) async throws {
         guard let persistido = try buscarPersistido(id: id) else { return }
+        guard persistido.apagadoEm != nil else {
+            throw ErroLixeira.arquivoNaoEstaNaLixeira
+        }
 
         let relativo = persistido.pastaRelativa
+        if !relativo.isEmpty {
+            let armazenamento = try Armazenamento.padrao()
+            try armazenamento.removerGravacao(relativa: relativo)
+        }
+
         modelContext.delete(persistido)
         try modelContext.save()
-
-        if !relativo.isEmpty, let armazenamento = try? Armazenamento.padrao() {
-            try? FileManager.default.removeItem(at: armazenamento.resolver(relativo: relativo))
-        }
     }
 
     // MARK: - Apoio
@@ -250,7 +301,22 @@ public actor SwiftDataRepository: ArquivoRepository {
             trechos: trechos,
             resumo: resumo,
             engineTranscricao: p.engineTranscricao,
-            engineResumo: p.engineResumo
+            engineResumo: p.engineResumo,
+            apagadoEm: p.apagadoEm
         )
+    }
+}
+
+/// Ações irreversíveis só podem partir da coleção Lixeira. A interface já
+/// aplica essa regra, mas o repositório a repete para proteger chamadas futuras
+/// e estados visuais desatualizados.
+public enum ErroLixeira: LocalizedError, Equatable {
+    case arquivoNaoEstaNaLixeira
+
+    public var errorDescription: String? {
+        switch self {
+        case .arquivoNaoEstaNaLixeira:
+            "Mova o arquivo para a lixeira antes de apagá-lo definitivamente."
+        }
     }
 }

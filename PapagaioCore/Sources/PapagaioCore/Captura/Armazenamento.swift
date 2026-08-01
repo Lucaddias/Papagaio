@@ -64,6 +64,26 @@ public struct Armazenamento: Sendable {
         raiz.appendingPathComponent(relativo, isDirectory: true)
     }
 
+    /// Remove uma pasta de gravação somente quando o caminho persistido tem o
+    /// formato canônico `Gravacoes/<UUID>`. A exclusão definitiva não deve
+    /// aceitar uma string arbitrária do banco como alvo no filesystem.
+    public func removerGravacao(
+        relativa: String,
+        _ fm: FileManager = .default
+    ) throws {
+        let partes = relativa.split(separator: "/", omittingEmptySubsequences: false)
+        guard partes.count == 2,
+              partes[0] == Substring(Self.pastaGravacoes),
+              let id = UUID(uuidString: String(partes[1]))
+        else {
+            throw ErroArmazenamento.caminhoDeGravacaoInvalido(relativa)
+        }
+
+        let pasta = pastaDaGravacao(id: id)
+        guard fm.fileExists(atPath: pasta.path) else { return }
+        try fm.removeItem(at: pasta)
+    }
+
     /// Nomes canônicos dentro da pasta de uma gravação.
     public enum Nome {
         /// Arquivamento: mixagem dos dois canais, AAC.
@@ -72,5 +92,16 @@ public struct Armazenamento: Sendable {
         public static let pcmMicrofone = "microfone.pcm"
         /// PCM canônico do áudio do sistema — efêmero, insumo do ASR.
         public static let pcmSistema = "sistema.pcm"
+    }
+}
+
+public enum ErroArmazenamento: LocalizedError {
+    case caminhoDeGravacaoInvalido(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .caminhoDeGravacaoInvalido(caminho):
+            "O caminho da gravação não é seguro para excluir: \(caminho)"
+        }
     }
 }

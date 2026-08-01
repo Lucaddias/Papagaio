@@ -1107,6 +1107,73 @@ app arrisca encerramento pelo sistema.
 
 ---
 
+## D-10.8 — Sistema visual modular da Alta Fidelidade (2026-08-01)
+
+**Decidido:** a aparência de referência da página **Alta Fidelidade** é aplicada
+às superfícies que já existem no Papagaio: biblioteca, gravação, modelos locais,
+cartões de conversa e detalhe de uma conversa. O sistema visual fica em
+`Papagaio/UI/DesignSystem`, com tokens de cor, espaçamento, raios, selos de
+status e estilos de botão; os componentes reutilizáveis ficam separados por
+responsabilidade em `UI/Components`, `UI/Biblioteca` e `UI/Detalhe`.
+
+**Componentização:** `ContentView` continua sendo apenas o coordenador que cria
+e conecta `GravadorViewModel`, `Biblioteca`, `ModelosViewModel` e
+`PerfilViewModel`. As subviews recebem estado e closures, sem recriar view
+models. No detalhe, a barra de abas, a linha de transcrição, a orientação de
+áudio e a barra de áudio inferior são componentes visuais independentes. O
+container conserva preparação, seek, reprodução por trecho, atualização tardia
+dos trechos, exportação e o encerramento do observador de `AVPlayer`.
+
+**Comportamento preservado:** o player inferior permanece centralizado e usa
+Liquid Glass conforme D-10.4; ele contém somente tocar/pausar e posição. Clicar
+num trecho continua fazendo seek e iniciando a reprodução. Estados sem resumo,
+transcrição ou próximos passos ficam centralizados na área disponível. A grade
+continua expondo somente ações funcionais (gravar, importar, reprocessar e
+mover para a lixeira), sem inventar telas, controles de música ou dados
+decorativos do Figma.
+
+**Correção de integração:** escolher uma pasta externa **ou** voltar a usar a
+pasta do app sincroniza `Biblioteca.pastaDeModelos`. Assim, o próximo item da
+fila usa a mesma pasta que a interface mostra, eliminando a divergência anterior
+entre o seletor visual e o pipeline local.
+
+**Acessibilidade e validação:** botões, menus, `NavigationLink`, dicas de
+acessibilidade e `accessibilityReduceMotion` permanecem semânticos; não foram
+substituídos por áreas de toque decorativas. O app completo compilou com
+`xcodebuild` em 2026-08-01, usando `CODE_SIGNING_ALLOWED=NO` e Derived Data em
+`/private/tmp/papagaio-design-derived`.
+
+---
+
+## D-10.9 — Lixeira persistente, restauração e exclusão definitiva (2026-08-01)
+
+**Decidido:** excluir um arquivo da biblioteca agora significa movê-lo para uma
+lixeira persistente local. `Arquivo.apagadoEm` registra a remoção no SwiftData;
+as consultas normais não retornam esses itens e a nova seção **Lixeira** os
+exibe separadamente. Os dados processados e a pasta de áudio continuam no
+dispositivo até a exclusão definitiva.
+
+**Recuperação e remoção:** selecionar um cartão da lixeira abre ações explícitas
+para recuperar ou apagar definitivamente. Recuperar zera `apagadoEm` e devolve
+o arquivo para **Todos os arquivos**, preservando o áudio, a transcrição e o
+resumo. Apagar definitivamente requer confirmação e só então remove o registro
+e a pasta `Gravacoes/<UUID>`, validada antes de qualquer remoção física.
+
+**Fila e concorrência:** um item ativo não pode ser movido para a lixeira. Para
+um item aguardando processamento, ele é retirado da fila antes do primeiro
+`await`, evitando que se torne ativo durante a operação. A restauração não
+reinicia automaticamente o pipeline: o usuário pode escolher reprocessar,
+evitando uso inesperado de memória e dos modelos locais.
+
+**Resiliência:** uma atualização tardia do pipeline não pode ressuscitar um
+arquivo já na lixeira. A persistência preserva a marca de remoção e os testes
+cobrem mover, restaurar, apagar definitivamente, impedir remoção fora da
+lixeira, filtrar buscas e esse caso de concorrência. O build completo e os
+quatro testes da lixeira passaram em
+2026-08-01.
+
+---
+
 ## Passo 11 — Exportação Markdown (2026-07-31)
 
 ## D-11.1 — `fileExporter` salva o Markdown; o áudio é copiado depois
