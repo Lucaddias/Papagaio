@@ -11,5 +11,9 @@
 	<string>public.app-category.productivity</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Papagaio grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>O Papagaio usa contatos para reconhecer melhor nomes próprios em transcrições.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>O Papagaio usa eventos do calendário para reconhecer participantes e o contexto da reunião.</string>
 </dict>
 </plist>

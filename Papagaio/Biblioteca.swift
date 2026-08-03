@@ -288,6 +288,7 @@ final class Biblioteca {
 
         erros[chave] = nil
         fases[chave] = .transcrevendo
+        let promptDeEntidades = await PromptDeEntidades.construir(para: arquivo)
 
         // Criado por execução, e descarregado no fim: os dois modelos somam
         // 13,7 GB e não podem ficar residentes entre gravações num Mac de 18 GB.
@@ -298,8 +299,12 @@ final class Biblioteca {
             repositorio: repositorio,
             idTranscricao: WhisperEngine.identificador,
             idResumo: QwenEngine.identificador,
-            transcrever: { [motores] url, speaker in
-                try await motores.transcrever(url, speaker: speaker)
+            transcrever: { [motores, promptDeEntidades] url, speaker in
+                try await motores.transcrever(
+                    url,
+                    speaker: speaker,
+                    initialPrompt: promptDeEntidades
+                )
             },
             resumir: { [motores] trechos in
                 try await motores.resumir(trechos)

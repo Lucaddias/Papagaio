@@ -76,8 +76,15 @@ public enum Segmentacao {
         microfone: [Trecho],
         sistema: [Trecho]
     ) -> [Trecho] {
-        let comFalante = microfone.map { marcar($0, como: Speaker.eu) }
-            + sistema.map { marcar($0, como: Speaker.interlocutor) }
+        let microfoneMarcado = microfone.map { marcar($0, como: Speaker.eu) }
+        let sistemaMarcado = sistema.map { marcar($0, como: Speaker.interlocutor) }
+        let microfoneSemEco = microfoneMarcado.filter { trechoDoMicrofone in
+            !sistemaMarcado.contains { trechoDoSistema in
+                sobrepoe(trechoDoMicrofone, trechoDoSistema)
+                    && similaridadeDeTexto(trechoDoMicrofone.texto, trechoDoSistema.texto) >= 0.86
+            }
+        }
+        let comFalante = microfoneSemEco + sistemaMarcado
         let ordenados = comFalante.sorted { $0.start < $1.start }
         return agrupar(ordenados)
     }
@@ -90,5 +97,17 @@ public enum Segmentacao {
             texto: trecho.texto,
             speaker: speaker
         )
+    }
+
+    private static func sobrepoe(_ lhs: Trecho, _ rhs: Trecho) -> Bool {
+        lhs.start < rhs.end && rhs.start < lhs.end
+    }
+
+    private static func similaridadeDeTexto(_ lhs: String, _ rhs: String) -> Double {
+        let tokensEsquerda = Set(lhs.lowercased().split { !$0.isLetter && !$0.isNumber })
+        let tokensDireita = Set(rhs.lowercased().split { !$0.isLetter && !$0.isNumber })
+        let uniao = tokensEsquerda.union(tokensDireita)
+        guard !uniao.isEmpty else { return 0 }
+        return Double(tokensEsquerda.intersection(tokensDireita).count) / Double(uniao.count)
     }
 }

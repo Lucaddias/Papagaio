@@ -35,12 +35,20 @@ public actor MotoresLocais {
 
     // MARK: - Uso
 
-    public func transcrever(_ audio: URL, speaker: String?) async throws -> [Trecho] {
+    public func transcrever(
+        _ audio: URL,
+        speaker: String?,
+        initialPrompt: String? = nil
+    ) async throws -> [Trecho] {
         await descarregarResumo()
         let contexto = contextoWhisper ?? ContextoWhisper(modelo: pesoDaTranscricao)
         contextoWhisper = contexto
         await ciclo?.registrar(contexto)
-        return try await WhisperEngine(contexto: contexto).transcribe(audio, speaker: speaker)
+        return try await WhisperEngine(contexto: contexto).transcribe(
+            audio,
+            speaker: speaker,
+            initialPrompt: initialPrompt
+        )
     }
 
     public func resumir(_ trechos: [Trecho]) async throws -> Resumo {

@@ -4,6 +4,7 @@ import SwiftUI
 /// adiciona ícones decorativos sem comportamento.
 struct BarraSuperiorPapagaio: ToolbarContent {
     @Binding var consulta: String
+    @State private var exibindoMenuDePerfil = false
     let exibindoBotaoVoltar: Bool
     let perfilConectado: Bool
     let perfilVerificando: Bool
@@ -64,26 +65,47 @@ struct BarraSuperiorPapagaio: ToolbarContent {
             .accessibilityLabel("Lixeira")
             .accessibilityHint("Abre os arquivos removidos da biblioteca.")
         }
+
+        ToolbarSpacer(.fixed, placement: .primaryAction)
+
         ToolbarItem(placement: .primaryAction) {
-            Menu {
-                if perfilConectado {
-                    Text("Conectado com Apple")
-                    Divider()
-                    Button("Sair", role: .destructive, action: aoSair)
-                } else {
-                    Button("Entrar com Apple", action: aoEntrar)
-                        .disabled(perfilVerificando)
-                }
+            Button {
+                exibindoMenuDePerfil = true
             } label: {
                 Image(systemName: perfilConectado ? "person.crop.circle.fill" : "person.crop.circle")
-                    .font(.system(size: 26, weight: .medium))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
                     .frame(width: 36, height: 36)
-                    .background(PapagaioTema.destaqueSuave, in: Circle())
+                    .background(.regularMaterial, in: Circle())
+                    .overlay {
+                        Circle()
+                            .strokeBorder(PapagaioTema.borda.opacity(0.8), lineWidth: 1)
+                    }
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
             .accessibilityLabel(perfilConectado ? "Perfil conectado" : "Perfil")
+            .popover(isPresented: $exibindoMenuDePerfil, arrowEdge: .top) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if perfilConectado {
+                        Text("Conectado com Apple")
+                            .font(.subheadline)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                        Divider()
+                        Button("Sair", role: .destructive) {
+                            exibindoMenuDePerfil = false
+                            aoSair()
+                        }
+                    } else {
+                        Button("Entrar com Apple") {
+                            exibindoMenuDePerfil = false
+                            aoEntrar()
+                        }
+                        .disabled(perfilVerificando)
+                    }
+                }
+                .padding(12)
+                .frame(minWidth: 180, alignment: .leading)
+            }
         }
     }
 }

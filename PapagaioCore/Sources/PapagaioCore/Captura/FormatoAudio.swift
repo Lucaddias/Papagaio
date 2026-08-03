@@ -46,4 +46,19 @@ public enum FormatoAudio {
             AVEncoderBitRateKey: bitrateArquivamento,
         ]
     }
+
+    /// Formato dos canais usados pela transcrição. Diferente da mixagem AAC,
+    /// WAV preserva o PCM canônico sem cabeçalhos ambíguos ou dados crus sem
+    /// metadados de taxa/canais.
+    public static var transcricaoWAV: [String: Any] {
+        [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: taxaCanonica,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsNonInterleaved: true,
+            AVLinearPCMIsBigEndianKey: false,
+        ]
+    }
 }

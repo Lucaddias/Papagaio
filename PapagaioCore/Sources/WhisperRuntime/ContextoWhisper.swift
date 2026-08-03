@@ -20,6 +20,7 @@ public enum ErroWhisper: Error, CustomStringConvertible {
     case modeloNaoCarregou(String)
     case falhaNaTranscricao(Int32)
     case audioVazio
+    case semFalaDetectada
 
     public var description: String {
         switch self {
@@ -29,6 +30,8 @@ public enum ErroWhisper: Error, CustomStringConvertible {
             "whisper_full falhou (código \(codigo))"
         case .audioVazio:
             "áudio sem amostras"
+        case .semFalaDetectada:
+            "não foi detectada fala suficiente neste áudio"
         }
     }
 }
@@ -99,6 +102,7 @@ public actor ContextoWhisper {
     public func transcrever(
         amostras: [Float],
         idioma: String = "pt",
+        initialPrompt: String? = nil,
         threads: Int32 = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))
     ) throws -> [SegmentoWhisper] {
         guard !amostras.isEmpty else { throw ErroWhisper.audioVazio }
@@ -117,11 +121,27 @@ public actor ContextoWhisper {
         params.print_timestamps = false
         params.print_special = false
         params.suppress_blank = true
+        // Uma hipótese ruim não pode contaminar janelas posteriores e virar
+        // repetição em cascata durante silêncio ou ruído.
+        params.no_context = true
 
-        let codigo: Int32 = idioma.withCString { ponteiroIdioma in
-            params.language = ponteiroIdioma
-            return amostras.withUnsafeBufferPointer { buffer in
-                whisper_full(contexto, params, buffer.baseAddress, Int32(buffer.count))
+        let codigo: Int32
+        if let initialPrompt, !initialPrompt.isEmpty {
+            codigo = initialPrompt.withCString { prompt in
+                idioma.withCString { ponteiroIdioma in
+                    params.initial_prompt = prompt
+                    params.language = ponteiroIdioma
+                    return amostras.withUnsafeBufferPointer { buffer in
+                        whisper_full(contexto, params, buffer.baseAddress, Int32(buffer.count))
+                    }
+                }
+            }
+        } else {
+            codigo = idioma.withCString { ponteiroIdioma in
+                params.language = ponteiroIdioma
+                return amostras.withUnsafeBufferPointer { buffer in
+                    whisper_full(contexto, params, buffer.baseAddress, Int32(buffer.count))
+                }
             }
         }
         guard codigo == 0 else { throw ErroWhisper.falhaNaTranscricao(codigo) }

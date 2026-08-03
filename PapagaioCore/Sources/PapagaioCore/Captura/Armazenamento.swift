@@ -88,9 +88,14 @@ public struct Armazenamento: Sendable {
     public enum Nome {
         /// Arquivamento: mixagem dos dois canais, AAC.
         public static let mixagem = "gravacao.m4a"
-        /// PCM canônico do microfone — efêmero, insumo do ASR.
+        /// WAV canônico do microfone — mono, Float32, 16 kHz e insumo do ASR.
+        public static let wavMicrofone = "microfone.wav"
+        /// WAV canônico do áudio do sistema — mono, Float32, 16 kHz.
+        public static let wavSistema = "sistema.wav"
+        /// PCM canônico legado do microfone, mantido apenas para ler gravações
+        /// feitas antes da migração para WAV.
         public static let pcmMicrofone = "microfone.pcm"
-        /// PCM canônico do áudio do sistema — efêmero, insumo do ASR.
+        /// PCM canônico legado do áudio do sistema.
         public static let pcmSistema = "sistema.pcm"
     }
 }

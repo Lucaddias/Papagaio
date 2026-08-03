@@ -103,8 +103,12 @@ func agrupamentoPausaLonga() {
 
 @Test("Mesclagem de canais ordena por tempo e atribui falante pela origem")
 func mesclagemDeCanais() {
-    let microfone = segmentos(quantidade: 2, inicio: 0)
-    let sistema = segmentos(quantidade: 2, inicio: 3)
+    let microfone = segmentos(quantidade: 2, inicio: 0).map {
+        Trecho(start: $0.start, end: $0.end, texto: "minha fala \($0.start)", speaker: nil)
+    }
+    let sistema = segmentos(quantidade: 2, inicio: 3).map {
+        Trecho(start: $0.start, end: $0.end, texto: "fala remota \($0.start)", speaker: nil)
+    }
 
     let mesclados = Segmentacao.mesclarCanais(microfone: microfone, sistema: sistema)
 
@@ -118,6 +122,17 @@ func mesclagemDeCanais() {
     // Os dois falantes aparecem, e nenhum trecho fica sem atribuição.
     let falantes = Set(mesclados.compactMap(\.speaker))
     #expect(falantes == [Speaker.eu, Speaker.interlocutor])
+}
+
+@Test("Mesclagem remove eco igual e simultâneo do microfone")
+func mesclagemRemoveEco() {
+    let microfone = [Trecho(start: 10, end: 14, texto: "vamos aprovar o orçamento", speaker: nil)]
+    let sistema = [Trecho(start: 10.2, end: 14.1, texto: "vamos aprovar o orçamento", speaker: nil)]
+
+    let mesclados = Segmentacao.mesclarCanais(microfone: microfone, sistema: sistema)
+
+    #expect(mesclados.count == 1)
+    #expect(mesclados.first?.speaker == Speaker.interlocutor)
 }
 
 @Test("Entrada vazia devolve vazio, sem crashar")

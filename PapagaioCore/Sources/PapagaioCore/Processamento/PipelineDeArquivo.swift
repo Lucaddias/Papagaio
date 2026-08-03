@@ -88,15 +88,15 @@ public struct PipelineDeArquivo: Sendable {
 
     /// Transcreve pelo caminho que preserva o falante.
     ///
-    /// Os `.pcm` por canal são o único insumo que separa "eu" de "interlocutor":
+    /// Os WAVs por canal são o único insumo que separa "eu" de "interlocutor":
     /// a atribuição vem do canal de origem, não de diarização (skill
     /// `papagaio-speaker-attribution`). O `.m4a` já é a mixagem dos dois, então
     /// só serve quando os `.pcm` não existem — arquivo importado, ou gravação
     /// de uma versão anterior.
     private func transcrever(_ arquivo: Arquivo) async throws -> [Trecho] {
         let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
-        let microfone = pasta.appendingPathComponent(Armazenamento.Nome.pcmMicrofone)
-        let sistema = pasta.appendingPathComponent(Armazenamento.Nome.pcmSistema)
+        let microfone = canalEm(pasta, wav: Armazenamento.Nome.wavMicrofone, legado: Armazenamento.Nome.pcmMicrofone)
+        let sistema = canalEm(pasta, wav: Armazenamento.Nome.wavSistema, legado: Armazenamento.Nome.pcmSistema)
 
         let temMicrofone = Self.temConteudo(microfone)
         let temSistema = Self.temConteudo(sistema)
@@ -121,5 +121,13 @@ public struct PipelineDeArquivo: Sendable {
               let tamanho = atributos[.size] as? Int64
         else { return false }
         return tamanho > 0
+    }
+
+    /// Prefere os WAVs das novas gravações; o fallback mantém a biblioteca
+    /// existente íntegra até que os PCM legados sejam naturalmente removidos.
+    private func canalEm(_ pasta: URL, wav: String, legado: String) -> URL {
+        let arquivoWAV = pasta.appendingPathComponent(wav)
+        if Self.temConteudo(arquivoWAV) { return arquivoWAV }
+        return pasta.appendingPathComponent(legado)
     }
 }

@@ -1242,13 +1242,49 @@ permanecer alinhado aos controles de janela e à tela de detalhe.
 Ele contém apenas a busca: não há ícone de pasta ou moldura customizada ao seu
 redor. O menu de perfil oculta o indicador de submenu, e a Lixeira e as
 Configurações compartilham o botão de voltar padrão da toolbar.
-O avatar genérico usa uma área de 36 pt e símbolo de 26 pt, compatíveis com a
-presença visual dos outros controles.
+O avatar genérico usa uma área circular de 36 pt e símbolo de 26 pt, compatíveis
+com a presença visual dos outros controles. Ele abre um popover com as mesmas
+ações de perfil em vez de um `Menu` nativo, pois o controle nativo impõe uma
+cápsula vertical que não representa o avatar como um botão redondo.
+Configurações e Lixeira compartilham um único `ToolbarItemGroup`; o perfil é
+um `ToolbarItem` separado, preservando sua ação sem misturá-la às utilidades da
+biblioteca. Um `ToolbarSpacer(.fixed)` entre eles impede que o macOS os una no
+mesmo grupo visual.
 
 **Deliberadamente não feito:** ativar a preferência não envia
 retroativamente itens que estavam pausados para a fila, nem reinicia trabalhos
 ao abrir o app. Isso preserva a expectativa de que os modelos pesados só sejam
 carregados depois de uma ação que a pessoa escolheu.
+
+---
+
+## D-10.12 — Proteções de qualidade para áudio e transcrição (2026-08-03)
+
+**Decidido:** as novas gravações guardam os canais de microfone e sistema como
+WAV mono Float32 a 16 kHz, o mesmo formato canônico entregue ao Whisper. A
+mixagem AAC continua sendo o arquivo compacto de reprodução/exportação. A
+transcrição prefere os WAVs; gravações antigas em PCM continuam funcionando
+como fallback, sem migração destrutiva.
+
+**Confiabilidade:** antes de carregar o Whisper, um detector de atividade por
+energia recusa canais sem fala sustentada. O runtime usa `no_context = true`
+para que uma hipótese ruim não contamine as janelas posteriores. Ao mesclar os
+dois canais, trechos quase idênticos e simultâneos do microfone são removidos
+quando correspondem ao áudio do sistema, evitando duplicação por eco.
+
+**Nomes próprios:** o app pede acesso opcional a Contatos e Calendário e usa no
+máximo 40 termos como `initial_prompt` curto do Whisper. Negar qualquer uma das
+permissões não bloqueia a transcrição; apenas deixa de fornecer esse contexto.
+O prompt é uma pista de reconhecimento, nunca uma correção automática.
+
+**Importação:** anexos já são normalizados com `AVAssetReader` antes de serem
+arquivados, mantendo o caminho tolerante a contêineres AAC/M4A/MP3 adotado no
+Passo 2. Não foi criada uma segunda conversão para evitar alterar o áudio duas
+vezes.
+
+**Validação:** build Debug do app e cinco testes focados passaram. A eficácia
+contra a repetição precisa de validação manual com os áudios reais reportados e
+deve virar corpus de regressão quando houver autorização para guardar amostras.
 
 ---
 

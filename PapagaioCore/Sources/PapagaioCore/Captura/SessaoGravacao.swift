@@ -45,8 +45,8 @@ public actor SessaoGravacao {
 
     private var pasta: URL?
     private var arquivoMixagem: AVAudioFile?
-    private var pcmMicrofone: FileHandle?
-    private var pcmSistema: FileHandle?
+    private var arquivoMicrofone: AVAudioFile?
+    private var arquivoSistema: AVAudioFile?
 
     private var conversorMicrofone: ConversorCanonico?
     private var conversorSistema: ConversorCanonico?
@@ -143,9 +143,15 @@ public actor SessaoGravacao {
             forWriting: pasta.appendingPathComponent(Armazenamento.Nome.mixagem),
             settings: FormatoAudio.arquivamento
         )
-        pcmMicrofone = try criarArquivo(pasta.appendingPathComponent(Armazenamento.Nome.pcmMicrofone))
+        arquivoMicrofone = try AVAudioFile(
+            forWriting: pasta.appendingPathComponent(Armazenamento.Nome.wavMicrofone),
+            settings: FormatoAudio.transcricaoWAV
+        )
         if capturouSistema {
-            pcmSistema = try criarArquivo(pasta.appendingPathComponent(Armazenamento.Nome.pcmSistema))
+            arquivoSistema = try AVAudioFile(
+                forWriting: pasta.appendingPathComponent(Armazenamento.Nome.wavSistema),
+                settings: FormatoAudio.transcricaoWAV
+            )
         }
 
         // 4. Consumidor.
@@ -169,10 +175,8 @@ public actor SessaoGravacao {
         drenar()
 
         arquivoMixagem = nil
-        try? pcmMicrofone?.close()
-        try? pcmSistema?.close()
-        pcmMicrofone = nil
-        pcmSistema = nil
+        arquivoMicrofone = nil
+        arquivoSistema = nil
 
         let caminho = pasta.map { $0.appendingPathComponent(Armazenamento.Nome.mixagem) }
         let bytes = caminho.flatMap {
@@ -228,9 +232,9 @@ public actor SessaoGravacao {
         let doMicrofone = puxar(de: microfone.buffer, conversor: conversorMicrofone)
         let doSistema = puxar(de: sistema.buffer, conversor: conversorSistema)
 
-        if !doMicrofone.isEmpty { escreverPCM(doMicrofone, em: pcmMicrofone) }
+        if !doMicrofone.isEmpty { escreverCanal(doMicrofone, em: arquivoMicrofone) }
         if !doSistema.isEmpty {
-            escreverPCM(doSistema, em: pcmSistema)
+            escreverCanal(doSistema, em: arquivoSistema)
             if !sistemaTeveSinal, doSistema.contains(where: { abs($0) > Self.limiarDeSilencio }) {
                 sistemaTeveSinal = true
             }
@@ -283,15 +287,18 @@ public actor SessaoGravacao {
         try? arquivo.write(from: buffer)
     }
 
-    private func escreverPCM(_ amostras: [Float], em arquivo: FileHandle?) {
-        guard let arquivo else { return }
-        amostras.withUnsafeBufferPointer { origem in
-            try? arquivo.write(contentsOf: Data(buffer: origem))
-        }
-    }
+    private func escreverCanal(_ amostras: [Float], em arquivo: AVAudioFile?) {
+        guard let arquivo,
+              let buffer = AVAudioPCMBuffer(
+                  pcmFormat: arquivo.processingFormat,
+                  frameCapacity: AVAudioFrameCount(amostras.count)
+              )
+        else { return }
 
-    private func criarArquivo(_ url: URL) throws -> FileHandle {
-        FileManager.default.createFile(atPath: url.path, contents: nil)
-        return try FileHandle(forWritingTo: url)
+        buffer.frameLength = AVAudioFrameCount(amostras.count)
+        amostras.withUnsafeBufferPointer { origem in
+            buffer.floatChannelData?[0].update(from: origem.baseAddress!, count: amostras.count)
+        }
+        try? arquivo.write(from: buffer)
     }
 }

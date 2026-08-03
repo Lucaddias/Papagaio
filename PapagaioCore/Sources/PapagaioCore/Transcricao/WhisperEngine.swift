@@ -36,11 +36,22 @@ public struct WhisperEngine: TranscriptionEngine {
     /// Não há modelo de diarização: microfone é `"eu"`, tap do sistema é
     /// `"interlocutor"`, e arquivo importado é `nil` — ver skill
     /// `papagaio-speaker-attribution`.
-    public func transcribe(_ url: URL, speaker: String?) async throws -> [Trecho] {
+    public func transcribe(
+        _ url: URL,
+        speaker: String?,
+        initialPrompt: String? = nil
+    ) async throws -> [Trecho] {
         let amostras = try DecodificadorDeAudio.amostras(de: url)
         guard !amostras.isEmpty else { return [] }
+        guard DetectorDeAtividadeDeVoz.contemFala(nas: amostras) else {
+            // Em uma reunião de dois canais, o microfone pode estar em silêncio
+            // enquanto só o interlocutor fala. Devolver vazio permite que o
+            // pipeline preserve o outro canal; se ambos estiverem vazios, ele
+            // encerra sem resumo e informa que nenhuma fala foi reconhecida.
+            return []
+        }
 
-        let segmentos = try await contexto.transcrever(amostras: amostras)
+        let segmentos = try await contexto.transcrever(amostras: amostras, initialPrompt: initialPrompt)
         return segmentos.map {
             Trecho(start: $0.start, end: $0.end, texto: $0.texto, speaker: speaker)
         }
