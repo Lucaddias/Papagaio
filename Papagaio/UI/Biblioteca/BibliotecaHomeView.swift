@@ -9,12 +9,13 @@ struct BibliotecaHomeView: View {
     let biblioteca: Biblioteca?
     let modelos: ModelosViewModel?
     @Binding var consulta: String
+    @Binding var secaoSelecionada: SecaoDaBiblioteca
     @Binding var mostrandoImportador: Bool
+    let processamentoAutomatico: Bool
     let aoAlternarGravacao: () async -> Void
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
 
-    @State private var secaoSelecionada: SecaoDaBiblioteca = .todos
     @State private var arquivoSelecionadoNaLixeira: Arquivo?
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
 
@@ -39,6 +40,15 @@ struct BibliotecaHomeView: View {
             "Gerencie suas transcrições e insights de entrevistas."
         case .lixeira:
             "Recupere um arquivo ou apague-o definitivamente."
+        }
+    }
+
+    private var tituloDaPagina: String {
+        switch secaoSelecionada {
+        case .todos:
+            "Biblioteca de Conversas"
+        case .lixeira:
+            "Lixeira"
         }
     }
 
@@ -94,7 +104,7 @@ struct BibliotecaHomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 CabecalhoDePagina(
-                    titulo: "Biblioteca de Conversas",
+                    titulo: tituloDaPagina,
                     subtitulo: subtitulo
                 ) {
                     if let biblioteca, biblioteca.processando {
@@ -105,12 +115,6 @@ struct BibliotecaHomeView: View {
                         )
                     }
                 }
-
-                SeletorDaBiblioteca(
-                    selecao: $secaoSelecionada,
-                    quantidadeDeArquivos: biblioteca?.arquivos.count ?? 0,
-                    quantidadeNaLixeira: biblioteca?.arquivosNaLixeira.count ?? 0
-                )
 
                 if let modelos, !modelos.pronto {
                     CartaoDeModelos(
@@ -124,6 +128,7 @@ struct BibliotecaHomeView: View {
                     PainelDeGravacao(
                         waveform: gravador.waveform,
                         tempoDeGravacao: gravador.tempoDeGravacao,
+                        processamentoAutomatico: processamentoAutomatico,
                         aoFinalizar: aoAlternarGravacao
                     )
 
@@ -370,7 +375,7 @@ private struct CartaoDeConversa: View {
     private var estiloDoStatus: EstiloDoStatus {
         if processando { return .destaque }
         if naFila { return .aviso }
-        if estado != "transcrito" && estado != "transcrito e resumido" && estado != "aguardando processamento" {
+        if estado != "transcrito" && estado != "transcrito e resumido" && estado != "pronto para transcrever" {
             return .erro
         }
         if arquivo.resumo != nil { return .sucesso }
@@ -382,7 +387,7 @@ private struct CartaoDeConversa: View {
         if naFila { return "clock" }
         if estiloDoStatus == .erro { return "exclamationmark.triangle" }
         if arquivo.resumo != nil { return "checkmark.circle" }
-        return "hourglass"
+        return "text.badge.plus"
     }
 
     var body: some View {
@@ -506,6 +511,7 @@ private struct CapaDeConversa: View {
 private struct PainelDeGravacao: View {
     let waveform: [Float]
     let tempoDeGravacao: TimeInterval
+    let processamentoAutomatico: Bool
     let aoFinalizar: () async -> Void
 
     var body: some View {
@@ -518,7 +524,11 @@ private struct PainelDeGravacao: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 SeloDeStatus(texto: "GRAVANDO", simbolo: "record.circle", estilo: .erro)
-                Text("A conversa será salva e adicionada à fila ao finalizar.")
+                Text(
+                    processamentoAutomatico
+                        ? "A conversa será salva e adicionada à fila ao finalizar."
+                        : "A conversa será salva. Use Transcrever quando quiser iniciar o processamento."
+                )
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                 Text(tempoCurto(tempoDeGravacao))

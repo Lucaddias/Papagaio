@@ -1,74 +1,14 @@
 import PapagaioCore
 import SwiftUI
 
-/// As duas coleções reais da biblioteca. Separar a navegação da listagem deixa
-/// explícito que a lixeira não é uma exclusão definitiva.
-enum SecaoDaBiblioteca: String, CaseIterable, Identifiable {
+/// As duas coleções reais da biblioteca. A lixeira é aberta pelas
+/// Configurações, mas continua uma área separada porque não é exclusão
+/// definitiva.
+enum SecaoDaBiblioteca: String, Identifiable {
     case todos = "Todos os arquivos"
     case lixeira = "Lixeira"
 
     var id: Self { self }
-
-    var simbolo: String {
-        switch self {
-        case .todos: "rectangle.stack"
-        case .lixeira: "trash"
-        }
-    }
-}
-
-struct SeletorDaBiblioteca: View {
-    @Binding var selecao: SecaoDaBiblioteca
-    let quantidadeDeArquivos: Int
-    let quantidadeNaLixeira: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(SecaoDaBiblioteca.allCases) { secao in
-                let estaSelecionada = selecao == secao
-                let quantidade = secao == .todos ? quantidadeDeArquivos : quantidadeNaLixeira
-
-                Button {
-                    selecao = secao
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: secao.simbolo)
-                        Text(secao.rawValue)
-                        Text("\(quantidade)")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                estaSelecionada
-                                    ? PapagaioTema.destaqueEscuro.opacity(0.14)
-                                    : PapagaioTema.superficieSuave,
-                                in: Capsule()
-                            )
-                    }
-                    .font(.callout.weight(estaSelecionada ? .semibold : .medium))
-                    .foregroundStyle(
-                        estaSelecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario
-                    )
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 42)
-                    .background(
-                        estaSelecionada ? PapagaioTema.destaqueSuave : PapagaioTema.superficie,
-                        in: Capsule()
-                    )
-                    .overlay {
-                        Capsule()
-                            .stroke(
-                                estaSelecionada ? PapagaioTema.borda : PapagaioTema.borda.opacity(0.66),
-                                lineWidth: 1
-                            )
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(secao.rawValue), \(quantidade) arquivos")
-                .accessibilityAddTraits(estaSelecionada ? .isSelected : [])
-            }
-        }
-    }
 }
 
 /// Um item recuperável. O clique abre as ações de recuperação; a exclusão

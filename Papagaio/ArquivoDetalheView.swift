@@ -12,6 +12,9 @@ struct ArquivoDetalheView: View {
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: String
+    let processando: Bool
+    let naFila: Bool
+    let aoTranscrever: () -> Void
 
     @State private var reprodutor: ReprodutorDeArquivo?
     @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
@@ -24,6 +27,9 @@ struct ArquivoDetalheView: View {
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
     private var trechos: [Trecho] { arquivo.trechos }
     private var notas: [NotaDaConversa] { arquivo.notas }
+    private var podeIniciarTranscricao: Bool {
+        trechos.isEmpty && !processando && !naFila
+    }
     private var exibindoEstadoVazio: Bool {
         switch secaoSelecionada {
         case .resumo:
@@ -384,11 +390,15 @@ struct ArquivoDetalheView: View {
     @ViewBuilder
     private var transcricao: some View {
         if trechos.isEmpty {
-            CartaoDeEstadoVazio(
-                simbolo: "text.quote",
-                titulo: "Transcrição indisponível",
-                mensagem: "A transcrição aparecerá depois do processamento."
-            )
+            if podeIniciarTranscricao {
+                transcricaoPendente
+            } else {
+                CartaoDeEstadoVazio(
+                    simbolo: "text.quote",
+                    titulo: "Transcrição em preparação",
+                    mensagem: "A transcrição aparecerá depois do processamento."
+                )
+            }
         } else if let reprodutor {
             ScrollViewReader { rolagem in
                 LazyVStack(alignment: .leading, spacing: 8) {
@@ -413,6 +423,33 @@ struct ArquivoDetalheView: View {
                 }
             }
         }
+    }
+
+    private var transcricaoPendente: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "text.quote")
+                .font(.system(size: 34, weight: .medium))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .frame(width: 64, height: 64)
+                .background(PapagaioTema.destaqueSuave, in: Circle())
+
+            Text("Pronto para transcrever")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+
+            Text("Inicie a transcrição quando quiser. O resumo será gerado em seguida, respeitando a fila de processamento.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .frame(maxWidth: 420)
+
+            Button("Transcrever", systemImage: "text.badge.plus", action: aoTranscrever)
+                .buttonStyle(BotaoPrincipalPapagaio())
+                .accessibilityHint("Adiciona esta conversa à fila. O resumo será feito após a transcrição.")
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
     }
 
     private func linha(_ trecho: Trecho, ativo: Bool) -> some View {

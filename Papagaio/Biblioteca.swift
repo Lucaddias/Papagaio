@@ -42,6 +42,11 @@ final class Biblioteca {
     /// escolhida pelo usuário.
     var pastaDeModelos: URL
 
+    /// Controla somente a entrada automática de áudios novos na fila. A fila
+    /// continua sendo o único caminho para qualquer processamento manual ou
+    /// automático, mantendo um único par de modelos carregado por vez.
+    var processamentoAutomatico = true
+
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
     private let espaco: EspacoID
@@ -87,9 +92,11 @@ final class Biblioteca {
 
     // MARK: - Entrada de áudio
 
-    /// Registra um áudio recém-gravado ou importado e o coloca na fila. As
-    /// notas são criadas antes da fila, para que os saves do pipeline apenas
-    /// as preservem junto de transcrição e resumo.
+    /// Registra um áudio recém-gravado ou importado. Com o processamento
+    /// automático ativo ele entra na fila; caso contrário fica pronto para a
+    /// pessoa iniciar pela aba Transcrição. As notas são criadas antes da fila,
+    /// para que os saves do pipeline apenas as preservem junto de transcrição
+    /// e resumo.
     func registrar(
         titulo: String,
         pastaRelativa: String,
@@ -110,7 +117,9 @@ final class Biblioteca {
             return
         }
         arquivos.insert(arquivo, at: 0)
-        enfileirarProcessamento(arquivo)
+        if processamentoAutomatico {
+            enfileirarProcessamento(arquivo)
+        }
     }
 
     // MARK: - Lixeira
@@ -355,6 +364,6 @@ final class Biblioteca {
         if let erro = erros[chave] { return erro }
         if arquivo.resumo != nil { return "transcrito e resumido" }
         if !arquivo.trechos.isEmpty { return "transcrito" }
-        return "aguardando processamento"
+        return "pronto para transcrever"
     }
 }

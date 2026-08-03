@@ -1208,6 +1208,50 @@ persistência/atualização, busca e exportação.
 
 ---
 
+## D-10.11 — Configurações e lixeira em telas próprias (2026-08-03)
+
+**Decidido:** a engrenagem da barra superior abre uma tela própria de
+**Configurações**. No momento ela contém somente **Pausar transcrições e
+resumos automáticos**. A preferência é persistente e vem desligada por padrão,
+preservando o fluxo anterior: áudios gravados ou importados entram na fila FIFO
+assim que são salvos. Ao pausar, o áudio é salvo normalmente, mas fica com o
+estado **Pronto para transcrever**; a aba Transcrição exibe um botão centralizado
+**Transcrever**.
+
+**Fluxo manual:** tocar em **Transcrever** usa exatamente
+`Biblioteca.enfileirarProcessamento(_:)`, sem caminho paralelo. Após o Whisper,
+o `PipelineDeArquivo` executa o Qwen para o resumo como já fazia antes. Assim,
+o controle muda apenas o gatilho de entrada da fila — nunca sua serialização,
+que continua garantindo um único arquivo e um único conjunto de modelos em
+memória por vez.
+
+**Lixeira:** o seletor exposto na biblioteca continua removido, mas a Lixeira
+não pertence às Configurações. Ela é um botão `trash` vermelho separado, ao lado
+da engrenagem, e abre a área Lixeira com título próprio. Recuperação, exclusão
+definitiva, confirmação e as proteções de concorrência de D-10.9 não mudam.
+
+**Navegação e composição:** Configurações e Lixeira não exibem mais o botão
+textual “Voltar à biblioteca” dentro do cabeçalho. Ambas mostram um único
+`chevron.backward` no canto esquerdo da barra superior, que retorna à biblioteca.
+A coluna de Configurações fica centralizada e limitada a 760 pt; o formulário
+ganha altura compacta para não criar uma área vazia em torno do único toggle.
+A busca e a identificação **Biblioteca** formam um bloco centralizado na barra
+superior, independente dos controles ancorados em suas extremidades. Esse bloco
+usa a `Toolbar` nativa do macOS — não uma faixa dentro do conteúdo — para
+permanecer alinhado aos controles de janela e à tela de detalhe.
+Ele contém apenas a busca: não há ícone de pasta ou moldura customizada ao seu
+redor. O menu de perfil oculta o indicador de submenu, e a Lixeira e as
+Configurações compartilham o botão de voltar padrão da toolbar.
+O avatar genérico usa uma área de 36 pt e símbolo de 26 pt, compatíveis com a
+presença visual dos outros controles.
+
+**Deliberadamente não feito:** ativar a preferência não envia
+retroativamente itens que estavam pausados para a fila, nem reinicia trabalhos
+ao abrir o app. Isso preserva a expectativa de que os modelos pesados só sejam
+carregados depois de uma ação que a pessoa escolheu.
+
+---
+
 ## Passo 11 — Exportação Markdown (2026-07-31)
 
 ## D-11.1 — `fileExporter` salva o Markdown; o áudio é copiado depois

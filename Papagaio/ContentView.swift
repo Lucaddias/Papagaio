@@ -15,18 +15,13 @@ struct ContentView: View {
     @State private var falhaDeAbertura: String?
     @State private var mostrandoImportador = false
     @State private var consulta = ""
+    @State private var secaoDaBiblioteca: SecaoDaBiblioteca = .todos
+    @State private var exibindoConfiguracoes = false
+    @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                BarraSuperiorPapagaio(
-                    consulta: $consulta,
-                    perfilConectado: perfil.conectado,
-                    perfilVerificando: perfil.verificando,
-                    aoEntrar: perfil.entrar,
-                    aoSair: perfil.sair
-                )
-
                 if let falhaDeAbertura {
                     Label(falhaDeAbertura, systemImage: "xmark.octagon.fill")
                         .font(.callout)
@@ -36,25 +31,49 @@ struct ContentView: View {
                         .background(PapagaioTema.perigo.opacity(0.08))
                 }
 
-                BibliotecaHomeView(
-                    gravador: modelo,
-                    biblioteca: biblioteca,
-                    modelos: modelos,
-                    consulta: $consulta,
-                    mostrandoImportador: $mostrandoImportador,
-                    aoAlternarGravacao: { await modelo.alternarGravacao() },
-                    aoEscolherPastaDeModelos: escolherPastaDeModelos,
-                    aoUsarPastaDoApp: usarPastaDoApp
-                )
+                if exibindoConfiguracoes {
+                    ConfiguracoesView(
+                        processamentoAutomatico: $processamentoAutomatico
+                    )
+                } else {
+                    BibliotecaHomeView(
+                        gravador: modelo,
+                        biblioteca: biblioteca,
+                        modelos: modelos,
+                        consulta: $consulta,
+                        secaoSelecionada: $secaoDaBiblioteca,
+                        mostrandoImportador: $mostrandoImportador,
+                        processamentoAutomatico: processamentoAutomatico,
+                        aoAlternarGravacao: { await modelo.alternarGravacao() },
+                        aoEscolherPastaDeModelos: escolherPastaDeModelos,
+                        aoUsarPastaDoApp: usarPastaDoApp
+                    )
+                }
             }
             .frame(minWidth: 720, minHeight: 560)
             .background(PapagaioTema.fundo)
+            .toolbar {
+                BarraSuperiorPapagaio(
+                    consulta: $consulta,
+                    exibindoBotaoVoltar: exibindoConfiguracoes || secaoDaBiblioteca == .lixeira,
+                    perfilConectado: perfil.conectado,
+                    perfilVerificando: perfil.verificando,
+                    aoEntrar: perfil.entrar,
+                    aoSair: perfil.sair,
+                    aoVoltar: voltarParaBiblioteca,
+                    aoAbrirConfiguracoes: { exibindoConfiguracoes = true },
+                    aoAbrirLixeira: abrirLixeira
+                )
+            }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
                     ArquivoDetalheView(
                         arquivo: arquivo,
                         audio: biblioteca.audio(de: arquivo),
-                        estado: biblioteca.estado(de: arquivo)
+                        estado: biblioteca.estado(de: arquivo),
+                        processando: biblioteca.estaProcessando(arquivo),
+                        naFila: biblioteca.estaNaFila(arquivo),
+                        aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) }
                     )
                 }
             }
@@ -63,6 +82,9 @@ struct ContentView: View {
         .task {
             perfil.iniciar()
             await abrir()
+        }
+        .onChange(of: processamentoAutomatico) { _, novoValor in
+            biblioteca?.processamentoAutomatico = novoValor
         }
         .fileImporter(
             isPresented: $mostrandoImportador,
@@ -90,6 +112,7 @@ struct ContentView: View {
         guard biblioteca == nil else { return }
         do {
             let nova = try Biblioteca()
+            nova.processamentoAutomatico = processamentoAutomatico
             biblioteca = nova
 
             let gerenciador = ModelosViewModel(
@@ -114,6 +137,16 @@ struct ContentView: View {
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
+    }
+
+    private func abrirLixeira() {
+        exibindoConfiguracoes = false
+        secaoDaBiblioteca = .lixeira
+    }
+
+    private func voltarParaBiblioteca() {
+        exibindoConfiguracoes = false
+        secaoDaBiblioteca = .todos
     }
 
     /// Toda mudança de origem dos pesos passa por aqui. Antes, voltar para a

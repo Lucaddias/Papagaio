@@ -1,39 +1,70 @@
 import SwiftUI
 
-/// Barra superior reutilizável. Só expõe ações existentes — não adiciona ícones
-/// decorativos sem comportamento.
-struct BarraSuperiorPapagaio: View {
+/// Conteúdo da barra de ferramentas nativa. Só expõe ações existentes — não
+/// adiciona ícones decorativos sem comportamento.
+struct BarraSuperiorPapagaio: ToolbarContent {
     @Binding var consulta: String
+    let exibindoBotaoVoltar: Bool
     let perfilConectado: Bool
     let perfilVerificando: Bool
     let aoEntrar: () -> Void
     let aoSair: () -> Void
+    let aoVoltar: () -> Void
+    let aoAbrirConfiguracoes: () -> Void
+    let aoAbrirLixeira: () -> Void
 
-    var body: some View {
-        HStack(spacing: 20) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
+    var body: some ToolbarContent {
+        if exibindoBotaoVoltar {
+            ToolbarItem(placement: .navigation) {
+                Button(action: aoVoltar) {
+                    Image(systemName: "chevron.backward")
+                }
+                .help("Voltar à biblioteca")
+                .accessibilityLabel("Voltar à biblioteca")
+            }
+        }
+
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: 30) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                    TextField("Buscar conversas…", text: $consulta)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(PapagaioTema.texto)
+                        .accessibilityLabel("Buscar conversas")
+                }
+                .frame(width: exibindoBotaoVoltar ? 240 : 260)
+            }
+            .fixedSize()
+            .padding(.leading, 10)
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button(action: aoAbrirConfiguracoes) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
-                TextField("Buscar conversas…", text: $consulta)
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .accessibilityLabel("Buscar conversas")
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
             }
-            .padding(.horizontal, 13)
-            .frame(width: 280, height: 40)
-            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                    .stroke(PapagaioTema.borda, lineWidth: 1)
+            .buttonStyle(.plain)
+            .help("Configurações")
+            .accessibilityLabel("Configurações")
+            .accessibilityHint("Abre as preferências de transcrição.")
+
+            Button(action: aoAbrirLixeira) {
+                Image(systemName: "trash")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
             }
-
-            Label("Biblioteca", systemImage: "folder")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(PapagaioTema.destaqueEscuro)
-                .accessibilityHidden(true)
-
-            Spacer(minLength: 20)
-
+            .buttonStyle(.plain)
+            .help("Lixeira")
+            .accessibilityLabel("Lixeira")
+            .accessibilityHint("Abre os arquivos removidos da biblioteca.")
+        }
+        ToolbarItem(placement: .primaryAction) {
             Menu {
                 if perfilConectado {
                     Text("Conectado com Apple")
@@ -47,19 +78,12 @@ struct BarraSuperiorPapagaio: View {
                 Image(systemName: perfilConectado ? "person.crop.circle.fill" : "person.crop.circle")
                     .font(.system(size: 26, weight: .medium))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 36, height: 36)
                     .background(PapagaioTema.destaqueSuave, in: Circle())
             }
             .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
             .accessibilityLabel(perfilConectado ? "Perfil conectado" : "Perfil")
-        }
-        .padding(.horizontal, PapagaioTema.espacamentoDePagina)
-        .padding(.vertical, 18)
-        .background(PapagaioTema.fundo)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(PapagaioTema.borda.opacity(0.8))
-                .frame(height: 1)
         }
     }
 }
