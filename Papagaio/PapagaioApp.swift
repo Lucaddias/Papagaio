@@ -12,7 +12,7 @@ struct PapagaioApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup("") {
             ContentView()
         }
         .defaultSize(width: 900, height: 600)

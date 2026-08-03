@@ -1,4 +1,5 @@
 import PapagaioCore
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -15,6 +16,7 @@ struct ArquivoDetalheView: View {
     let processando: Bool
     let naFila: Bool
     let aoTranscrever: () -> Void
+    let aoAtualizarNotas: ([NotaDaConversa]) async -> Void
 
     @State private var reprodutor: ReprodutorDeArquivo?
     @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
@@ -22,11 +24,27 @@ struct ArquivoDetalheView: View {
     @State private var tempoEmEdicao: TimeInterval?
     @State private var mostrandoExportador = false
     @State private var erroDeExportacao: String?
+    @State private var notasEditaveis: [NotaDaConversa] = []
+    @State private var textoDasNotas = ""
+    @State private var notaLivreCritica = false
+    @State private var notaLivreID: UUID?
+    @State private var estadoDeSalvamentoDasNotas = "Salvo"
+    @State private var tarefaDeSalvamentoDasNotas: Task<Void, Never>?
+    @State private var anexosDeMidia: [AnexoDeMidiaDaConversa] = []
+    @State private var mostrandoImportadorDeMidia = false
+    @State private var erroDeMidia: String?
+    @State private var tarefasDaConversa: [TarefaDaConversa] = []
+    @State private var filtroDeTarefas: FiltroDeTarefas = .tudo
+    @State private var mostrandoCriacaoDeTarefa = false
+    @State private var tituloDaNovaTarefa = ""
     @Environment(\.accessibilityReduceMotion) private var reduzirMovimento
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
     private var trechos: [Trecho] { arquivo.trechos }
-    private var notas: [NotaDaConversa] { arquivo.notas }
+    private var notas: [NotaDaConversa] { notasEditaveis }
+    private var notasTemporizadas: [NotaDaConversa] {
+        notasEditaveis.filter { $0.tipo == .marcador || $0.start > 0 }
+    }
     private var podeIniciarTranscricao: Bool {
         trechos.isEmpty && !processando && !naFila
     }
@@ -38,14 +56,17 @@ struct ArquivoDetalheView: View {
             trechos.isEmpty
         case .notas:
             notas.isEmpty
-        case .audio:
-            true
-        case .proximosPassos:
-            arquivo.resumo?.proximosPassos.isEmpty ?? true
+        case .midia:
+            false
+        case .tarefas:
+            false
         }
     }
     private var animacaoDeInterface: Animation? {
         reduzirMovimento ? nil : .easeInOut(duration: 0.2)
+    }
+    private var deveMostrarPlayer: Bool {
+        mostrandoPlayer || secaoSelecionada == .transcricao
     }
     private var estiloDoEstado: EstiloDoStatus {
         let texto = estado.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
@@ -80,7 +101,7 @@ struct ArquivoDetalheView: View {
                         ScrollView {
                             conteudoDaSecao
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(.bottom, mostrandoPlayer ? 104 : 0)
+                                .padding(.bottom, deveMostrarPlayer ? 116 : 0)
                         }
                     }
                 }
@@ -90,9 +111,8 @@ struct ArquivoDetalheView: View {
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if mostrandoPlayer, let reprodutor {
+            if deveMostrarPlayer, let reprodutor {
                 barraFlutuante(reprodutor)
-                    .padding(.bottom, 20)
                     .transition(
                         reduzirMovimento
                             ? .opacity
@@ -118,6 +138,9 @@ struct ArquivoDetalheView: View {
             }
         }
         .task {
+            sincronizarNotasComArquivo()
+            carregarMidias()
+            carregarTarefas()
             let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos)
             await novo.preparar()
             reprodutor = novo
@@ -130,6 +153,8 @@ struct ArquivoDetalheView: View {
         .onDisappear {
             // Sem isto o observador periódico sobrevive à view — critério de
             // aceite do Passo 10.
+            tarefaDeSalvamentoDasNotas?.cancel()
+            salvarNotasAgora()
             reprodutor?.encerrar()
             reprodutor = nil
         }
@@ -149,6 +174,35 @@ struct ArquivoDetalheView: View {
             Button("OK", role: .cancel) { erroDeExportacao = nil }
         } message: {
             Text(erroDeExportacao ?? "")
+        }
+        .fileImporter(
+            isPresented: $mostrandoImportadorDeMidia,
+            allowedContentTypes: [.image, .pdf, .movie, .audio, .plainText, .data],
+            allowsMultipleSelection: true
+        ) { resultado in
+            guard case let .success(urls) = resultado else { return }
+            for url in urls {
+                adicionarMidia(url)
+            }
+        }
+        .alert("Não foi possível adicionar a mídia", isPresented: Binding(
+            get: { erroDeMidia != nil },
+            set: { if !$0 { erroDeMidia = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeMidia = nil }
+        } message: {
+            Text(erroDeMidia ?? "")
+        }
+        .alert("Nova tarefa", isPresented: $mostrandoCriacaoDeTarefa) {
+            TextField("Título da tarefa", text: $tituloDaNovaTarefa)
+            Button("Adicionar") {
+                adicionarTarefa()
+            }
+            Button("Cancelar", role: .cancel) {
+                tituloDaNovaTarefa = ""
+            }
+        } message: {
+            Text("A tarefa será adicionada a esta conversa.")
         }
     }
 
@@ -181,7 +235,6 @@ struct ArquivoDetalheView: View {
         BarraDeSecoesDaConversa(secaoSelecionada: secaoSelecionada) { secao in
             withAnimation(animacaoDeInterface) {
                 secaoSelecionada = secao
-                if secao == .audio { mostrandoPlayer = true }
             }
         }
     }
@@ -195,10 +248,10 @@ struct ArquivoDetalheView: View {
             transcricao
         case .notas:
             notasDaConversa
-        case .audio:
-            secaoDeAudio
-        case .proximosPassos:
-            proximosPassos
+        case .midia:
+            midia
+        case .tarefas:
+            tarefas
         }
     }
 
@@ -248,37 +301,13 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    @ViewBuilder
-    private var proximosPassos: some View {
-        if let resumo = arquivo.resumo, !resumo.proximosPassos.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Próximos passos")
-                    .font(.headline)
-                    .foregroundStyle(PapagaioTema.texto)
-                ForEach(Array(resumo.proximosPassos.enumerated()), id: \.offset) { _, passo in
-                    Label {
-                        Text(
-                            passo.responsavel.map { "\(passo.descricao) (\($0))" }
-                                ?? passo.descricao
-                        )
-                    } icon: {
-                        Image(systemName: "checkmark.circle")
-                            .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    }
-                    .font(.callout)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .padding(.vertical, 4)
-                }
-            }
-            .padding(24)
-            .cartaoPapagaio()
-        } else {
-            CartaoDeEstadoVazio(
-                simbolo: "checklist",
-                titulo: "Sem próximos passos",
-                mensagem: "As ações identificadas no resumo aparecerão aqui."
-            )
-        }
+    private var tarefas: some View {
+        TarefasDaConversaView(
+            tarefas: tarefasDaConversa,
+            filtro: $filtroDeTarefas,
+            aoAdicionar: { mostrandoCriacaoDeTarefa = true },
+            aoAlternarConclusao: alternarConclusaoDaTarefa
+        )
     }
 
     private func secao<Conteudo: View>(
@@ -324,10 +353,90 @@ struct ArquivoDetalheView: View {
         .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
-    // MARK: - Transporte
+    // MARK: - Mídia
 
-    private var secaoDeAudio: some View {
-        OrientacaoDeAudio()
+    private var midia: some View {
+        MidiaDaConversaView(
+            anexos: anexosDeMidia,
+            aoAdicionar: { mostrandoImportadorDeMidia = true },
+            aoAbrir: abrirMidia,
+            aoRemover: removerMidia
+        )
+    }
+
+    private func carregarMidias() {
+        anexosDeMidia = MidiasDaConversa.carregar(arquivo.id)
+    }
+
+    private func adicionarMidia(_ url: URL) {
+        let acessando = url.startAccessingSecurityScopedResource()
+        defer {
+            if acessando { url.stopAccessingSecurityScopedResource() }
+        }
+
+        do {
+            let anexo = try MidiasDaConversa.anexo(para: url)
+            var atualizados = anexosDeMidia.filter { $0.url != anexo.url }
+            atualizados.append(anexo)
+            atualizados.sort { $0.data > $1.data }
+            try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
+            anexosDeMidia = atualizados
+        } catch {
+            erroDeMidia = "Não foi possível guardar esse arquivo: \(error.localizedDescription)"
+        }
+    }
+
+    private func abrirMidia(_ anexo: AnexoDeMidiaDaConversa) {
+        NSWorkspace.shared.open(anexo.url)
+    }
+
+    private func removerMidia(_ anexo: AnexoDeMidiaDaConversa) {
+        let atualizados = anexosDeMidia.filter { $0.id != anexo.id }
+        do {
+            try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
+            anexosDeMidia = atualizados
+        } catch {
+            erroDeMidia = "Não foi possível remover esse arquivo: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Tarefas
+
+    private func carregarTarefas() {
+        tarefasDaConversa = TarefasDaConversa.carregar(
+            arquivo.id,
+            base: arquivo.resumo?.proximosPassos ?? [],
+            tituloDaConversa: titulo,
+            dataDaConversa: arquivo.criadoEm
+        )
+    }
+
+    private func adicionarTarefa() {
+        let tituloLimpo = tituloDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tituloLimpo.isEmpty else { return }
+
+        tarefasDaConversa.append(
+            TarefaDaConversa(
+                titulo: tituloLimpo,
+                origem: titulo,
+                prioridade: .media,
+                status: .emAndamento,
+                responsavel: nil,
+                prazo: Calendar.current.date(byAdding: .day, value: 7, to: Date())
+            )
+        )
+        salvarTarefas()
+        tituloDaNovaTarefa = ""
+    }
+
+    private func alternarConclusaoDaTarefa(_ tarefa: TarefaDaConversa) {
+        guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == tarefa.id }) else { return }
+        tarefasDaConversa[indice].status = tarefasDaConversa[indice].status == .concluida ? .emAndamento : .concluida
+        salvarTarefas()
+    }
+
+    private func salvarTarefas() {
+        TarefasDaConversa.salvar(tarefasDaConversa, para: arquivo.id)
     }
 
     private func revelarPlayer() {
@@ -366,6 +475,7 @@ struct ArquivoDetalheView: View {
     private func barraFlutuante(_ reprodutor: ReprodutorDeArquivo) -> some View {
         BarraDeAudioDaConversa(
             titulo: titulo,
+            data: arquivo.criadoEm,
             reprodutor: reprodutor,
             tempoEmEdicao: $tempoEmEdicao,
             aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) }
@@ -376,15 +486,127 @@ struct ArquivoDetalheView: View {
 
     @ViewBuilder
     private var notasDaConversa: some View {
-        if notas.isEmpty {
-            CartaoDeEstadoVazio(
-                simbolo: "note.text",
-                titulo: "Sem notas nesta conversa",
-                mensagem: "As observações registradas durante a gravação aparecerão aqui."
+        VStack(alignment: .leading, spacing: 24) {
+            EditorDeNotasDaConversa(
+                texto: $textoDasNotas,
+                notaCritica: $notaLivreCritica,
+                estadoDeSalvamento: estadoDeSalvamentoDasNotas,
+                aoInserirMarcador: inserirMarcadorNasNotas,
+                aoMarcarComoCritico: alternarCriticidadeDaNotaLivre,
+                aoAplicarFormato: aplicarFormatoNasNotas
             )
-        } else {
-            ListaDeNotasDaConversa(notas: notas, aoSelecionar: tocar)
+            .onChange(of: textoDasNotas) { _, _ in
+                agendarSalvamentoDasNotas()
+            }
+
+            if !notasTemporizadas.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Marcadores da conversa")
+                        .font(.headline)
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    ListaDeNotasDaConversa(notas: notasTemporizadas, aoSelecionar: tocar)
+                }
+            }
         }
+    }
+
+    private func sincronizarNotasComArquivo() {
+        notasEditaveis = arquivo.notas
+
+        if let notaLivre = arquivo.notas.first(where: { $0.tipo == .nota && $0.start == 0 }) {
+            textoDasNotas = notaLivre.texto
+            notaLivreCritica = notaLivre.critica
+            notaLivreID = notaLivre.id
+        } else {
+            textoDasNotas = ""
+            notaLivreCritica = false
+            notaLivreID = nil
+        }
+    }
+
+    private func agendarSalvamentoDasNotas() {
+        tarefaDeSalvamentoDasNotas?.cancel()
+        estadoDeSalvamentoDasNotas = "Salvando..."
+        tarefaDeSalvamentoDasNotas = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            salvarNotasAgora()
+        }
+    }
+
+    private func salvarNotasAgora() {
+        let atualizadas = notasAtualizadasComTextoLivre()
+        notaLivreID = atualizadas.first(where: { $0.tipo == .nota && $0.start == 0 })?.id
+        notasEditaveis = atualizadas
+        estadoDeSalvamentoDasNotas = "Salvando..."
+
+        Task { @MainActor in
+            await aoAtualizarNotas(atualizadas)
+            estadoDeSalvamentoDasNotas = "Salvo"
+        }
+    }
+
+    private func notasAtualizadasComTextoLivre() -> [NotaDaConversa] {
+        var atualizadas = notasEditaveis.filter { !($0.tipo == .nota && $0.start == 0) }
+        let textoLimpo = textoDasNotas.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !textoLimpo.isEmpty {
+            atualizadas.insert(
+                NotaDaConversa(
+                    id: notaLivreID ?? UUID(),
+                    texto: textoDasNotas,
+                    start: 0,
+                    critica: notaLivreCritica,
+                    tipo: .nota
+                ),
+                at: 0
+            )
+        }
+
+        return atualizadas.sorted {
+            if $0.start == $1.start { return $0.id.uuidString < $1.id.uuidString }
+            return $0.start < $1.start
+        }
+    }
+
+    private func inserirMarcadorNasNotas() {
+        let instante = min(max(0, reprodutor?.tempo ?? 0), max(arquivo.duracao, 0))
+        let marcador = NotaDaConversa(
+            texto: "Marcador em \(tempoCurto(instante))",
+            start: instante,
+            critica: notaLivreCritica,
+            tipo: .marcador
+        )
+        notasEditaveis.append(marcador)
+        salvarNotasAgora()
+    }
+
+    private func alternarCriticidadeDaNotaLivre() {
+        notaLivreCritica.toggle()
+        salvarNotasAgora()
+    }
+
+    private func aplicarFormatoNasNotas(_ formato: FormatoDeNota) {
+        switch formato {
+        case .negrito:
+            acrescentarAoEditor("**texto em destaque**")
+        case .italico:
+            acrescentarAoEditor("_observação_")
+        case .lista:
+            acrescentarAoEditor("- item da conversa")
+        case .imagem:
+            acrescentarAoEditor("![descrição da imagem](arquivo)")
+        case .anexo:
+            acrescentarAoEditor("[anexo](arquivo)")
+        case .link:
+            acrescentarAoEditor("[link](https://)")
+        }
+    }
+
+    private func acrescentarAoEditor(_ texto: String) {
+        let separador = textoDasNotas.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "\n"
+        textoDasNotas += "\(separador)\(texto)"
     }
 
     @ViewBuilder
@@ -491,5 +713,109 @@ struct ArquivoDetalheView: View {
         let minutos = inteiros / 60
         let resto = inteiros % 60
         return minutos > 0 ? "\(minutos) min \(resto) s" : "\(resto) s"
+    }
+}
+
+private enum MidiasDaConversa {
+    private struct Registro: Codable {
+        let id: UUID
+        let nome: String
+        let tamanho: Int64
+        let data: Date
+        let bookmark: Data
+    }
+
+    static func carregar(_ arquivoID: ArquivoID) -> [AnexoDeMidiaDaConversa] {
+        guard let dados = UserDefaults.standard.data(forKey: chave(arquivoID)),
+              let registros = try? JSONDecoder().decode([Registro].self, from: dados)
+        else { return [] }
+
+        return registros.compactMap { registro in
+            var obsoleto = false
+            guard let url = try? URL(
+                resolvingBookmarkData: registro.bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &obsoleto
+            ) else { return nil }
+
+            return AnexoDeMidiaDaConversa(
+                id: registro.id,
+                nome: registro.nome,
+                tamanho: registro.tamanho,
+                data: registro.data,
+                url: url
+            )
+        }
+    }
+
+    static func anexo(para url: URL) throws -> AnexoDeMidiaDaConversa {
+        let valores = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        return AnexoDeMidiaDaConversa(
+            id: UUID(),
+            nome: url.lastPathComponent,
+            tamanho: Int64(valores.fileSize ?? 0),
+            data: valores.contentModificationDate ?? Date(),
+            url: url
+        )
+    }
+
+    static func salvar(_ anexos: [AnexoDeMidiaDaConversa], para arquivoID: ArquivoID) throws {
+        let registros = try anexos.map { anexo in
+            let bookmark = try anexo.url.bookmarkData(
+                options: .withSecurityScope,
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            return Registro(
+                id: anexo.id,
+                nome: anexo.nome,
+                tamanho: anexo.tamanho,
+                data: anexo.data,
+                bookmark: bookmark
+            )
+        }
+        let dados = try JSONEncoder().encode(registros)
+        UserDefaults.standard.set(dados, forKey: chave(arquivoID))
+    }
+
+    private static func chave(_ arquivoID: ArquivoID) -> String {
+        "midiasDaConversa.\(arquivoID.rawValue.uuidString)"
+    }
+}
+
+private enum TarefasDaConversa {
+    static func carregar(
+        _ arquivoID: ArquivoID,
+        base proximosPassos: [ProximoPasso],
+        tituloDaConversa: String,
+        dataDaConversa: Date
+    ) -> [TarefaDaConversa] {
+        if let dados = UserDefaults.standard.data(forKey: chave(arquivoID)),
+           let tarefas = try? JSONDecoder().decode([TarefaDaConversa].self, from: dados) {
+            return tarefas
+        }
+
+        let tarefas = proximosPassos.enumerated().map { indice, passo in
+            TarefaDaConversa(
+                titulo: passo.descricao,
+                origem: tituloDaConversa,
+                prioridade: indice < 2 ? .alta : .media,
+                status: .emAndamento,
+                responsavel: passo.responsavel,
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa)
+            )
+        }
+        salvar(tarefas, para: arquivoID)
+        return tarefas
+    }
+
+    static func salvar(_ tarefas: [TarefaDaConversa], para arquivoID: ArquivoID) {
+        guard let dados = try? JSONEncoder().encode(tarefas) else { return }
+        UserDefaults.standard.set(dados, forKey: chave(arquivoID))
+    }
+
+    private static func chave(_ arquivoID: ArquivoID) -> String {
+        "tarefasDaConversa.\(arquivoID.rawValue.uuidString)"
     }
 }

@@ -97,12 +97,13 @@ final class Biblioteca {
     /// pessoa iniciar pela aba Transcrição. As notas são criadas antes da fila,
     /// para que os saves do pipeline apenas as preservem junto de transcrição
     /// e resumo.
+    @discardableResult
     func registrar(
         titulo: String,
         pastaRelativa: String,
         duracao: TimeInterval,
         notas: [NotaDaConversa] = []
-    ) async {
+    ) async -> Arquivo? {
         let arquivo = Arquivo(
             titulo: titulo,
             duracao: duracao,
@@ -114,12 +115,13 @@ final class Biblioteca {
             try await repositorio.salvar(arquivo)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar: \(error)"
-            return
+            return nil
         }
         arquivos.insert(arquivo, at: 0)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
+        return arquivo
     }
 
     // MARK: - Lixeira
@@ -223,6 +225,26 @@ final class Biblioteca {
         }
     }
 
+    func restaurarTudoDaLixeira() async {
+        let arquivos = arquivosNaLixeira
+        guard !arquivos.isEmpty else { return }
+
+        for arquivo in arquivos {
+            _ = await restaurarDaLixeira(arquivo)
+            if erroDaLixeira != nil { break }
+        }
+    }
+
+    func esvaziarLixeira() async {
+        let arquivos = arquivosNaLixeira
+        guard !arquivos.isEmpty else { return }
+
+        for arquivo in arquivos {
+            await apagarDefinitivamente(arquivo)
+            if erroDaLixeira != nil { break }
+        }
+    }
+
     func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
         operacoesDeLixeiraEmAndamento.contains(arquivo.id)
     }
@@ -259,8 +281,23 @@ final class Biblioteca {
         }
     }
 
-    func duplicar(_ arquivo: Arquivo) async {
+    func atualizarNotas(_ notas: [NotaDaConversa], de arquivo: Arquivo) async {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+
+        var editado = arquivo
+        editado.notas = notas
+
+        do {
+            try await repositorio.salvar(editado)
+            substituir(editado)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
+        }
+    }
+
+    @discardableResult
+    func duplicar(_ arquivo: Arquivo) async -> Arquivo? {
+        guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return nil }
 
         let novoID = ArquivoID()
         let pastaNovaRelativa = Armazenamento.caminhoRelativo(id: novoID.rawValue)
@@ -303,9 +340,11 @@ final class Biblioteca {
 
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            return copia
         } catch {
             try? FileManager.default.removeItem(at: destino)
             erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            return nil
         }
     }
 

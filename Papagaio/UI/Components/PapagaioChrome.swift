@@ -8,9 +8,14 @@ struct BarraSuperiorPapagaio: ToolbarContent {
     let exibindoBotaoVoltar: Bool
     let perfilConectado: Bool
     let perfilVerificando: Bool
+    let gravando: Bool
+    let processandoBiblioteca: Bool
+    let quantidadeDeAvisos: Int
     let aoEntrar: () -> Void
     let aoSair: () -> Void
     let aoVoltar: () -> Void
+    let aoAbrirBiblioteca: () -> Void
+    let aoAbrirTarefas: () -> Void
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
 
@@ -26,7 +31,7 @@ struct BarraSuperiorPapagaio: ToolbarContent {
         }
 
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 30) {
+            HStack(spacing: 28) {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(PapagaioTema.textoSecundario)
@@ -35,12 +40,60 @@ struct BarraSuperiorPapagaio: ToolbarContent {
                         .foregroundStyle(PapagaioTema.texto)
                         .accessibilityLabel("Buscar conversas")
                 }
-                .frame(width: exibindoBotaoVoltar ? 240 : 260)
+                .padding(.horizontal, 12)
+                .frame(width: exibindoBotaoVoltar ? 300 : 360, height: 34)
+                .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+
+                Button(action: aoAbrirBiblioteca) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Biblioteca de conversas")
+                .accessibilityLabel("Biblioteca de conversas")
+
+                Button(action: aoAbrirTarefas) {
+                    Image(systemName: "list.clipboard")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Tarefas")
+                .accessibilityLabel("Tarefas")
             }
             .fixedSize()
             .padding(.leading, 10)
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {} label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+
+                    if temNotificacoesAtivas {
+                        Circle()
+                            .fill(PapagaioTema.destaque)
+                            .frame(width: 8, height: 8)
+                            .offset(x: -4, y: 5)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Notificações")
+            .accessibilityLabel("Notificações")
+
             Button(action: aoAbrirConfiguracoes) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 20, weight: .semibold))
@@ -83,6 +136,7 @@ struct BarraSuperiorPapagaio: ToolbarContent {
                     }
             }
             .buttonStyle(.plain)
+            .help(perfilConectado ? "Perfil conectado" : "Perfil")
             .accessibilityLabel(perfilConectado ? "Perfil conectado" : "Perfil")
             .popover(isPresented: $exibindoMenuDePerfil, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -107,6 +161,10 @@ struct BarraSuperiorPapagaio: ToolbarContent {
                 .frame(minWidth: 180, alignment: .leading)
             }
         }
+    }
+
+    private var temNotificacoesAtivas: Bool {
+        gravando || processandoBiblioteca || quantidadeDeAvisos > 0
     }
 }
 

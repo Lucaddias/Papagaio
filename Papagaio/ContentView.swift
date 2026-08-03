@@ -16,7 +16,8 @@ struct ContentView: View {
     @State private var mostrandoImportador = false
     @State private var consulta = ""
     @State private var secaoDaBiblioteca: SecaoDaBiblioteca = .todos
-    @State private var exibindoConfiguracoes = false
+    @State private var telaSelecionada: TelaPrincipal = .biblioteca
+    @State private var pastaDaBibliotecaSelecionada: String?
     @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
 
     var body: some View {
@@ -31,22 +32,26 @@ struct ContentView: View {
                         .background(PapagaioTema.perigo.opacity(0.08))
                 }
 
-                if exibindoConfiguracoes {
-                    ConfiguracoesView(
-                        processamentoAutomatico: $processamentoAutomatico
-                    )
-                } else {
+                switch telaSelecionada {
+                case .biblioteca:
                     BibliotecaHomeView(
                         gravador: modelo,
                         biblioteca: biblioteca,
                         modelos: modelos,
                         consulta: $consulta,
                         secaoSelecionada: $secaoDaBiblioteca,
+                        pastaSelecionada: $pastaDaBibliotecaSelecionada,
                         mostrandoImportador: $mostrandoImportador,
                         processamentoAutomatico: processamentoAutomatico,
                         aoAlternarGravacao: { await modelo.alternarGravacao() },
                         aoEscolherPastaDeModelos: escolherPastaDeModelos,
                         aoUsarPastaDoApp: usarPastaDoApp
+                    )
+                case .tarefas:
+                    TarefasView()
+                case .configuracoes:
+                    ConfiguracoesView(
+                        processamentoAutomatico: $processamentoAutomatico
                     )
                 }
             }
@@ -55,13 +60,18 @@ struct ContentView: View {
             .toolbar {
                 BarraSuperiorPapagaio(
                     consulta: $consulta,
-                    exibindoBotaoVoltar: exibindoConfiguracoes || secaoDaBiblioteca == .lixeira,
+                    exibindoBotaoVoltar: telaSelecionada != .biblioteca || secaoDaBiblioteca == .lixeira,
                     perfilConectado: perfil.conectado,
                     perfilVerificando: perfil.verificando,
+                    gravando: modelo.gravando,
+                    processandoBiblioteca: biblioteca?.processando ?? false,
+                    quantidadeDeAvisos: modelo.avisos.count,
                     aoEntrar: perfil.entrar,
                     aoSair: perfil.sair,
                     aoVoltar: voltarParaBiblioteca,
-                    aoAbrirConfiguracoes: { exibindoConfiguracoes = true },
+                    aoAbrirBiblioteca: voltarParaBiblioteca,
+                    aoAbrirTarefas: abrirTarefas,
+                    aoAbrirConfiguracoes: { telaSelecionada = .configuracoes },
                     aoAbrirLixeira: abrirLixeira
                 )
             }
@@ -73,7 +83,10 @@ struct ContentView: View {
                         estado: biblioteca.estado(de: arquivo),
                         processando: biblioteca.estaProcessando(arquivo),
                         naFila: biblioteca.estaNaFila(arquivo),
-                        aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) }
+                        aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
+                        aoAtualizarNotas: { notas in
+                            await biblioteca.atualizarNotas(notas, de: arquivo)
+                        }
                     )
                 }
             }
@@ -126,12 +139,17 @@ struct ContentView: View {
             // ligação permanece na raiz para não desaparecer ao redesenhar uma
             // subview de biblioteca.
             modelo.aoProduzirAudio = { titulo, pasta, duracao, notas in
-                await nova.registrar(
+                if let arquivo = await nova.registrar(
                     titulo: titulo,
                     pastaRelativa: pasta,
                     duracao: duracao,
                     notas: notas
-                )
+                ), let pastaDaBibliotecaSelecionada {
+                    PreferenciasVisuaisDoArquivo.definirPasta(
+                        pastaDaBibliotecaSelecionada,
+                        para: arquivo.id
+                    )
+                }
             }
             await nova.preparar()
         } catch {
@@ -140,12 +158,17 @@ struct ContentView: View {
     }
 
     private func abrirLixeira() {
-        exibindoConfiguracoes = false
+        telaSelecionada = .biblioteca
         secaoDaBiblioteca = .lixeira
     }
 
+    private func abrirTarefas() {
+        telaSelecionada = .tarefas
+        secaoDaBiblioteca = .todos
+    }
+
     private func voltarParaBiblioteca() {
-        exibindoConfiguracoes = false
+        telaSelecionada = .biblioteca
         secaoDaBiblioteca = .todos
     }
 
@@ -164,6 +187,39 @@ struct ContentView: View {
     private func sincronizarPastaDeModelos() {
         guard let modelos else { return }
         biblioteca?.pastaDeModelos = modelos.pasta
+    }
+}
+
+private enum TelaPrincipal {
+    case biblioteca
+    case tarefas
+    case configuracoes
+}
+
+private struct TarefasView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tarefas")
+                .font(.system(size: 32, weight: .bold))
+                .foregroundStyle(PapagaioTema.texto)
+            Text("As tarefas geradas a partir das conversas aparecerão aqui.")
+                .font(.title3)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+
+            CartaoDeEstadoVazio(
+                simbolo: "list.clipboard",
+                titulo: "Nenhuma tarefa ainda",
+                mensagem: "Quando uma conversa tiver próximos passos ou ações pendentes, elas ficarão reunidas nesta página."
+            )
+            .frame(maxWidth: .infinity, minHeight: 300)
+            .cartaoPapagaio()
+            .padding(.top, 22)
+        }
+        .larguraDeConteudoPapagaio()
+        .padding(.horizontal, PapagaioTema.espacamentoDePagina)
+        .padding(.vertical, PapagaioTema.espacamentoDePagina)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(PapagaioTema.fundo)
     }
 }
 

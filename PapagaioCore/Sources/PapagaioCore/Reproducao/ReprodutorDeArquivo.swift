@@ -26,6 +26,17 @@ public final class ReprodutorDeArquivo {
     /// Duração do arquivo, disponível depois de `preparar()`.
     public private(set) var duracao: TimeInterval = 0
     public private(set) var tocando = false
+    public var volume: Float = 1 {
+        didSet {
+            player.volume = min(max(volume, 0), 1)
+        }
+    }
+    public var velocidade: Float = 1 {
+        didSet {
+            velocidade = min(max(velocidade, 0.5), 2)
+            if tocando { player.rate = velocidade }
+        }
+    }
 
     /// Mutável de propósito: a transcrição chega **depois** de a tela abrir
     /// (o processamento leva minutos). Recriar o player nesse momento faria o
@@ -91,7 +102,7 @@ public final class ReprodutorDeArquivo {
     // MARK: - Transporte
 
     public func tocar() {
-        player.play()
+        player.rate = velocidade
         tocando = true
     }
 
@@ -102,6 +113,14 @@ public final class ReprodutorDeArquivo {
 
     public func alternar() {
         tocando ? pausar() : tocar()
+    }
+
+    public func voltar(_ segundos: TimeInterval = 10) async {
+        await saltar(paraSegundo: tempo - segundos)
+    }
+
+    public func avancar(_ segundos: TimeInterval = 10) async {
+        await saltar(paraSegundo: tempo + segundos)
     }
 
     // MARK: - Navegação

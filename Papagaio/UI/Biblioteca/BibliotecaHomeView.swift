@@ -10,20 +10,41 @@ struct BibliotecaHomeView: View {
     let modelos: ModelosViewModel?
     @Binding var consulta: String
     @Binding var secaoSelecionada: SecaoDaBiblioteca
+    @Binding var pastaSelecionada: String?
     @Binding var mostrandoImportador: Bool
     let processamentoAutomatico: Bool
     let aoAlternarGravacao: () async -> Void
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
 
-    @State private var arquivoSelecionadoNaLixeira: Arquivo?
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
+    @State private var confirmandoEsvaziarLixeira = false
+    @State private var menuAberto: ArquivoID?
+    @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
+    @State private var atalhoSelecionado: AtalhoDaBiblioteca = .recentes
+    @State private var versaoDasPreferenciasVisuais = 0
+    @State private var criandoPasta = false
+    @State private var novaPasta = ""
 
     private var arquivosFiltrados: [Arquivo] {
         guard let biblioteca else { return [] }
-        let fonte = secaoSelecionada == .todos
-            ? biblioteca.arquivos
-            : biblioteca.arquivosNaLixeira
+        _ = versaoDasPreferenciasVisuais
+        let fonte: [Arquivo]
+        switch secaoSelecionada {
+        case .todos:
+            let recentes = biblioteca.arquivos.sorted { $0.criadoEm > $1.criadoEm }
+            if let pastaSelecionada {
+                fonte = recentes.filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == pastaSelecionada }
+            } else if filtroSelecionado == .pastas {
+                fonte = []
+            } else if atalhoSelecionado == .favoritos {
+                fonte = recentes.filter { PreferenciasVisuaisDoArquivo.favorito($0.id) }
+            } else {
+                fonte = recentes
+            }
+        case .lixeira:
+            fonte = biblioteca.arquivosNaLixeira
+        }
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !termo.isEmpty else { return fonte }
         return fonte.filter { arquivo in
@@ -39,7 +60,7 @@ struct BibliotecaHomeView: View {
         case .todos:
             "Gerencie suas transcrições e insights de entrevistas."
         case .lixeira:
-            "Recupere um arquivo ou apague-o definitivamente."
+            "Gerencie conversas excluídas. Itens na lixeira serão removidos permanentemente após 30 dias."
         }
     }
 
@@ -57,13 +78,25 @@ struct BibliotecaHomeView: View {
         return motivo
     }
 
-    private var apresentandoAcoesDaLixeira: Binding<Bool> {
-        Binding(
-            get: { arquivoSelecionadoNaLixeira != nil },
-            set: { apresentando in
-                if !apresentando { arquivoSelecionadoNaLixeira = nil }
+    private var pastasCriadas: [String] {
+        _ = versaoDasPreferenciasVisuais
+        return PreferenciasVisuaisDoArquivo.pastas()
+    }
+
+    private var informacoesDasPastas: [InformacaoDaPasta] {
+        guard let biblioteca else { return [] }
+        _ = versaoDasPreferenciasVisuais
+        return pastasCriadas.map { pasta in
+            let arquivos = biblioteca.arquivos.filter {
+                PreferenciasVisuaisDoArquivo.pasta($0.id) == pasta
             }
-        )
+            return InformacaoDaPasta(
+                nome: pasta,
+                quantidade: arquivos.count,
+                duracaoTotal: arquivos.reduce(0) { $0 + $1.duracao },
+                ultimoArquivo: arquivos.map(\.criadoEm).max()
+            )
+        }
     }
 
     private var apresentandoConfirmacaoDeExclusao: Binding<Bool> {
@@ -107,13 +140,61 @@ struct BibliotecaHomeView: View {
                     titulo: tituloDaPagina,
                     subtitulo: subtitulo
                 ) {
-                    if let biblioteca, biblioteca.processando {
-                        SeloDeStatus(
-                            texto: "Processamento em andamento",
-                            simbolo: "waveform",
-                            estilo: .destaque
-                        )
+                    HStack(spacing: 16) {
+                        if secaoSelecionada == .todos {
+                            AtalhosDaBiblioteca(
+                                selecionado: $atalhoSelecionado,
+                                aoSelecionarRecentes: {
+                                    withAnimation(.snappy(duration: 0.18)) {
+                                        filtroSelecionado = .todas
+                                        pastaSelecionada = nil
+                                        atalhoSelecionado = .recentes
+                                    }
+                                },
+                                aoSelecionarFavoritos: {
+                                    withAnimation(.snappy(duration: 0.18)) {
+                                        filtroSelecionado = .todas
+                                        pastaSelecionada = nil
+                                        atalhoSelecionado = .favoritos
+                                    }
+                                }
+                            )
+                        } else if let biblioteca {
+                            AcoesDaLixeira(
+                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty,
+                                aoRestaurarTudo: {
+                                    Task { await biblioteca.restaurarTudoDaLixeira() }
+                                },
+                                aoEsvaziar: {
+                                    confirmandoEsvaziarLixeira = true
+                                }
+                            )
+                        }
+
+                        if let biblioteca, biblioteca.processando {
+                            SeloDeStatus(
+                                texto: "Processamento em andamento",
+                                simbolo: "waveform",
+                                estilo: .destaque
+                            )
+                        }
                     }
+                }
+
+                if secaoSelecionada == .todos {
+                    FiltroDeConversas(
+                        selecionado: $filtroSelecionado,
+                        pastaSelecionada: $pastaSelecionada,
+                        atalhoSelecionado: $atalhoSelecionado
+                    )
+                }
+
+                if secaoSelecionada == .todos, filtroSelecionado == .pastas, pastaSelecionada == nil {
+                    GradeDePastas(
+                        pastas: informacoesDasPastas,
+                        selecionada: $pastaSelecionada,
+                        aoCriarPasta: abrirCriacaoDePasta
+                    )
                 }
 
                 if let modelos, !modelos.pronto {
@@ -148,29 +229,12 @@ struct BibliotecaHomeView: View {
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded {
+                fecharMenu()
+            })
         }
         .background(PapagaioTema.fundo)
-        .confirmationDialog(
-            "Arquivo na lixeira",
-            isPresented: apresentandoAcoesDaLixeira,
-            titleVisibility: .visible
-        ) {
-            if let arquivo = arquivoSelecionadoNaLixeira {
-                Button("Recuperar arquivo", systemImage: "arrow.uturn.backward") {
-                    arquivoSelecionadoNaLixeira = nil
-                    recuperar(arquivo)
-                }
-                Button("Apagar definitivamente…", systemImage: "trash.slash", role: .destructive) {
-                    arquivoSelecionadoNaLixeira = nil
-                    arquivoParaExclusaoDefinitiva = arquivo
-                }
-                Button("Cancelar", role: .cancel) {
-                    arquivoSelecionadoNaLixeira = nil
-                }
-            }
-        } message: {
-            Text("O arquivo pode voltar para Todos os arquivos ou ser removido para sempre.")
-        }
         .confirmationDialog(
             "Apagar definitivamente?",
             isPresented: apresentandoConfirmacaoDeExclusao,
@@ -188,27 +252,62 @@ struct BibliotecaHomeView: View {
         } message: {
             Text("Essa ação remove o áudio, a transcrição e o resumo do Mac e não pode ser desfeita.")
         }
+        .confirmationDialog(
+            "Esvaziar lixeira?",
+            isPresented: $confirmandoEsvaziarLixeira,
+            titleVisibility: .visible
+        ) {
+            if let biblioteca {
+                Button("Esvaziar lixeira", role: .destructive) {
+                    Task { await biblioteca.esvaziarLixeira() }
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Essa ação remove permanentemente todos os arquivos da lixeira e não pode ser desfeita.")
+        }
         .alert("Não foi possível concluir a operação", isPresented: apresentandoErroDaLixeira) {
             Button("OK", role: .cancel) { biblioteca?.dispensarErroDaLixeira() }
         } message: {
             Text(biblioteca?.erroDaLixeira ?? "")
+        }
+        .alert("Criar pasta", isPresented: $criandoPasta) {
+            TextField("Nome da pasta", text: $novaPasta)
+            Button("Criar") {
+                let nome = novaPasta.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !nome.isEmpty else { return }
+                PreferenciasVisuaisDoArquivo.criarPasta(nome)
+                filtroSelecionado = .pastas
+                atalhoSelecionado = .recentes
+                pastaSelecionada = nome
+                novaPasta = ""
+                atualizarPreferenciasVisuais()
+            }
+            Button("Cancelar", role: .cancel) {
+                novaPasta = ""
+            }
+        } message: {
+            Text("A pasta ficará disponível para organizar conversas.")
         }
     }
 
     @ViewBuilder
     private var gradeDeConversas: some View {
         let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: 20, alignment: .top)]
+        let colunasDaLixeira = [GridItem(.adaptive(minimum: 360, maximum: 430), spacing: 22, alignment: .top)]
 
         switch secaoSelecionada {
         case .todos:
             LazyVGrid(columns: colunas, spacing: 20) {
-                CartaoNovaConversa(
-                    gravando: gravador.gravando,
-                    bloqueado: gravador.estado == .processando,
-                    prontoParaEntrada: biblioteca != nil,
-                    aoAlternarGravacao: aoAlternarGravacao,
-                    aoImportar: { mostrandoImportador = true }
-                )
+                if filtroSelecionado != .pastas || pastaSelecionada != nil {
+                    CartaoNovaConversa(
+                        gravando: gravador.gravando,
+                        bloqueado: gravador.estado == .processando,
+                        prontoParaEntrada: biblioteca != nil,
+                        aoAlternarGravacao: aoAlternarGravacao,
+                        aoImportar: { mostrandoImportador = true }
+                    )
+                }
 
                 ForEach(arquivosFiltrados) { arquivo in
                     if let biblioteca {
@@ -220,25 +319,41 @@ struct BibliotecaHomeView: View {
                             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
                             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
                             aoRenomear: { novoTitulo in Task { await biblioteca.renomear(arquivo, para: novoTitulo) } },
-                            aoDuplicar: { Task { await biblioteca.duplicar(arquivo) } },
+                            aoDuplicar: {
+                                Task {
+                                    if let copia = await biblioteca.duplicar(arquivo) {
+                                        PreferenciasVisuaisDoArquivo.copiar(de: arquivo.id, para: copia.id)
+                                        await MainActor.run {
+                                            atualizarPreferenciasVisuais()
+                                        }
+                                    }
+                                }
+                            },
                             urlDeAudio: biblioteca.audio(de: arquivo),
+                            menuAberto: menuAberto == arquivo.id,
+                            aoAlternarMenu: { alternarMenu(de: arquivo) },
+                            aoFecharMenu: { fecharMenu() },
+                            aoAlterarPreferenciasVisuais: atualizarPreferenciasVisuais,
                             aoMoverParaLixeira: { Task { await biblioteca.moverParaLixeira(arquivo) } }
                         )
                     }
                 }
             }
 
-            if biblioteca?.arquivos.isEmpty == false, arquivosFiltrados.isEmpty {
+            if filtroSelecionado != .pastas || pastaSelecionada != nil,
+               biblioteca?.arquivos.isEmpty == false,
+               arquivosFiltrados.isEmpty {
                 CartaoDeEstadoVazio(
-                    simbolo: "magnifyingglass",
-                    titulo: "Nenhuma conversa encontrada",
-                    mensagem: "Tente buscar por outro título ou estado de processamento."
+                    simbolo: simboloDoVazio,
+                    titulo: tituloDoVazio,
+                    mensagem: mensagemDoVazio
                 )
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             }
 
-            if biblioteca?.arquivos.isEmpty ?? true {
+            if (filtroSelecionado != .pastas || pastaSelecionada != nil),
+               biblioteca?.arquivos.isEmpty ?? true {
                 Text("A primeira conversa aparecerá aqui depois de gravar ou importar um áudio.")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -264,13 +379,13 @@ struct BibliotecaHomeView: View {
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
-                LazyVGrid(columns: colunas, spacing: 20) {
+                LazyVGrid(columns: colunasDaLixeira, spacing: 22) {
                     ForEach(arquivosFiltrados) { arquivo in
                         if let biblioteca {
                             CartaoDaLixeira(
                                 arquivo: arquivo,
                                 emOperacao: biblioteca.estaEmOperacaoDeLixeira(arquivo),
-                                aoSelecionar: { arquivoSelecionadoNaLixeira = arquivo },
+                                aoRestaurar: { recuperar(arquivo) },
                                 aoPedirExclusaoDefinitiva: {
                                     arquivoParaExclusaoDefinitiva = arquivo
                                 }
@@ -281,8 +396,270 @@ struct BibliotecaHomeView: View {
             }
         }
     }
+
+    private func alternarMenu(de arquivo: Arquivo) {
+        let proximo: ArquivoID? = menuAberto == arquivo.id ? nil : arquivo.id
+        DispatchQueue.main.async {
+            withAnimation(.snappy(duration: 0.18)) {
+                menuAberto = proximo
+            }
+        }
+    }
+
+    private func fecharMenu() {
+        withAnimation(.snappy(duration: 0.14)) { menuAberto = nil }
+    }
+
+    private func atualizarPreferenciasVisuais() {
+        versaoDasPreferenciasVisuais += 1
+    }
+
+    private func abrirCriacaoDePasta() {
+        novaPasta = ""
+        criandoPasta = true
+    }
+
+    private var simboloDoVazio: String {
+        if pastaSelecionada != nil { return "folder" }
+        if atalhoSelecionado == .favoritos { return "star" }
+        return "magnifyingglass"
+    }
+
+    private var tituloDoVazio: String {
+        if let pastaSelecionada { return "A pasta \(pastaSelecionada) está vazia" }
+        if atalhoSelecionado == .favoritos { return "Nenhum favorito ainda" }
+        return "Nenhuma conversa encontrada"
+    }
+
+    private var mensagemDoVazio: String {
+        if pastaSelecionada != nil {
+            return "Use Mover para pasta no menu de um card para organizar conversas aqui."
+        }
+        if atalhoSelecionado == .favoritos {
+            return "Favorite uma conversa pelo botão de estrela para ela aparecer aqui."
+        }
+        return "Tente buscar por outro título ou estado de processamento."
+    }
 }
 
+private enum FiltroDaBiblioteca: String, CaseIterable, Identifiable {
+    case todas = "Todas"
+    case pastas = "Pastas"
+
+    var id: Self { self }
+
+    var simbolo: String {
+        switch self {
+        case .todas: "tray.full"
+        case .pastas: "folder"
+        }
+    }
+}
+
+private struct FiltroDeConversas: View {
+    @Binding var selecionado: FiltroDaBiblioteca
+    @Binding var pastaSelecionada: String?
+    @Binding var atalhoSelecionado: AtalhoDaBiblioteca
+
+    var body: some View {
+        HStack(spacing: 18) {
+            ForEach(FiltroDaBiblioteca.allCases) { filtro in
+                Button {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        selecionado = filtro
+                        pastaSelecionada = nil
+                        atalhoSelecionado = .recentes
+                    }
+                } label: {
+                    Label(filtro.rawValue, systemImage: filtro.simbolo)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(selecionado == filtro ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                }
+                .buttonStyle(.plain)
+                .help(filtro.rawValue)
+                .accessibilityLabel("Mostrar \(filtro.rawValue.localizedLowercase)")
+            }
+        }
+    }
+}
+
+private enum AtalhoDaBiblioteca: String, Identifiable {
+    case recentes = "Recentes"
+    case favoritos = "Favoritos"
+
+    var id: Self { self }
+}
+
+private struct AtalhosDaBiblioteca: View {
+    @Binding var selecionado: AtalhoDaBiblioteca
+    let aoSelecionarRecentes: () -> Void
+    let aoSelecionarFavoritos: () -> Void
+
+    var body: some View {
+        HStack(spacing: 18) {
+            Button(action: aoSelecionarRecentes) {
+                Label("Recentes", systemImage: "clock.arrow.circlepath")
+                    .foregroundStyle(selecionado == .recentes ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+            }
+            .help("Recentes")
+
+            Button(action: aoSelecionarFavoritos) {
+                Label("Favoritos", systemImage: selecionado == .favoritos ? "star.fill" : "star")
+                    .foregroundStyle(selecionado == .favoritos ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+            }
+            .help("Favoritos")
+        }
+        .buttonStyle(AtalhoDaBibliotecaButtonStyle())
+        .accessibilityLabel("Atalhos da biblioteca")
+    }
+}
+
+private struct AtalhoDaBibliotecaButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(PapagaioTema.textoSecundario)
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(PapagaioTema.superficie, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(PapagaioTema.borda.opacity(0.86), lineWidth: 1)
+            }
+            .opacity(configuration.isPressed ? 0.72 : 1)
+    }
+}
+
+private struct InformacaoDaPasta: Identifiable {
+    let nome: String
+    let quantidade: Int
+    let duracaoTotal: TimeInterval
+    let ultimoArquivo: Date?
+
+    var id: String { nome }
+}
+
+private struct GradeDePastas: View {
+    let pastas: [InformacaoDaPasta]
+    @Binding var selecionada: String?
+    let aoCriarPasta: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Pastas")
+                    .font(.headline)
+                    .foregroundStyle(PapagaioTema.texto)
+
+                Spacer()
+
+                Button("Nova pasta", systemImage: "folder.badge.plus", action: aoCriarPasta)
+                    .buttonStyle(BotaoDeContornoPapagaio())
+            }
+
+            if pastas.isEmpty {
+                CartaoDeEstadoVazio(
+                    simbolo: "folder",
+                    titulo: "Nenhuma pasta ainda",
+                    mensagem: "Crie uma pasta para organizar conversas por projeto, cliente ou tema."
+                )
+                .frame(minHeight: 220)
+                .cartaoPapagaio()
+            } else {
+                let colunas = [GridItem(.adaptive(minimum: 250, maximum: 360), spacing: 16, alignment: .top)]
+
+                LazyVGrid(columns: colunas, spacing: 16) {
+                    ForEach(pastas) { pasta in
+                        CartaoDePasta(
+                            pasta: pasta,
+                            selecionado: selecionada == pasta.nome
+                        ) {
+                            withAnimation(.snappy(duration: 0.18)) {
+                                selecionada = pasta.nome
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .accessibilityLabel("Pastas da biblioteca")
+    }
+}
+
+private struct CartaoDePasta: View {
+    let pasta: InformacaoDaPasta
+    let selecionado: Bool
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                        .frame(width: 58, height: 58)
+                        .background(
+                            selecionado ? PapagaioTema.destaqueSuave : PapagaioTema.superficieSuave,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(pasta.nome)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.texto)
+                            .lineLimit(2)
+
+                        Text("Abrir pasta")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 12) {
+                    Label(textoDaQuantidade, systemImage: "doc.text")
+                    Label(tempoDescritivo(pasta.duracaoTotal), systemImage: "clock")
+
+                    if let ultimoArquivo = pasta.ultimoArquivo {
+                        Label(ultimoArquivo.formatted(.dateTime.day().month(.abbreviated)), systemImage: "calendar")
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .lineLimit(1)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+            .background(
+                selecionado ? PapagaioTema.destaqueSuave.opacity(0.58) : PapagaioTema.superficie,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    .stroke(selecionado ? PapagaioTema.destaque.opacity(0.55) : PapagaioTema.borda, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help("Abrir pasta \(pasta.nome)")
+    }
+
+    private var textoDaQuantidade: String {
+        pasta.quantidade == 1 ? "1 conversa" : "\(pasta.quantidade) conversas"
+    }
+
+    private func tempoDescritivo(_ segundos: TimeInterval) -> String {
+        let total = Int(max(0, segundos.rounded()))
+        if total < 60 { return "\(total) s" }
+        let minutos = total / 60
+        if minutos < 60 { return "\(minutos) min" }
+        let horas = minutos / 60
+        let resto = minutos % 60
+        return resto == 0 ? "\(horas) h" : "\(horas) h \(resto) min"
+    }
+}
 private struct CartaoNovaConversa: View {
     let gravando: Bool
     let bloqueado: Bool
@@ -374,9 +751,12 @@ private struct CartaoDeConversa: View {
     let aoRenomear: (String) -> Void
     let aoDuplicar: () -> Void
     let urlDeAudio: URL
+    let menuAberto: Bool
+    let aoAlternarMenu: () -> Void
+    let aoFecharMenu: () -> Void
+    let aoAlterarPreferenciasVisuais: () -> Void
     let aoMoverParaLixeira: () -> Void
 
-    @State private var menuAberto = false
     @State private var renomeando = false
     @State private var movendoParaPasta = false
     @State private var novoTitulo = ""
@@ -395,6 +775,10 @@ private struct CartaoDeConversa: View {
         aoRenomear: @escaping (String) -> Void,
         aoDuplicar: @escaping () -> Void,
         urlDeAudio: URL,
+        menuAberto: Bool,
+        aoAlternarMenu: @escaping () -> Void,
+        aoFecharMenu: @escaping () -> Void,
+        aoAlterarPreferenciasVisuais: @escaping () -> Void,
         aoMoverParaLixeira: @escaping () -> Void
     ) {
         self.arquivo = arquivo
@@ -406,6 +790,10 @@ private struct CartaoDeConversa: View {
         self.aoRenomear = aoRenomear
         self.aoDuplicar = aoDuplicar
         self.urlDeAudio = urlDeAudio
+        self.menuAberto = menuAberto
+        self.aoAlternarMenu = aoAlternarMenu
+        self.aoFecharMenu = aoFecharMenu
+        self.aoAlterarPreferenciasVisuais = aoAlterarPreferenciasVisuais
         self.aoMoverParaLixeira = aoMoverParaLixeira
         _favorito = State(initialValue: PreferenciasVisuaisDoArquivo.favorito(arquivo.id))
         _pasta = State(initialValue: PreferenciasVisuaisDoArquivo.pasta(arquivo.id))
@@ -433,51 +821,112 @@ private struct CartaoDeConversa: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            NavigationLink(value: arquivo.id.rawValue) {
-                VStack(alignment: .leading, spacing: 0) {
-                    CapaDeConversa(arquivo: arquivo, capaURL: capaURL, favorito: favorito)
+        NavigationLink(value: arquivo.id.rawValue) {
+            VStack(alignment: .leading, spacing: 0) {
+                CapaDeConversa(arquivo: arquivo, capaURL: capaURL, favorito: favorito)
 
-                    VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(titulo)
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(PapagaioTema.texto)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
 
-                        SeloDeStatus(
-                            texto: estado,
-                            simbolo: simboloDoStatus,
-                            estilo: estiloDoStatus
-                        )
-
-                        if let pasta {
-                            SeloDeStatus(
-                                texto: pasta,
-                                simbolo: "folder",
-                                estilo: .neutro
-                            )
-                        }
-
-                        HStack(spacing: 12) {
-                            Label(
-                                arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
-                                systemImage: "calendar"
-                            )
-                            Label(tempoCurto(arquivo.duracao), systemImage: "clock")
-                        }
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        Spacer(minLength: 8)
                     }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Conversa \(titulo). \(estado)")
+                    .padding(.trailing, 28)
 
+                    SeloDeStatus(
+                        texto: estado,
+                        simbolo: simboloDoStatus,
+                        estilo: estiloDoStatus
+                    )
+
+                    if let pasta {
+                        SeloDeStatus(
+                            texto: pasta,
+                            simbolo: "folder",
+                            estilo: .neutro
+                        )
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(
+                            arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
+                            systemImage: "calendar"
+                        )
+                        Label(tempoDescritivo(arquivo.duracao), systemImage: "clock")
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Conversa \(titulo). \(estado)")
+        .frame(maxWidth: .infinity, minHeight: 278, alignment: .top)
+        .cartaoPapagaio()
+        .overlay(alignment: .topLeading) {
+            botaoDeFavoritoDoCard
+        }
+        .overlay(alignment: .topTrailing) {
+            menuDoCard
+        }
+        .zIndex(menuAberto ? 10 : 0)
+        .onAppear(perform: sincronizarPreferenciasVisuais)
+        .onChange(of: arquivo.id.rawValue) { _, _ in
+            sincronizarPreferenciasVisuais()
+        }
+        .alert("Renomear arquivo", isPresented: $renomeando) {
+            TextField("Nome", text: $novoTitulo)
+            Button("Renomear") {
+                aoRenomear(novoTitulo)
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Escolha o nome que aparece na biblioteca e nos detalhes.")
+        }
+        .alert("Mover para pasta", isPresented: $movendoParaPasta) {
+            TextField("Nome da pasta", text: $nomeDaPasta)
+            Button("Mover") {
+                let limpa = nomeDaPasta.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !limpa.isEmpty else { return }
+                pasta = limpa
+                PreferenciasVisuaisDoArquivo.definirPasta(limpa, para: arquivo.id)
+                aoAlterarPreferenciasVisuais()
+            }
+            Button("Remover pasta", role: .destructive) {
+                pasta = nil
+                PreferenciasVisuaisDoArquivo.definirPasta(nil, para: arquivo.id)
+                aoAlterarPreferenciasVisuais()
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Use uma pasta para organizar visualmente este arquivo na biblioteca.")
+        }
+        .overlay {
+            if emOperacaoDeLixeira {
+                ProgressView("Movendo para a lixeira…")
+                    .font(.callout.weight(.medium))
+                    .padding(16)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+            }
+        }
+        .opacity(emOperacaoDeLixeira ? 0.72 : 1)
+    }
+
+    @ViewBuilder
+    private var menuDoCard: some View {
+        ZStack(alignment: .topTrailing) {
             Button {
-                withAnimation(.snappy(duration: 0.18)) { menuAberto.toggle() }
+                if menuAberto {
+                    aoFecharMenu()
+                } else {
+                    aoAlternarMenu()
+                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
@@ -504,54 +953,34 @@ private struct CartaoDeConversa: View {
                     aoFavoritar: executarMenu(alternarFavorito),
                     aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
                 )
-                .padding(.top, 50)
+                .padding(.top, 48)
                 .padding(.trailing, 8)
                 .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
                 .zIndex(2)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 278, alignment: .top)
-        .zIndex(menuAberto ? 10 : 0)
-        .cartaoPapagaio()
-        .alert("Renomear arquivo", isPresented: $renomeando) {
-            TextField("Nome", text: $novoTitulo)
-            Button("Renomear") {
-                aoRenomear(novoTitulo)
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("Escolha o nome que aparece na biblioteca e nos detalhes.")
+    }
+
+    private var botaoDeFavoritoDoCard: some View {
+        Button(action: alternarFavorito) {
+            Image(systemName: favorito ? "star.fill" : "star")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(favorito ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                .frame(width: 36, height: 36)
+                .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
+                .overlay {
+                    Circle().stroke(favorito ? PapagaioTema.destaque.opacity(0.5) : PapagaioTema.borda.opacity(0.9), lineWidth: 1)
+                }
         }
-        .alert("Mover para pasta", isPresented: $movendoParaPasta) {
-            TextField("Nome da pasta", text: $nomeDaPasta)
-            Button("Mover") {
-                let limpa = nomeDaPasta.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !limpa.isEmpty else { return }
-                pasta = limpa
-                PreferenciasVisuaisDoArquivo.definirPasta(limpa, para: arquivo.id)
-            }
-            Button("Remover pasta", role: .destructive) {
-                pasta = nil
-                PreferenciasVisuaisDoArquivo.definirPasta(nil, para: arquivo.id)
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("Use uma pasta para organizar visualmente este arquivo na biblioteca.")
-        }
-        .overlay {
-            if emOperacaoDeLixeira {
-                ProgressView("Movendo para a lixeira…")
-                    .font(.callout.weight(.medium))
-                    .padding(16)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-            }
-        }
-        .opacity(emOperacaoDeLixeira ? 0.72 : 1)
+        .buttonStyle(.plain)
+        .padding(10)
+        .help(favorito ? "Desfavoritar" : "Favoritar")
+        .accessibilityLabel(favorito ? "Desfavoritar conversa" : "Favoritar conversa")
     }
 
     private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
         {
-            withAnimation(.snappy(duration: 0.16)) { menuAberto = false }
+            aoFecharMenu()
             acao()
         }
     }
@@ -567,8 +996,17 @@ private struct CartaoDeConversa: View {
     }
 
     private func alternarFavorito() {
-        favorito.toggle()
+        withAnimation(.snappy(duration: 0.16)) {
+            favorito.toggle()
+        }
         PreferenciasVisuaisDoArquivo.definirFavorito(favorito, para: arquivo.id)
+        aoAlterarPreferenciasVisuais()
+    }
+
+    private func sincronizarPreferenciasVisuais() {
+        favorito = PreferenciasVisuaisDoArquivo.favorito(arquivo.id)
+        pasta = PreferenciasVisuaisDoArquivo.pasta(arquivo.id)
+        capaURL = PreferenciasVisuaisDoArquivo.capa(arquivo.id)
     }
 
     private func editarImagem() {
@@ -590,8 +1028,10 @@ private struct CartaoDeConversa: View {
         do {
             try PreferenciasVisuaisDoArquivo.definirCapa(url, para: arquivo.id)
             capaURL = PreferenciasVisuaisDoArquivo.capa(arquivo.id)
+            aoAlterarPreferenciasVisuais()
         } catch {
             capaURL = url
+            aoAlterarPreferenciasVisuais()
         }
         #endif
     }
@@ -608,9 +1048,19 @@ private struct CartaoDeConversa: View {
         #endif
     }
 
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let inteiros = Int(max(0, segundos))
-        return String(format: "%d:%02d", inteiros / 60, inteiros % 60)
+    private func tempoDescritivo(_ segundos: TimeInterval) -> String {
+        let total = Int(max(0, segundos).rounded())
+        let horas = total / 3600
+        let minutos = (total % 3600) / 60
+        let segundosRestantes = total % 60
+
+        if horas > 0 {
+            return minutos > 0 ? "\(horas) h \(minutos) min" : "\(horas) h"
+        }
+        if minutos > 0 {
+            return segundosRestantes > 0 ? "\(minutos) min \(segundosRestantes) s" : "\(minutos) min"
+        }
+        return "\(segundosRestantes) segundos"
     }
 }
 
@@ -635,8 +1085,8 @@ private struct MenuDeArquivoAberto: View {
             ItemDoMenuDeArquivo(simbolo: favorito ? "star.fill" : "star", titulo: favorito ? "Desfavoritar" : "Favoritar", acao: aoFavoritar)
 
             SeparadorPapagaio()
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
 
             ItemDoMenuDeArquivo(
                 simbolo: "trash",
@@ -646,14 +1096,14 @@ private struct MenuDeArquivoAberto: View {
                 acao: aoMoverParaLixeira
             )
         }
-        .frame(width: 318)
-        .padding(.vertical, 12)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .frame(width: 214)
+        .padding(.vertical, 6)
+        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color(red: 0.72, green: 0.45, blue: 0.38).opacity(0.38), lineWidth: 1)
         }
-        .shadow(color: Color(red: 0.34, green: 0.18, blue: 0.14).opacity(0.22), radius: 22, y: 12)
+        .shadow(color: Color(red: 0.34, green: 0.18, blue: 0.14).opacity(0.16), radius: 12, y: 6)
         .shadow(color: PapagaioTema.destaque.opacity(0.12), radius: 4, y: 1)
     }
 }
@@ -667,21 +1117,21 @@ private struct ItemDoMenuDeArquivo: View {
 
     var body: some View {
         Button(action: acao) {
-            HStack(spacing: 22) {
+            HStack(spacing: 14) {
                 Image(systemName: simbolo)
-                    .font(.system(size: 24, weight: .regular))
+                    .font(.system(size: 15, weight: .regular))
                     .symbolRenderingMode(.monochrome)
-                    .frame(width: 28)
+                    .frame(width: 18)
 
                 Text(titulo)
-                    .font(.system(size: 24, weight: .regular))
+                    .font(.system(size: 14, weight: .regular))
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
             }
             .foregroundStyle(cor.opacity(desabilitado ? 0.42 : 1))
-            .padding(.horizontal, 26)
-            .frame(height: 60)
+            .padding(.horizontal, 14)
+            .frame(height: 34)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -693,7 +1143,7 @@ private struct ItemDoMenuDeArquivo: View {
     }
 }
 
-private enum PreferenciasVisuaisDoArquivo {
+enum PreferenciasVisuaisDoArquivo {
     private static let prefixoFavorito = "arquivoFavorito."
     private static let prefixoPasta = "arquivoPasta."
     private static let prefixoCapa = "arquivoCapa."
@@ -703,7 +1153,12 @@ private enum PreferenciasVisuaisDoArquivo {
     }
 
     static func definirFavorito(_ favorito: Bool, para id: ArquivoID) {
-        UserDefaults.standard.set(favorito, forKey: prefixoFavorito + id.rawValue.uuidString)
+        let chave = prefixoFavorito + id.rawValue.uuidString
+        if favorito {
+            UserDefaults.standard.set(true, forKey: chave)
+        } else {
+            UserDefaults.standard.removeObject(forKey: chave)
+        }
     }
 
     static func pasta(_ id: ArquivoID) -> String? {
@@ -713,10 +1168,26 @@ private enum PreferenciasVisuaisDoArquivo {
     static func definirPasta(_ pasta: String?, para id: ArquivoID) {
         let chave = prefixoPasta + id.rawValue.uuidString
         if let pasta {
+            criarPasta(pasta)
             UserDefaults.standard.set(pasta, forKey: chave)
         } else {
             UserDefaults.standard.removeObject(forKey: chave)
         }
+    }
+
+    static func criarPasta(_ pasta: String) {
+        let nome = pasta.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nome.isEmpty else { return }
+        let chave = "pastasDaBiblioteca"
+        var pastas = UserDefaults.standard.stringArray(forKey: chave) ?? []
+        guard !pastas.contains(where: { $0.localizedCaseInsensitiveCompare(nome) == .orderedSame }) else { return }
+        pastas.append(nome)
+        pastas.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        UserDefaults.standard.set(pastas, forKey: chave)
+    }
+
+    static func pastas() -> [String] {
+        UserDefaults.standard.stringArray(forKey: "pastasDaBiblioteca") ?? []
     }
 
     static func capa(_ id: ArquivoID) -> URL? {
@@ -744,6 +1215,19 @@ private enum PreferenciasVisuaisDoArquivo {
         )
         UserDefaults.standard.set(dados, forKey: prefixoCapa + id.rawValue.uuidString)
     }
+
+    static func copiar(de origem: ArquivoID, para destino: ArquivoID) {
+        definirFavorito(favorito(origem), para: destino)
+        definirPasta(pasta(origem), para: destino)
+
+        let chaveOrigem = prefixoCapa + origem.rawValue.uuidString
+        let chaveDestino = prefixoCapa + destino.rawValue.uuidString
+        if let dados = UserDefaults.standard.data(forKey: chaveOrigem) {
+            UserDefaults.standard.set(dados, forKey: chaveDestino)
+        } else {
+            UserDefaults.standard.removeObject(forKey: chaveDestino)
+        }
+    }
 }
 
 private struct CapaDeConversa: View {
@@ -754,6 +1238,19 @@ private struct CapaDeConversa: View {
     private var matiz: Double {
         let soma = arquivo.id.rawValue.uuidString.unicodeScalars.reduce(0) { $0 + Int($1.value) }
         return Double(soma % 20) / 100
+    }
+
+    private var imagemDaCapa: NSImage? {
+        #if os(macOS)
+        guard let capaURL else { return nil }
+        let acessou = capaURL.startAccessingSecurityScopedResource()
+        defer {
+            if acessou { capaURL.stopAccessingSecurityScopedResource() }
+        }
+        return NSImage(contentsOf: capaURL)
+        #else
+        return nil
+        #endif
     }
 
     var body: some View {
@@ -800,19 +1297,6 @@ private struct CapaDeConversa: View {
         .frame(height: 116)
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .accessibilityHidden(true)
-    }
-
-    private var imagemDaCapa: NSImage? {
-        #if os(macOS)
-        guard let capaURL else { return nil }
-        let acessou = capaURL.startAccessingSecurityScopedResource()
-        defer {
-            if acessou { capaURL.stopAccessingSecurityScopedResource() }
-        }
-        return NSImage(contentsOf: capaURL)
-        #else
-        return nil
-        #endif
     }
 }
 

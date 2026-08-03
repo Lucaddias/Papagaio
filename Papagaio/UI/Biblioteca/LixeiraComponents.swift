@@ -11,95 +11,166 @@ enum SecaoDaBiblioteca: String, Identifiable {
     var id: Self { self }
 }
 
-/// Um item recuperável. O clique abre as ações de recuperação; a exclusão
-/// definitiva fica visível e exige confirmação no container.
+/// Um item recuperável. As ações ficam visíveis no card para seguir o fluxo da
+/// referência: restaurar ou apagar definitivamente sem abrir um menu extra.
 struct CartaoDaLixeira: View {
     let arquivo: Arquivo
     let emOperacao: Bool
-    let aoSelecionar: () -> Void
+    let aoRestaurar: () -> Void
     let aoPedirExclusaoDefinitiva: () -> Void
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
-    private var descricaoDaData: String {
-        guard let apagadoEm = arquivo.apagadoEm else { return "Movido para a lixeira" }
-        return "Na lixeira desde \(apagadoEm.formatted(.dateTime.day().month(.abbreviated).year()))"
+    private var descricao: String {
+        let texto = arquivo.resumo?.visaoGeral
+            ?? arquivo.trechos.map(\.texto).joined(separator: " ")
+        let limpo = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        return limpo.isEmpty
+            ? "Conversa movida para a lixeira. Restaure para acessar transcrição, notas e mídia."
+            : limpo
+    }
+
+    private var dataCurta: String {
+        arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated))
+            .uppercased()
+            .replacingOccurrences(of: ".", with: "")
+    }
+
+    private var duracaoCurta: String {
+        let total = Int(max(0, arquivo.duracao.rounded()))
+        if total < 60 { return "\(max(1, total)) SEG" }
+        let minutos = total / 60
+        if minutos < 60 { return "\(minutos) MIN" }
+        let horas = minutos / 60
+        let resto = minutos % 60
+        return resto == 0 ? "\(horas) H" : "\(horas) H \(resto) MIN"
+    }
+
+    private var prazoDeExclusao: String {
+        guard let apagadoEm = arquivo.apagadoEm,
+              let limite = Calendar.current.date(byAdding: .day, value: 30, to: apagadoEm)
+        else { return "Exclui em 30 dias" }
+
+        let dias = Calendar.current.dateComponents([.day], from: Date(), to: limite).day ?? 0
+        if dias <= 0 { return "Exclui hoje" }
+        if dias == 1 { return "Exclui em 1 dia" }
+        return "Exclui em \(dias) dias"
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button(action: aoSelecionar) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ZStack {
-                        PapagaioTema.superficieSuave
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                HStack(spacing: 10) {
+                    Text("ENTREVISTA")
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
 
-                        Image(systemName: "trash")
-                            .font(.system(size: 40, weight: .light))
-                            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
-                    }
-                    .frame(height: 116)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(titulo)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.texto)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        SeloDeStatus(
-                            texto: "Na lixeira",
-                            simbolo: "trash",
-                            estilo: .neutro
-                        )
-
-                        Label(descricaoDaData, systemImage: "calendar")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                    }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("ÁUDIOS")
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
+                        .padding(.horizontal, 12)
+                        .frame(height: 30)
+                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .stroke(PapagaioTema.borda, lineWidth: 1)
+                        }
                 }
-            }
-            .buttonStyle(.plain)
-            .disabled(emOperacao)
-            .accessibilityLabel("\(titulo). Na lixeira. Selecione para recuperar ou apagar definitivamente.")
-
-            SeparadorPapagaio()
-
-            HStack(spacing: 10) {
-                if emOperacao {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("Atualizando arquivo na lixeira")
-                }
-
-                Label(
-                    emOperacao ? "Atualizando…" : "Selecione para recuperar",
-                    systemImage: emOperacao ? "arrow.triangle.2.circlepath" : "arrow.uturn.backward.circle"
-                )
-                .font(.caption.weight(.medium))
-                .foregroundStyle(PapagaioTema.textoSecundario)
 
                 Spacer(minLength: 8)
 
-                Button("Apagar definitivamente…", systemImage: "trash.slash", role: .destructive) {
-                    aoPedirExclusaoDefinitiva()
+                HStack(spacing: 16) {
+                    if emOperacao {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Atualizando arquivo na lixeira")
+                    } else {
+                        Button(action: aoRestaurar) {
+                            Image(systemName: "arrow.uturn.backward.circle")
+                                .font(.system(size: 18, weight: .bold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                        .help("Restaurar")
+                        .accessibilityLabel("Restaurar \(titulo)")
+
+                        Button(role: .destructive, action: aoPedirExclusaoDefinitiva) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 18, weight: .bold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(PapagaioTema.perigo)
+                        .help("Apagar definitivamente")
+                        .accessibilityLabel("Apagar definitivamente \(titulo)")
+                    }
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PapagaioTema.perigo)
-                .padding(.horizontal, 11)
-                .frame(minHeight: 36)
-                .background(PapagaioTema.perigo.opacity(0.08), in: Capsule())
-                .overlay {
-                    Capsule().stroke(PapagaioTema.perigo.opacity(0.3), lineWidth: 1)
-                }
-                .buttonStyle(.plain)
-                .disabled(emOperacao)
-                .accessibilityHint("Remove permanentemente o áudio, a transcrição e o resumo após confirmação.")
             }
-            .padding(14)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(titulo)
+                    .font(.title.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
+                    .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(descricao)
+                    .font(.body)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineSpacing(3)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            SeparadorPapagaio()
+
+            HStack(spacing: 18) {
+                Label(dataCurta, systemImage: "calendar")
+                Label(duracaoCurta, systemImage: "clock")
+
+                Spacer(minLength: 8)
+
+                Text(prazoDeExclusao)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
         }
-        .frame(maxWidth: .infinity, minHeight: 278, alignment: .top)
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
         .cartaoPapagaio()
         .opacity(emOperacao ? 0.72 : 1)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct AcoesDaLixeira: View {
+    let temArquivos: Bool
+    let aoRestaurarTudo: () -> Void
+    let aoEsvaziar: () -> Void
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Button("Restaurar Tudo", systemImage: "arrow.counterclockwise", action: aoRestaurarTudo)
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .disabled(!temArquivos)
+                .help("Restaurar todos os arquivos da lixeira")
+
+            Button("Esvaziar Lixeira", systemImage: "trash.square", role: .destructive, action: aoEsvaziar)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background(PapagaioTema.destaque, in: Capsule())
+                .buttonStyle(.plain)
+                .disabled(!temArquivos)
+                .opacity(temArquivos ? 1 : 0.45)
+                .help("Apagar definitivamente todos os arquivos da lixeira")
+        }
     }
 }
