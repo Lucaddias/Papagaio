@@ -231,6 +231,84 @@ final class Biblioteca {
         erroDaLixeira = nil
     }
 
+    // MARK: - Edição de arquivos
+
+    func renomear(_ arquivo: Arquivo, para novoTitulo: String) async {
+        let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tituloLimpo.isEmpty,
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+        else { return }
+
+        var editado = arquivo
+        editado.titulo = tituloLimpo
+        if let resumo = arquivo.resumo {
+            editado.resumo = Resumo(
+                titulo: tituloLimpo,
+                visaoGeral: resumo.visaoGeral,
+                temas: resumo.temas,
+                citacoes: resumo.citacoes,
+                proximosPassos: resumo.proximosPassos
+            )
+        }
+
+        do {
+            try await repositorio.salvar(editado)
+            substituir(editado)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
+        }
+    }
+
+    func duplicar(_ arquivo: Arquivo) async {
+        guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+
+        let novoID = ArquivoID()
+        let pastaNovaRelativa = Armazenamento.caminhoRelativo(id: novoID.rawValue)
+        let origem = armazenamento.resolver(relativo: arquivo.pastaRelativa)
+        let destino = armazenamento.resolver(relativo: pastaNovaRelativa)
+
+        do {
+            if FileManager.default.fileExists(atPath: origem.path) {
+                try FileManager.default.copyItem(at: origem, to: destino)
+            } else {
+                try FileManager.default.createDirectory(at: destino, withIntermediateDirectories: true)
+            }
+
+            var copia = Arquivo(
+                id: novoID,
+                titulo: "\(arquivo.titulo) cópia",
+                criadoEm: Date(),
+                duracao: arquivo.duracao,
+                pastaRelativa: pastaNovaRelativa,
+                espaco: espaco,
+                trechos: arquivo.trechos.map {
+                    Trecho(start: $0.start, end: $0.end, texto: $0.texto, speaker: $0.speaker)
+                },
+                notas: arquivo.notas.map {
+                    NotaDaConversa(texto: $0.texto, start: $0.start, critica: $0.critica, tipo: $0.tipo)
+                },
+                resumo: arquivo.resumo,
+                engineTranscricao: arquivo.engineTranscricao,
+                engineResumo: arquivo.engineResumo
+            )
+            if let resumo = arquivo.resumo {
+                copia.resumo = Resumo(
+                    titulo: "\(resumo.titulo) cópia",
+                    visaoGeral: resumo.visaoGeral,
+                    temas: resumo.temas,
+                    citacoes: resumo.citacoes,
+                    proximosPassos: resumo.proximosPassos
+                )
+            }
+
+            try await repositorio.salvar(copia)
+            arquivos.insert(copia, at: 0)
+        } catch {
+            try? FileManager.default.removeItem(at: destino)
+            erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+        }
+    }
+
     // MARK: - Processamento
 
     var processando: Bool {

@@ -4,7 +4,4 @@
    <FileRef
       location = "group:Papagaio.xcodeproj">
    </FileRef>
-   <FileRef
-      location = "group:PapagaioCore">
-   </FileRef>
 </Workspace>

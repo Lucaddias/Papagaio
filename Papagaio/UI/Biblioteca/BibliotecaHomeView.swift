@@ -219,6 +219,9 @@ struct BibliotecaHomeView: View {
                             naFila: biblioteca.estaNaFila(arquivo),
                             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
                             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
+                            aoRenomear: { novoTitulo in Task { await biblioteca.renomear(arquivo, para: novoTitulo) } },
+                            aoDuplicar: { Task { await biblioteca.duplicar(arquivo) } },
+                            urlDeAudio: biblioteca.audio(de: arquivo),
                             aoMoverParaLixeira: { Task { await biblioteca.moverParaLixeira(arquivo) } }
                         )
                     }
@@ -368,7 +371,46 @@ private struct CartaoDeConversa: View {
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
     let aoReprocessar: () -> Void
+    let aoRenomear: (String) -> Void
+    let aoDuplicar: () -> Void
+    let urlDeAudio: URL
     let aoMoverParaLixeira: () -> Void
+
+    @State private var menuAberto = false
+    @State private var renomeando = false
+    @State private var movendoParaPasta = false
+    @State private var novoTitulo = ""
+    @State private var nomeDaPasta = ""
+    @State private var favorito: Bool
+    @State private var pasta: String?
+    @State private var capaURL: URL?
+
+    init(
+        arquivo: Arquivo,
+        estado: String,
+        processando: Bool,
+        naFila: Bool,
+        emOperacaoDeLixeira: Bool,
+        aoReprocessar: @escaping () -> Void,
+        aoRenomear: @escaping (String) -> Void,
+        aoDuplicar: @escaping () -> Void,
+        urlDeAudio: URL,
+        aoMoverParaLixeira: @escaping () -> Void
+    ) {
+        self.arquivo = arquivo
+        self.estado = estado
+        self.processando = processando
+        self.naFila = naFila
+        self.emOperacaoDeLixeira = emOperacaoDeLixeira
+        self.aoReprocessar = aoReprocessar
+        self.aoRenomear = aoRenomear
+        self.aoDuplicar = aoDuplicar
+        self.urlDeAudio = urlDeAudio
+        self.aoMoverParaLixeira = aoMoverParaLixeira
+        _favorito = State(initialValue: PreferenciasVisuaisDoArquivo.favorito(arquivo.id))
+        _pasta = State(initialValue: PreferenciasVisuaisDoArquivo.pasta(arquivo.id))
+        _capaURL = State(initialValue: PreferenciasVisuaisDoArquivo.capa(arquivo.id))
+    }
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
 
@@ -394,7 +436,7 @@ private struct CartaoDeConversa: View {
         ZStack(alignment: .topTrailing) {
             NavigationLink(value: arquivo.id.rawValue) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CapaDeConversa(arquivo: arquivo)
+                    CapaDeConversa(arquivo: arquivo, capaURL: capaURL, favorito: favorito)
 
                     VStack(alignment: .leading, spacing: 14) {
                         Text(titulo)
@@ -408,6 +450,14 @@ private struct CartaoDeConversa: View {
                             simbolo: simboloDoStatus,
                             estilo: estiloDoStatus
                         )
+
+                        if let pasta {
+                            SeloDeStatus(
+                                texto: pasta,
+                                simbolo: "folder",
+                                estilo: .neutro
+                            )
+                        }
 
                         HStack(spacing: 12) {
                             Label(
@@ -426,30 +476,68 @@ private struct CartaoDeConversa: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Conversa \(titulo). \(estado)")
 
-            Menu {
-                Button("Processar de novo", systemImage: "arrow.clockwise", action: aoReprocessar)
-                    .disabled(processando || naFila || emOperacaoDeLixeira)
-                Divider()
-                Button(
-                    "Mover para lixeira",
-                    systemImage: "trash",
-                    role: .destructive,
-                    action: aoMoverParaLixeira
-                )
-                .disabled(processando || emOperacaoDeLixeira)
+            Button {
+                withAnimation(.snappy(duration: 0.18)) { menuAberto.toggle() }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .foregroundStyle(menuAberto ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                     .frame(width: 36, height: 36)
-                    .background(PapagaioTema.superficie.opacity(0.88), in: Circle())
+                    .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
+                    .overlay {
+                        Circle().stroke(menuAberto ? PapagaioTema.destaque.opacity(0.45) : .clear, lineWidth: 1)
+                    }
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
             .padding(10)
             .accessibilityLabel("Ações de \(titulo)")
+
+            if menuAberto {
+                MenuDeArquivoAberto(
+                    favorito: favorito,
+                    bloqueado: processando || naFila || emOperacaoDeLixeira,
+                    aoEditarImagem: executarMenu(editarImagem),
+                    aoRenomear: executarMenu(abrirRenomeacao),
+                    aoMoverParaPasta: executarMenu(abrirMoverParaPasta),
+                    aoCompartilhar: executarMenu(compartilhar),
+                    aoDuplicar: executarMenu(aoDuplicar),
+                    aoFavoritar: executarMenu(alternarFavorito),
+                    aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
+                )
+                .padding(.top, 50)
+                .padding(.trailing, 8)
+                .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
+                .zIndex(2)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 278, alignment: .top)
+        .zIndex(menuAberto ? 10 : 0)
         .cartaoPapagaio()
+        .alert("Renomear arquivo", isPresented: $renomeando) {
+            TextField("Nome", text: $novoTitulo)
+            Button("Renomear") {
+                aoRenomear(novoTitulo)
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Escolha o nome que aparece na biblioteca e nos detalhes.")
+        }
+        .alert("Mover para pasta", isPresented: $movendoParaPasta) {
+            TextField("Nome da pasta", text: $nomeDaPasta)
+            Button("Mover") {
+                let limpa = nomeDaPasta.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !limpa.isEmpty else { return }
+                pasta = limpa
+                PreferenciasVisuaisDoArquivo.definirPasta(limpa, para: arquivo.id)
+            }
+            Button("Remover pasta", role: .destructive) {
+                pasta = nil
+                PreferenciasVisuaisDoArquivo.definirPasta(nil, para: arquivo.id)
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Use uma pasta para organizar visualmente este arquivo na biblioteca.")
+        }
         .overlay {
             if emOperacaoDeLixeira {
                 ProgressView("Movendo para a lixeira…")
@@ -461,14 +549,207 @@ private struct CartaoDeConversa: View {
         .opacity(emOperacaoDeLixeira ? 0.72 : 1)
     }
 
+    private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
+        {
+            withAnimation(.snappy(duration: 0.16)) { menuAberto = false }
+            acao()
+        }
+    }
+
+    private func abrirRenomeacao() {
+        novoTitulo = titulo
+        renomeando = true
+    }
+
+    private func abrirMoverParaPasta() {
+        nomeDaPasta = pasta ?? ""
+        movendoParaPasta = true
+    }
+
+    private func alternarFavorito() {
+        favorito.toggle()
+        PreferenciasVisuaisDoArquivo.definirFavorito(favorito, para: arquivo.id)
+    }
+
+    private func editarImagem() {
+        #if os(macOS)
+        let painel = NSOpenPanel()
+        painel.title = "Escolha uma imagem para a capa"
+        painel.prompt = "Usar imagem"
+        painel.canChooseFiles = true
+        painel.canChooseDirectories = false
+        painel.allowsMultipleSelection = false
+        painel.allowedContentTypes = [.image]
+
+        guard painel.runModal() == .OK,
+              let url = painel.url,
+              url.startAccessingSecurityScopedResource()
+        else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        do {
+            try PreferenciasVisuaisDoArquivo.definirCapa(url, para: arquivo.id)
+            capaURL = PreferenciasVisuaisDoArquivo.capa(arquivo.id)
+        } catch {
+            capaURL = url
+        }
+        #endif
+    }
+
+    private func compartilhar() {
+        #if os(macOS)
+        let itens: [Any] = FileManager.default.fileExists(atPath: urlDeAudio.path)
+            ? [urlDeAudio]
+            : [titulo]
+        let picker = NSSharingServicePicker(items: itens)
+        if let view = NSApp.keyWindow?.contentView {
+            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        }
+        #endif
+    }
+
     private func tempoCurto(_ segundos: TimeInterval) -> String {
         let inteiros = Int(max(0, segundos))
         return String(format: "%d:%02d", inteiros / 60, inteiros % 60)
     }
 }
 
+private struct MenuDeArquivoAberto: View {
+    let favorito: Bool
+    let bloqueado: Bool
+    let aoEditarImagem: () -> Void
+    let aoRenomear: () -> Void
+    let aoMoverParaPasta: () -> Void
+    let aoCompartilhar: () -> Void
+    let aoDuplicar: () -> Void
+    let aoFavoritar: () -> Void
+    let aoMoverParaLixeira: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ItemDoMenuDeArquivo(simbolo: "photo.badge.magnifyingglass", titulo: "Editar imagem", acao: aoEditarImagem)
+            ItemDoMenuDeArquivo(simbolo: "pencil", titulo: "Renomear", acao: aoRenomear)
+            ItemDoMenuDeArquivo(simbolo: "folder", titulo: "Mover para pasta", acao: aoMoverParaPasta)
+            ItemDoMenuDeArquivo(simbolo: "point.3.connected.trianglepath.dotted", titulo: "Compartilhar", acao: aoCompartilhar)
+            ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueado, acao: aoDuplicar)
+            ItemDoMenuDeArquivo(simbolo: favorito ? "star.fill" : "star", titulo: favorito ? "Desfavoritar" : "Favoritar", acao: aoFavoritar)
+
+            SeparadorPapagaio()
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+
+            ItemDoMenuDeArquivo(
+                simbolo: "trash",
+                titulo: "Mover para Lixeira",
+                destrutivo: true,
+                desabilitado: bloqueado,
+                acao: aoMoverParaLixeira
+            )
+        }
+        .frame(width: 318)
+        .padding(.vertical, 12)
+        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(red: 0.72, green: 0.45, blue: 0.38).opacity(0.38), lineWidth: 1)
+        }
+        .shadow(color: Color(red: 0.34, green: 0.18, blue: 0.14).opacity(0.22), radius: 22, y: 12)
+        .shadow(color: PapagaioTema.destaque.opacity(0.12), radius: 4, y: 1)
+    }
+}
+
+private struct ItemDoMenuDeArquivo: View {
+    let simbolo: String
+    let titulo: String
+    var destrutivo = false
+    var desabilitado = false
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            HStack(spacing: 22) {
+                Image(systemName: simbolo)
+                    .font(.system(size: 24, weight: .regular))
+                    .symbolRenderingMode(.monochrome)
+                    .frame(width: 28)
+
+                Text(titulo)
+                    .font(.system(size: 24, weight: .regular))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(cor.opacity(desabilitado ? 0.42 : 1))
+            .padding(.horizontal, 26)
+            .frame(height: 60)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(desabilitado)
+    }
+
+    private var cor: Color {
+        destrutivo ? Color(red: 0.78, green: 0.08, blue: 0.08) : PapagaioTema.textoSecundario
+    }
+}
+
+private enum PreferenciasVisuaisDoArquivo {
+    private static let prefixoFavorito = "arquivoFavorito."
+    private static let prefixoPasta = "arquivoPasta."
+    private static let prefixoCapa = "arquivoCapa."
+
+    static func favorito(_ id: ArquivoID) -> Bool {
+        UserDefaults.standard.bool(forKey: prefixoFavorito + id.rawValue.uuidString)
+    }
+
+    static func definirFavorito(_ favorito: Bool, para id: ArquivoID) {
+        UserDefaults.standard.set(favorito, forKey: prefixoFavorito + id.rawValue.uuidString)
+    }
+
+    static func pasta(_ id: ArquivoID) -> String? {
+        UserDefaults.standard.string(forKey: prefixoPasta + id.rawValue.uuidString)
+    }
+
+    static func definirPasta(_ pasta: String?, para id: ArquivoID) {
+        let chave = prefixoPasta + id.rawValue.uuidString
+        if let pasta {
+            UserDefaults.standard.set(pasta, forKey: chave)
+        } else {
+            UserDefaults.standard.removeObject(forKey: chave)
+        }
+    }
+
+    static func capa(_ id: ArquivoID) -> URL? {
+        let chave = prefixoCapa + id.rawValue.uuidString
+        guard let dados = UserDefaults.standard.data(forKey: chave) else { return nil }
+        var obsoleto = false
+        guard let url = try? URL(
+            resolvingBookmarkData: dados,
+            options: .withSecurityScope,
+            relativeTo: nil,
+            bookmarkDataIsStale: &obsoleto
+        ) else {
+            UserDefaults.standard.removeObject(forKey: chave)
+            return nil
+        }
+        if obsoleto { try? definirCapa(url, para: id) }
+        return url
+    }
+
+    static func definirCapa(_ url: URL, para id: ArquivoID) throws {
+        let dados = try url.bookmarkData(
+            options: .withSecurityScope,
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        UserDefaults.standard.set(dados, forKey: prefixoCapa + id.rawValue.uuidString)
+    }
+}
+
 private struct CapaDeConversa: View {
     let arquivo: Arquivo
+    let capaURL: URL?
+    let favorito: Bool
 
     private var matiz: Double {
         let soma = arquivo.id.rawValue.uuidString.unicodeScalars.reduce(0) { $0 + Int($1.value) }
@@ -477,18 +758,24 @@ private struct CapaDeConversa: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    PapagaioTema.destaqueSuave,
-                    PapagaioTema.destaque.opacity(0.40 + matiz)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            if let imagem = imagemDaCapa {
+                Image(nsImage: imagem)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [
+                        PapagaioTema.destaqueSuave,
+                        PapagaioTema.destaque.opacity(0.40 + matiz)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
 
-            Image(systemName: "waveform")
-                .font(.system(size: 42, weight: .light))
-                .foregroundStyle(PapagaioTema.destaqueEscuro.opacity(0.62))
+                Image(systemName: "waveform")
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundStyle(PapagaioTema.destaqueEscuro.opacity(0.62))
+            }
 
             HStack {
                 Label("Áudio local", systemImage: "lock.fill")
@@ -498,6 +785,14 @@ private struct CapaDeConversa: View {
                     .padding(.vertical, 7)
                     .background(.white.opacity(0.72), in: Capsule())
                 Spacer()
+
+                if favorito {
+                    Image(systemName: "star.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                        .padding(8)
+                        .background(.white.opacity(0.76), in: Circle())
+                }
             }
             .padding(14)
             .frame(maxHeight: .infinity, alignment: .bottom)
@@ -505,6 +800,19 @@ private struct CapaDeConversa: View {
         .frame(height: 116)
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .accessibilityHidden(true)
+    }
+
+    private var imagemDaCapa: NSImage? {
+        #if os(macOS)
+        guard let capaURL else { return nil }
+        let acessou = capaURL.startAccessingSecurityScopedResource()
+        defer {
+            if acessou { capaURL.stopAccessingSecurityScopedResource() }
+        }
+        return NSImage(contentsOf: capaURL)
+        #else
+        return nil
+        #endif
     }
 }
 
