@@ -29,6 +29,19 @@ struct CartaoDaLixeira: View {
             : limpo
     }
 
+    private var tipoDoItem: (titulo: String, simbolo: String) {
+        if arquivo.resumo != nil || !arquivo.trechos.isEmpty {
+            return ("TRANSCRIÇÃO", "text.bubble")
+        }
+        if arquivo.duracao > 0 {
+            return ("ÁUDIO", "waveform")
+        }
+        if !arquivo.notas.isEmpty {
+            return ("NOTA", "note.text")
+        }
+        return ("ARQUIVO", "doc")
+    }
+
     private var dataCurta: String {
         arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated))
             .uppercased()
@@ -59,25 +72,12 @@ struct CartaoDaLixeira: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
-                HStack(spacing: 10) {
-                    Text("ENTREVISTA")
-                        .font(.callout.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-
-                    Text("ÁUDIOS")
-                        .font(.callout.weight(.bold))
-                        .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                        .padding(.horizontal, 12)
-                        .frame(height: 30)
-                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .stroke(PapagaioTema.borda, lineWidth: 1)
-                        }
-                }
+                Label(tipoDoItem.titulo, systemImage: tipoDoItem.simbolo)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
 
                 Spacer(minLength: 8)
 
@@ -145,6 +145,164 @@ struct CartaoDaLixeira: View {
         .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
         .cartaoPapagaio()
         .opacity(emOperacao ? 0.72 : 1)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+struct TarefaNaLixeira: Identifiable, Codable, Equatable {
+    let id: UUID
+    let arquivoID: ArquivoID
+    let conversaTitulo: String
+    let tarefa: TarefaDaConversa
+    let apagadoEm: Date
+
+    init(
+        id: UUID = UUID(),
+        arquivoID: ArquivoID,
+        conversaTitulo: String,
+        tarefa: TarefaDaConversa,
+        apagadoEm: Date = Date()
+    ) {
+        self.id = id
+        self.arquivoID = arquivoID
+        self.conversaTitulo = conversaTitulo
+        self.tarefa = tarefa
+        self.apagadoEm = apagadoEm
+    }
+}
+
+enum LixeiraDeTarefas {
+    static func itens() -> [TarefaNaLixeira] {
+        guard let dados = UserDefaults.standard.data(forKey: chave),
+              let itens = try? JSONDecoder().decode([TarefaNaLixeira].self, from: dados)
+        else { return [] }
+        return itens.sorted { $0.apagadoEm > $1.apagadoEm }
+    }
+
+    static func mover(_ tarefa: TarefaDaConversa, arquivoID: ArquivoID, conversaTitulo: String) {
+        var atuais = itens()
+        guard !atuais.contains(where: { $0.arquivoID == arquivoID && $0.tarefa.id == tarefa.id }) else { return }
+        atuais.append(TarefaNaLixeira(arquivoID: arquivoID, conversaTitulo: conversaTitulo, tarefa: tarefa))
+        salvar(atuais)
+    }
+
+    static func restaurar(_ item: TarefaNaLixeira, arquivos: [Arquivo]) {
+        guard let arquivo = arquivos.first(where: { $0.id == item.arquivoID }) else { return }
+        var tarefas = TarefasGeraisStore.carregar(arquivo)
+        if !tarefas.contains(where: { $0.id == item.tarefa.id }) {
+            tarefas.append(item.tarefa)
+            TarefasGeraisStore.salvar(tarefas, para: item.arquivoID)
+        }
+        remover(item)
+    }
+
+    static func remover(_ item: TarefaNaLixeira) {
+        salvar(itens().filter { $0.id != item.id })
+    }
+
+    static func restaurarTudo(arquivos: [Arquivo]) {
+        itens().forEach { restaurar($0, arquivos: arquivos) }
+    }
+
+    static func esvaziar() {
+        UserDefaults.standard.removeObject(forKey: chave)
+    }
+
+    private static func salvar(_ itens: [TarefaNaLixeira]) {
+        guard let dados = try? JSONEncoder().encode(itens) else { return }
+        UserDefaults.standard.set(dados, forKey: chave)
+    }
+
+    private static let chave = "tarefasNaLixeira"
+}
+
+struct CartaoDaTarefaNaLixeira: View {
+    let item: TarefaNaLixeira
+    let aoRestaurar: () -> Void
+    let aoApagarDefinitivamente: () -> Void
+
+    private var prazoDeExclusao: String {
+        guard let limite = Calendar.current.date(byAdding: .day, value: 30, to: item.apagadoEm) else {
+            return "Exclui em 30 dias"
+        }
+        let dias = Calendar.current.dateComponents([.day], from: Date(), to: limite).day ?? 0
+        if dias <= 0 { return "Exclui hoje" }
+        if dias == 1 { return "Exclui em 1 dia" }
+        return "Exclui em \(dias) dias"
+    }
+
+    private var dataCurta: String {
+        (item.tarefa.prazo ?? item.apagadoEm)
+            .formatted(.dateTime.day().month(.abbreviated))
+            .uppercased()
+            .replacingOccurrences(of: ".", with: "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                Label("TAREFA", systemImage: "checklist")
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 30)
+                    .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 16) {
+                    Button(action: aoRestaurar) {
+                        Image(systemName: "arrow.uturn.backward.circle")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .help("Restaurar tarefa")
+
+                    Button(role: .destructive, action: aoApagarDefinitivamente) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .help("Apagar tarefa definitivamente")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(item.tarefa.titulo)
+                    .font(.title.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
+                    .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
+                    .lineLimit(2)
+
+                Text("Tarefa removida de \(item.conversaTitulo). Restaure para voltar ao painel de tarefas dessa conversa.")
+                    .font(.body)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineSpacing(3)
+                    .lineLimit(3)
+            }
+
+            Spacer(minLength: 0)
+
+            SeparadorPapagaio()
+
+            HStack(spacing: 18) {
+                Label(dataCurta, systemImage: "calendar")
+                Label(item.tarefa.responsavel?.isEmpty == false ? item.tarefa.responsavel! : "SEM RESPONSÁVEL", systemImage: "person")
+
+                Spacer(minLength: 8)
+
+                Text(prazoDeExclusao)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
+        .cartaoPapagaio()
         .accessibilityElement(children: .contain)
     }
 }

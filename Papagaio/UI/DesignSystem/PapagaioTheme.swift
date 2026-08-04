@@ -21,7 +21,7 @@ enum PapagaioTema {
 
     static let raioDeCard: CGFloat = 16
     static let raioDeControle: CGFloat = 12
-    static let espacamentoDePagina: CGFloat = 32
+    static let espacamentoDePagina: CGFloat = 22
     static let larguraMaximaDeConteudo: CGFloat = 1_420
 }
 

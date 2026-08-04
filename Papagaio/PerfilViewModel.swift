@@ -14,9 +14,15 @@ final class PerfilViewModel: NSObject {
     private enum Chave {
         static let servico = "com.papagaio.Papagaio.perfil"
         static let conta = "apple-user-identifier"
+        static let nome = "perfil.nome"
+        static let email = "perfil.email"
+        static let avatar = "perfil.avatar"
     }
 
     private(set) var identificador: String?
+    var nome = "Alexandre Silva"
+    var email = "alexandre.silva@creativeflow.com"
+    var avatarURL: URL?
     private(set) var verificando = false
     private(set) var erro: String?
     private var observadorDeRevogacao: NSObjectProtocol?
@@ -25,6 +31,7 @@ final class PerfilViewModel: NSObject {
 
     override init() {
         super.init()
+        carregarPerfilLocal()
         observadorDeRevogacao = NotificationCenter.default.addObserver(
             forName: ASAuthorizationAppleIDProvider.credentialRevokedNotification,
             object: nil,
@@ -61,6 +68,31 @@ final class PerfilViewModel: NSObject {
     func sair() {
         // Sair só remove o perfil deste app. Não revoga o consentimento na Apple.
         removerCredencial()
+    }
+
+    func salvarDados(nome: String, email: String) {
+        let nomeLimpo = nome.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailLimpo = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        self.nome = nomeLimpo.isEmpty ? self.nome : nomeLimpo
+        self.email = emailLimpo.isEmpty ? self.email : emailLimpo
+        UserDefaults.standard.set(self.nome, forKey: Chave.nome)
+        UserDefaults.standard.set(self.email, forKey: Chave.email)
+    }
+
+    func escolherAvatar(_ url: URL) {
+        do {
+            let dados = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+            UserDefaults.standard.set(dados, forKey: Chave.avatar)
+            avatarURL = resolverBookmarkDeAvatar()
+        } catch {
+            avatarURL = url
+            self.erro = "Não foi possível guardar a foto do perfil: \(error.localizedDescription)"
+        }
     }
 
     func dispensarErro() {
@@ -117,6 +149,27 @@ final class PerfilViewModel: NSObject {
         identificador = nil
     }
 
+    private func carregarPerfilLocal() {
+        if let nomeSalvo = UserDefaults.standard.string(forKey: Chave.nome), !nomeSalvo.isEmpty {
+            nome = nomeSalvo
+        }
+        if let emailSalvo = UserDefaults.standard.string(forKey: Chave.email), !emailSalvo.isEmpty {
+            email = emailSalvo
+        }
+        avatarURL = resolverBookmarkDeAvatar()
+    }
+
+    private func resolverBookmarkDeAvatar() -> URL? {
+        guard let dados = UserDefaults.standard.data(forKey: Chave.avatar) else { return nil }
+        var obsoleto = false
+        return try? URL(
+            resolvingBookmarkData: dados,
+            options: [.withSecurityScope],
+            relativeTo: nil,
+            bookmarkDataIsStale: &obsoleto
+        )
+    }
+
     private func removerDoKeychain() {
         let consulta: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
@@ -146,6 +199,13 @@ extension PerfilViewModel: ASAuthorizationControllerDelegate {
             do {
                 try self.salvarNoKeychain(id)
                 self.identificador = id
+                let nome = [credencial.fullName?.givenName, credencial.fullName?.familyName]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
+                self.salvarDados(
+                    nome: nome.isEmpty ? self.nome : nome,
+                    email: credencial.email ?? self.email
+                )
             } catch {
                 self.erro = "Não foi possível guardar sua sessão: \(error.localizedDescription)"
             }

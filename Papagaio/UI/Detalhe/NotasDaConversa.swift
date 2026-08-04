@@ -89,6 +89,7 @@ struct EditorDeNotasDaConversa: View {
                 .font(.system(size: 17))
                 .foregroundStyle(PapagaioTema.texto)
                 .scrollContentBackground(.hidden)
+                .textEditorStyle(.plain)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 18)
                 .focused($editorEmFoco)
@@ -98,8 +99,8 @@ struct EditorDeNotasDaConversa: View {
                 Text("Escreva suas observações aqui...")
                     .font(.system(size: 17))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
-                    .padding(.horizontal, 26)
-                    .padding(.vertical, 26)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 18)
                     .allowsHitTesting(false)
             }
         }
@@ -110,11 +111,11 @@ struct EditorDeNotasDaConversa: View {
                 .fill(PapagaioTema.destaque)
                 .frame(width: 4)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(editorEmFoco ? PapagaioTema.destaque : PapagaioTema.borda, lineWidth: editorEmFoco ? 1.4 : 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var barraDeFormatacao: some View {

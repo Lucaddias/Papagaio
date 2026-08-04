@@ -14,6 +14,9 @@ struct BibliotecaHomeView: View {
     @Binding var mostrandoImportador: Bool
     let processamentoAutomatico: Bool
     let aoAlternarGravacao: () async -> Void
+    let aoPausarGravacao: () async -> Void
+    let aoContinuarGravacao: () async -> Void
+    let aoCancelarGravacao: () async -> Void
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
 
@@ -21,7 +24,8 @@ struct BibliotecaHomeView: View {
     @State private var confirmandoEsvaziarLixeira = false
     @State private var menuAberto: ArquivoID?
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
-    @State private var atalhoSelecionado: AtalhoDaBiblioteca = .recentes
+    @State private var atalhoSelecionado: AtalhoDaBiblioteca?
+    @State private var atalhoVisualSelecionado: AtalhoDaBiblioteca?
     @State private var versaoDasPreferenciasVisuais = 0
     @State private var criandoPasta = false
     @State private var novaPasta = ""
@@ -99,6 +103,18 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    private var tarefasNaLixeira: [TarefaNaLixeira] {
+        _ = versaoDasPreferenciasVisuais
+        let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tarefas = LixeiraDeTarefas.itens()
+        guard !termo.isEmpty else { return tarefas }
+        return tarefas.filter {
+            $0.tarefa.titulo.localizedCaseInsensitiveContains(termo)
+                || $0.conversaTitulo.localizedCaseInsensitiveContains(termo)
+                || ($0.tarefa.responsavel?.localizedCaseInsensitiveContains(termo) ?? false)
+        }
+    }
+
     private var apresentandoConfirmacaoDeExclusao: Binding<Bool> {
         Binding(
             get: { arquivoParaExclusaoDefinitiva != nil },
@@ -133,6 +149,13 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    private func limparAtalhoVisual() {
+        guard atalhoVisualSelecionado != nil else { return }
+        withAnimation(.snappy(duration: 0.16)) {
+            atalhoVisualSelecionado = nil
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -143,12 +166,13 @@ struct BibliotecaHomeView: View {
                     HStack(spacing: 16) {
                         if secaoSelecionada == .todos {
                             AtalhosDaBiblioteca(
-                                selecionado: $atalhoSelecionado,
+                                selecionado: $atalhoVisualSelecionado,
                                 aoSelecionarRecentes: {
                                     withAnimation(.snappy(duration: 0.18)) {
                                         filtroSelecionado = .todas
                                         pastaSelecionada = nil
                                         atalhoSelecionado = .recentes
+                                        atalhoVisualSelecionado = .recentes
                                     }
                                 },
                                 aoSelecionarFavoritos: {
@@ -156,14 +180,17 @@ struct BibliotecaHomeView: View {
                                         filtroSelecionado = .todas
                                         pastaSelecionada = nil
                                         atalhoSelecionado = .favoritos
+                                        atalhoVisualSelecionado = .favoritos
                                     }
                                 }
                             )
                         } else if let biblioteca {
                             AcoesDaLixeira(
-                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty,
+                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty,
                                 aoRestaurarTudo: {
                                     Task { await biblioteca.restaurarTudoDaLixeira() }
+                                    LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                                    atualizarPreferenciasVisuais()
                                 },
                                 aoEsvaziar: {
                                     confirmandoEsvaziarLixeira = true
@@ -185,7 +212,8 @@ struct BibliotecaHomeView: View {
                     FiltroDeConversas(
                         selecionado: $filtroSelecionado,
                         pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado
+                        atalhoSelecionado: $atalhoSelecionado,
+                        aoLimparAtalhoVisual: limparAtalhoVisual
                     )
                 }
 
@@ -195,6 +223,7 @@ struct BibliotecaHomeView: View {
                         selecionada: $pastaSelecionada,
                         aoCriarPasta: abrirCriacaoDePasta
                     )
+                    .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
                 }
 
                 if let modelos, !modelos.pronto {
@@ -209,8 +238,11 @@ struct BibliotecaHomeView: View {
                     PainelDeGravacao(
                         waveform: gravador.waveform,
                         tempoDeGravacao: gravador.tempoDeGravacao,
-                        processamentoAutomatico: processamentoAutomatico,
-                        aoFinalizar: aoAlternarGravacao
+                        pausado: gravador.pausado,
+                        aoPausar: aoPausarGravacao,
+                        aoContinuar: aoContinuarGravacao,
+                        aoFinalizar: aoAlternarGravacao,
+                        aoCancelar: aoCancelarGravacao
                     )
 
                     PainelDeNotasDuranteGravacao(gravador: gravador)
@@ -224,7 +256,10 @@ struct BibliotecaHomeView: View {
                     FalhaDaGravacao(mensagem: falhaDaGravacao)
                 }
 
-                gradeDeConversas
+                if !gravador.gravando {
+                    gradeDeConversas
+                        .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
+                }
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -235,6 +270,10 @@ struct BibliotecaHomeView: View {
             })
         }
         .background(PapagaioTema.fundo)
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded {
+            fecharMenu()
+        })
         .confirmationDialog(
             "Apagar definitivamente?",
             isPresented: apresentandoConfirmacaoDeExclusao,
@@ -260,6 +299,8 @@ struct BibliotecaHomeView: View {
             if let biblioteca {
                 Button("Esvaziar lixeira", role: .destructive) {
                     Task { await biblioteca.esvaziarLixeira() }
+                    LixeiraDeTarefas.esvaziar()
+                    atualizarPreferenciasVisuais()
                 }
             }
             Button("Cancelar", role: .cancel) {}
@@ -278,7 +319,8 @@ struct BibliotecaHomeView: View {
                 guard !nome.isEmpty else { return }
                 PreferenciasVisuaisDoArquivo.criarPasta(nome)
                 filtroSelecionado = .pastas
-                atalhoSelecionado = .recentes
+                atalhoSelecionado = nil
+                atalhoVisualSelecionado = nil
                 pastaSelecionada = nome
                 novaPasta = ""
                 atualizarPreferenciasVisuais()
@@ -294,12 +336,12 @@ struct BibliotecaHomeView: View {
     @ViewBuilder
     private var gradeDeConversas: some View {
         let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: 20, alignment: .top)]
-        let colunasDaLixeira = [GridItem(.adaptive(minimum: 360, maximum: 430), spacing: 22, alignment: .top)]
+        let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: 22, alignment: .top)]
 
         switch secaoSelecionada {
         case .todos:
             LazyVGrid(columns: colunas, spacing: 20) {
-                if filtroSelecionado != .pastas || pastaSelecionada != nil {
+                if !gravador.gravando && (filtroSelecionado != .pastas || pastaSelecionada != nil) {
                     CartaoNovaConversa(
                         gravando: gravador.gravando,
                         bloqueado: gravador.estado == .processando,
@@ -319,6 +361,9 @@ struct BibliotecaHomeView: View {
                             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
                             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
                             aoRenomear: { novoTitulo in Task { await biblioteca.renomear(arquivo, para: novoTitulo) } },
+                            aoAtualizarMetadados: { titulo, data, duracao in
+                                Task { await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao) }
+                            },
                             aoDuplicar: {
                                 Task {
                                     if let copia = await biblioteca.duplicar(arquivo) {
@@ -340,7 +385,8 @@ struct BibliotecaHomeView: View {
                 }
             }
 
-            if filtroSelecionado != .pastas || pastaSelecionada != nil,
+            if !gravador.gravando,
+               filtroSelecionado != .pastas || pastaSelecionada != nil,
                biblioteca?.arquivos.isEmpty == false,
                arquivosFiltrados.isEmpty {
                 CartaoDeEstadoVazio(
@@ -352,7 +398,8 @@ struct BibliotecaHomeView: View {
                 .cartaoPapagaio()
             }
 
-            if (filtroSelecionado != .pastas || pastaSelecionada != nil),
+            if !gravador.gravando,
+               (filtroSelecionado != .pastas || pastaSelecionada != nil),
                biblioteca?.arquivos.isEmpty ?? true {
                 Text("A primeira conversa aparecerá aqui depois de gravar ou importar um áudio.")
                     .font(.callout)
@@ -362,7 +409,7 @@ struct BibliotecaHomeView: View {
             }
 
         case .lixeira:
-            if biblioteca?.arquivosNaLixeira.isEmpty ?? true {
+            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
                     titulo: "A lixeira está vazia",
@@ -370,7 +417,7 @@ struct BibliotecaHomeView: View {
                 )
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
-            } else if arquivosFiltrados.isEmpty {
+            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "magnifyingglass",
                     titulo: "Nenhum arquivo encontrado",
@@ -388,6 +435,22 @@ struct BibliotecaHomeView: View {
                                 aoRestaurar: { recuperar(arquivo) },
                                 aoPedirExclusaoDefinitiva: {
                                     arquivoParaExclusaoDefinitiva = arquivo
+                                }
+                            )
+                        }
+                    }
+
+                    ForEach(tarefasNaLixeira) { item in
+                        if let biblioteca {
+                            CartaoDaTarefaNaLixeira(
+                                item: item,
+                                aoRestaurar: {
+                                    LixeiraDeTarefas.restaurar(item, arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                                    atualizarPreferenciasVisuais()
+                                },
+                                aoApagarDefinitivamente: {
+                                    LixeiraDeTarefas.remover(item)
+                                    atualizarPreferenciasVisuais()
                                 }
                             )
                         }
@@ -459,7 +522,8 @@ private enum FiltroDaBiblioteca: String, CaseIterable, Identifiable {
 private struct FiltroDeConversas: View {
     @Binding var selecionado: FiltroDaBiblioteca
     @Binding var pastaSelecionada: String?
-    @Binding var atalhoSelecionado: AtalhoDaBiblioteca
+    @Binding var atalhoSelecionado: AtalhoDaBiblioteca?
+    let aoLimparAtalhoVisual: () -> Void
 
     var body: some View {
         HStack(spacing: 18) {
@@ -468,7 +532,8 @@ private struct FiltroDeConversas: View {
                     withAnimation(.snappy(duration: 0.18)) {
                         selecionado = filtro
                         pastaSelecionada = nil
-                        atalhoSelecionado = .recentes
+                        atalhoSelecionado = nil
+                        aoLimparAtalhoVisual()
                     }
                 } label: {
                     Label(filtro.rawValue, systemImage: filtro.simbolo)
@@ -491,42 +556,63 @@ private enum AtalhoDaBiblioteca: String, Identifiable {
 }
 
 private struct AtalhosDaBiblioteca: View {
-    @Binding var selecionado: AtalhoDaBiblioteca
+    @Binding var selecionado: AtalhoDaBiblioteca?
     let aoSelecionarRecentes: () -> Void
     let aoSelecionarFavoritos: () -> Void
 
     var body: some View {
         HStack(spacing: 18) {
             Button(action: aoSelecionarRecentes) {
-                Label("Recentes", systemImage: "clock.arrow.circlepath")
-                    .foregroundStyle(selecionado == .recentes ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                BotaoTextualDeAtalhoDaBiblioteca(
+                    titulo: "Recentes",
+                    simbolo: "clock.arrow.circlepath",
+                    selecionado: selecionado == .recentes
+                )
             }
+            .buttonStyle(.plain)
             .help("Recentes")
 
             Button(action: aoSelecionarFavoritos) {
-                Label("Favoritos", systemImage: selecionado == .favoritos ? "star.fill" : "star")
-                    .foregroundStyle(selecionado == .favoritos ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                BotaoTextualDeAtalhoDaBiblioteca(
+                    titulo: "Favoritos",
+                    simbolo: selecionado == .favoritos ? "star.fill" : "star",
+                    selecionado: selecionado == .favoritos
+                )
             }
+            .buttonStyle(.plain)
             .help("Favoritos")
         }
-        .buttonStyle(AtalhoDaBibliotecaButtonStyle())
         .accessibilityLabel("Atalhos da biblioteca")
     }
 }
 
-private struct AtalhoDaBibliotecaButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+private struct BotaoTextualDeAtalhoDaBiblioteca: View {
+    let titulo: String
+    let simbolo: String
+    let selecionado: Bool
+    @State private var pairando = false
+
+    var body: some View {
+        Label(titulo, systemImage: simbolo)
             .font(.callout.weight(.semibold))
-            .foregroundStyle(PapagaioTema.textoSecundario)
+            .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
             .padding(.horizontal, 16)
             .frame(height: 38)
-            .background(PapagaioTema.superficie, in: Capsule())
+            .background(fundo, in: Capsule())
             .overlay {
                 Capsule()
-                    .stroke(PapagaioTema.borda.opacity(0.86), lineWidth: 1)
+                    .stroke(selecionado ? PapagaioTema.destaque.opacity(0.54) : PapagaioTema.borda.opacity(pairando ? 1 : 0.86), lineWidth: 1)
             }
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .contentShape(Capsule())
+            .onHover { pairando = $0 }
+            .animation(.easeOut(duration: 0.14), value: pairando)
+            .animation(.easeOut(duration: 0.14), value: selecionado)
+    }
+
+    private var fundo: Color {
+        if selecionado { return PapagaioTema.destaqueSuave.opacity(0.76) }
+        if pairando { return PapagaioTema.destaqueSuave.opacity(0.42) }
+        return PapagaioTema.superficie
     }
 }
 
@@ -659,6 +745,36 @@ private struct CartaoDePasta: View {
         let resto = minutos % 60
         return resto == 0 ? "\(horas) h" : "\(horas) h \(resto) min"
     }
+
+    private func segundosDaDuracao(_ texto: String) -> TimeInterval? {
+        let limpo = texto
+            .lowercased()
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpo.isEmpty else { return nil }
+
+        let padroes: [(String, Double)] = [
+            (#"([0-9]+(?:\.[0-9]+)?)\s*h"#, 3600),
+            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:min|m)"#, 60),
+            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:seg|s)"#, 1)
+        ]
+
+        var total: Double = 0
+        for (padrao, multiplicador) in padroes {
+            guard let regex = try? NSRegularExpression(pattern: padrao) else { continue }
+            let intervalo = NSRange(limpo.startIndex..<limpo.endIndex, in: limpo)
+            regex.enumerateMatches(in: limpo, range: intervalo) { match, _, _ in
+                guard let match,
+                      let range = Range(match.range(at: 1), in: limpo),
+                      let valor = Double(limpo[range])
+                else { return }
+                total += valor * multiplicador
+            }
+        }
+
+        if total > 0 { return total }
+        return Double(limpo).map { $0 * 60 }
+    }
 }
 private struct CartaoNovaConversa: View {
     let gravando: Bool
@@ -669,21 +785,17 @@ private struct CartaoNovaConversa: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: gravando ? "waveform" : "plus")
+            Image(systemName: "plus")
                 .font(.system(size: 25, weight: .medium))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 64, height: 64)
                 .background(PapagaioTema.destaqueSuave, in: Circle())
 
             VStack(spacing: 5) {
-                Text(gravando ? "Gravação em andamento" : "Gerar nova conversa")
+                Text("Gerar nova conversa")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
-                Text(
-                    gravando
-                        ? "A captura continua ativa enquanto você usa a biblioteca."
-                        : "Grave áudio ou importe um arquivo para transcrever."
-                )
+                Text("Grave áudio ou importe um arquivo para transcrever.")
                 .font(.callout)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(PapagaioTema.textoSecundario)
@@ -706,29 +818,22 @@ private struct CartaoNovaConversa: View {
                 )
             }
 
-            if gravando {
-                Button("Finalizar gravação", systemImage: "stop.fill") {
+            HStack(spacing: 10) {
+                Button("Gravar", systemImage: "mic.fill") {
                     Task { await aoAlternarGravacao() }
                 }
                 .buttonStyle(BotaoPrincipalPapagaio())
-            } else {
-                HStack(spacing: 10) {
-                    Button("Gravar", systemImage: "mic.fill") {
-                        Task { await aoAlternarGravacao() }
-                    }
-                    .buttonStyle(BotaoPrincipalPapagaio())
-                    .disabled(bloqueado || !prontoParaEntrada)
+                .disabled(bloqueado || !prontoParaEntrada)
 
-                    Button("Importar", systemImage: "arrow.down.doc") {
-                        aoImportar()
-                    }
-                    .buttonStyle(BotaoDeContornoPapagaio())
-                    .disabled(bloqueado || !prontoParaEntrada)
+                Button("Importar", systemImage: "arrow.down.doc") {
+                    aoImportar()
                 }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .disabled(bloqueado || !prontoParaEntrada)
             }
         }
         .padding(28)
-        .frame(maxWidth: .infinity, minHeight: 278)
+        .frame(maxWidth: .infinity, minHeight: 390)
         .background(PapagaioTema.superficie.opacity(0.55), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
@@ -749,6 +854,7 @@ private struct CartaoDeConversa: View {
     let emOperacaoDeLixeira: Bool
     let aoReprocessar: () -> Void
     let aoRenomear: (String) -> Void
+    let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void
     let aoDuplicar: () -> Void
     let urlDeAudio: URL
     let menuAberto: Bool
@@ -757,13 +863,24 @@ private struct CartaoDeConversa: View {
     let aoAlterarPreferenciasVisuais: () -> Void
     let aoMoverParaLixeira: () -> Void
 
-    @State private var renomeando = false
-    @State private var movendoParaPasta = false
-    @State private var novoTitulo = ""
+    @State private var editandoInformacoes = false
+    @State private var escolhendoPastaDestino = false
+    @State private var criandoPastaParaMover = false
+    @State private var tituloEditado = ""
+    @State private var entrevistadoEditado = ""
+    @State private var emailDoEntrevistadoEditado = ""
+    @State private var entrevistadoresEditados = ""
+    @State private var emailDosEntrevistadoresEditado = ""
+    @State private var descricaoEditada = ""
+    @State private var formatoEditado = ""
+    @State private var participantesEditados = ""
+    @State private var dataEditada = Date()
+    @State private var duracaoEditada = ""
     @State private var nomeDaPasta = ""
     @State private var favorito: Bool
     @State private var pasta: String?
     @State private var capaURL: URL?
+    @State private var metadados: MetadadosVisuaisDoArquivo
 
     init(
         arquivo: Arquivo,
@@ -773,6 +890,7 @@ private struct CartaoDeConversa: View {
         emOperacaoDeLixeira: Bool,
         aoReprocessar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
+        aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
         aoDuplicar: @escaping () -> Void,
         urlDeAudio: URL,
         menuAberto: Bool,
@@ -788,6 +906,7 @@ private struct CartaoDeConversa: View {
         self.emOperacaoDeLixeira = emOperacaoDeLixeira
         self.aoReprocessar = aoReprocessar
         self.aoRenomear = aoRenomear
+        self.aoAtualizarMetadados = aoAtualizarMetadados
         self.aoDuplicar = aoDuplicar
         self.urlDeAudio = urlDeAudio
         self.menuAberto = menuAberto
@@ -798,9 +917,28 @@ private struct CartaoDeConversa: View {
         _favorito = State(initialValue: PreferenciasVisuaisDoArquivo.favorito(arquivo.id))
         _pasta = State(initialValue: PreferenciasVisuaisDoArquivo.pasta(arquivo.id))
         _capaURL = State(initialValue: PreferenciasVisuaisDoArquivo.capa(arquivo.id))
+        _metadados = State(initialValue: PreferenciasVisuaisDoArquivo.metadados(arquivo.id))
     }
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
+    private var entrevistado: String {
+        let valor = listaDePessoas(metadados.entrevistado)
+        return valor.isEmpty ? "Não informado" : valor
+    }
+
+    private var entrevistadores: String {
+        let valor = listaDePessoas(metadados.entrevistadores)
+        return valor.isEmpty ? "Não informado" : valor
+    }
+
+    private var participantes: Int {
+        max(1, metadados.participantes ?? participantesDetectados)
+    }
+
+    private var participantesDetectados: Int {
+        let speakers = Set(arquivo.trechos.compactMap(\.speaker).filter { !$0.isEmpty })
+        return max(1, speakers.count)
+    }
 
     private var estiloDoStatus: EstiloDoStatus {
         if processando { return .destaque }
@@ -837,11 +975,26 @@ private struct CartaoDeConversa: View {
                     }
                     .padding(.trailing, 28)
 
-                    SeloDeStatus(
-                        texto: estado,
-                        simbolo: simboloDoStatus,
-                        estilo: estiloDoStatus
-                    )
+                    if !metadados.descricao.isEmpty {
+                        Text(metadados.descricao)
+                            .font(.callout)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                            .lineLimit(2)
+                    }
+
+                    HStack(spacing: 8) {
+                        SeloDeStatus(
+                            texto: estado,
+                            simbolo: simboloDoStatus,
+                            estilo: estiloDoStatus
+                        )
+
+                        SeloDeStatus(
+                            texto: "Áudio local",
+                            simbolo: "lock.fill",
+                            estilo: .neutro
+                        )
+                    }
 
                     if let pasta {
                         SeloDeStatus(
@@ -851,12 +1004,25 @@ private struct CartaoDeConversa: View {
                         )
                     }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label(
-                            arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
-                            systemImage: "calendar"
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 135), spacing: 8, alignment: .leading)],
+                        alignment: .leading,
+                        spacing: 7
+                    ) {
+                        MetadadoDoCard(simbolo: "person", rotulo: "Entrevistado", valor: entrevistado)
+                        MetadadoDoCard(simbolo: "person.crop.circle.badge.checkmark", rotulo: "Entrevistadores", valor: entrevistadores)
+                        MetadadoDoCard(
+                            simbolo: metadados.formato == "Presencial" ? "mappin.and.ellipse" : "video",
+                            rotulo: "Formato",
+                            valor: metadados.formato.isEmpty ? "Não informado" : metadados.formato
                         )
-                        Label(tempoDescritivo(arquivo.duracao), systemImage: "clock")
+                        MetadadoDoCard(simbolo: "person.2", rotulo: "Participantes", valor: "\(participantes)")
+                        MetadadoDoCard(
+                            simbolo: "calendar",
+                            rotulo: "Data",
+                            valor: arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year())
+                        )
+                        MetadadoDoCard(simbolo: "clock", rotulo: "Duração", valor: tempoDescritivo(arquivo.duracao))
                     }
                     .font(.caption.weight(.medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -867,7 +1033,7 @@ private struct CartaoDeConversa: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Conversa \(titulo). \(estado)")
-        .frame(maxWidth: .infinity, minHeight: 278, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 390, alignment: .top)
         .cartaoPapagaio()
         .overlay(alignment: .topLeading) {
             botaoDeFavoritoDoCard
@@ -880,32 +1046,57 @@ private struct CartaoDeConversa: View {
         .onChange(of: arquivo.id.rawValue) { _, _ in
             sincronizarPreferenciasVisuais()
         }
-        .alert("Renomear arquivo", isPresented: $renomeando) {
-            TextField("Nome", text: $novoTitulo)
-            Button("Renomear") {
-                aoRenomear(novoTitulo)
+        .sheet(isPresented: $editandoInformacoes) {
+            EditorDeInformacoesDoCard(
+                modo: .edicao,
+                titulo: $tituloEditado,
+                entrevistado: $entrevistadoEditado,
+                emailDoEntrevistado: $emailDoEntrevistadoEditado,
+                entrevistadores: $entrevistadoresEditados,
+                emailDosEntrevistadores: $emailDosEntrevistadoresEditado,
+                descricao: $descricaoEditada,
+                formato: $formatoEditado,
+                participantes: $participantesEditados,
+                data: $dataEditada,
+                duracao: $duracaoEditada,
+                aoCancelar: { editandoInformacoes = false },
+                aoSalvar: salvarInformacoesDoCard
+            )
+        }
+        .confirmationDialog("Mover para pasta", isPresented: $escolhendoPastaDestino) {
+            ForEach(PreferenciasVisuaisDoArquivo.pastas(), id: \.self) { nome in
+                Button(nome) {
+                    moverParaPasta(nome)
+                }
             }
+
+            Button("Criar nova pasta…") {
+                nomeDaPasta = ""
+                criandoPastaParaMover = true
+            }
+
+            if pasta != nil {
+                Button("Remover da pasta", role: .destructive) {
+                    pasta = nil
+                    PreferenciasVisuaisDoArquivo.definirPasta(nil, para: arquivo.id)
+                    aoAlterarPreferenciasVisuais()
+                }
+            }
+
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Escolha o nome que aparece na biblioteca e nos detalhes.")
+            Text("Escolha para qual pasta esta conversa deve ir.")
         }
-        .alert("Mover para pasta", isPresented: $movendoParaPasta) {
+        .alert("Criar pasta e mover", isPresented: $criandoPastaParaMover) {
             TextField("Nome da pasta", text: $nomeDaPasta)
-            Button("Mover") {
+            Button("Criar e mover") {
                 let limpa = nomeDaPasta.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !limpa.isEmpty else { return }
-                pasta = limpa
-                PreferenciasVisuaisDoArquivo.definirPasta(limpa, para: arquivo.id)
-                aoAlterarPreferenciasVisuais()
-            }
-            Button("Remover pasta", role: .destructive) {
-                pasta = nil
-                PreferenciasVisuaisDoArquivo.definirPasta(nil, para: arquivo.id)
-                aoAlterarPreferenciasVisuais()
+                moverParaPasta(limpa)
             }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Use uma pasta para organizar visualmente este arquivo na biblioteca.")
+            Text("Crie uma pasta nova e esta conversa será movida para ela.")
         }
         .overlay {
             if emOperacaoDeLixeira {
@@ -944,9 +1135,10 @@ private struct CartaoDeConversa: View {
             if menuAberto {
                 MenuDeArquivoAberto(
                     favorito: favorito,
-                    bloqueado: processando || naFila || emOperacaoDeLixeira,
+                    bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
+                    bloqueioDeLixeira: emOperacaoDeLixeira,
                     aoEditarImagem: executarMenu(editarImagem),
-                    aoRenomear: executarMenu(abrirRenomeacao),
+                    aoRenomear: executarMenu(abrirEditorDeInformacoes),
                     aoMoverParaPasta: executarMenu(abrirMoverParaPasta),
                     aoCompartilhar: executarMenu(compartilhar),
                     aoDuplicar: executarMenu(aoDuplicar),
@@ -985,14 +1177,59 @@ private struct CartaoDeConversa: View {
         }
     }
 
-    private func abrirRenomeacao() {
-        novoTitulo = titulo
-        renomeando = true
+    private func abrirEditorDeInformacoes() {
+        tituloEditado = titulo
+        entrevistadoEditado = metadados.entrevistado
+        emailDoEntrevistadoEditado = metadados.emailDoEntrevistado
+        entrevistadoresEditados = metadados.entrevistadores
+        emailDosEntrevistadoresEditado = metadados.emailDosEntrevistadores
+        descricaoEditada = metadados.descricao
+        formatoEditado = metadados.formato
+        participantesEditados = "\(participantes)"
+        dataEditada = arquivo.criadoEm
+        duracaoEditada = tempoDescritivo(arquivo.duracao)
+        editandoInformacoes = true
+    }
+
+    private func salvarInformacoesDoCard() {
+        let tituloLimpo = tituloEditado.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tituloLimpo.isEmpty else { return }
+
+        let participantesLimpos = participantesEditados.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quantidade = Int(participantesLimpos).map { max(1, $0) }
+        let novosMetadados = MetadadosVisuaisDoArquivo(
+            entrevistado: entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDoEntrevistado: emailDoEntrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+            entrevistadores: entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDosEntrevistadores: emailDosEntrevistadoresEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+            descricao: descricaoEditada.trimmingCharacters(in: .whitespacesAndNewlines),
+            formato: formatoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+            participantes: quantidade
+        )
+
+        metadados = novosMetadados
+        PreferenciasVisuaisDoArquivo.definirMetadados(novosMetadados, para: arquivo.id)
+        aoAtualizarMetadados(tituloLimpo, dataEditada, segundosDaDuracao(duracaoEditada) ?? arquivo.duracao)
+        aoAlterarPreferenciasVisuais()
+        editandoInformacoes = false
     }
 
     private func abrirMoverParaPasta() {
-        nomeDaPasta = pasta ?? ""
-        movendoParaPasta = true
+        let pastas = PreferenciasVisuaisDoArquivo.pastas()
+        if pastas.isEmpty {
+            nomeDaPasta = ""
+            criandoPastaParaMover = true
+        } else {
+            escolhendoPastaDestino = true
+        }
+    }
+
+    private func moverParaPasta(_ nome: String) {
+        let limpa = nome.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpa.isEmpty else { return }
+        pasta = limpa
+        PreferenciasVisuaisDoArquivo.definirPasta(limpa, para: arquivo.id)
+        aoAlterarPreferenciasVisuais()
     }
 
     private func alternarFavorito() {
@@ -1007,6 +1244,7 @@ private struct CartaoDeConversa: View {
         favorito = PreferenciasVisuaisDoArquivo.favorito(arquivo.id)
         pasta = PreferenciasVisuaisDoArquivo.pasta(arquivo.id)
         capaURL = PreferenciasVisuaisDoArquivo.capa(arquivo.id)
+        metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
     }
 
     private func editarImagem() {
@@ -1062,11 +1300,50 @@ private struct CartaoDeConversa: View {
         }
         return "\(segundosRestantes) segundos"
     }
+
+    private func segundosDaDuracao(_ texto: String) -> TimeInterval? {
+        let limpo = texto
+            .lowercased()
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpo.isEmpty else { return nil }
+
+        let padroes: [(String, Double)] = [
+            (#"([0-9]+(?:\.[0-9]+)?)\s*h"#, 3600),
+            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:min|m)"#, 60),
+            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:seg|s)"#, 1)
+        ]
+
+        var total: Double = 0
+        for (padrao, multiplicador) in padroes {
+            guard let regex = try? NSRegularExpression(pattern: padrao) else { continue }
+            let intervalo = NSRange(limpo.startIndex..<limpo.endIndex, in: limpo)
+            regex.enumerateMatches(in: limpo, range: intervalo) { match, _, _ in
+                guard let match,
+                      let range = Range(match.range(at: 1), in: limpo),
+                      let valor = Double(limpo[range])
+                else { return }
+                total += valor * multiplicador
+            }
+        }
+
+        if total > 0 { return total }
+        return Double(limpo).map { $0 * 60 }
+    }
+
+    private func listaDePessoas(_ texto: String) -> String {
+        texto
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
 }
 
 private struct MenuDeArquivoAberto: View {
     let favorito: Bool
-    let bloqueado: Bool
+    let bloqueioDeEdicao: Bool
+    let bloqueioDeLixeira: Bool
     let aoEditarImagem: () -> Void
     let aoRenomear: () -> Void
     let aoMoverParaPasta: () -> Void
@@ -1077,11 +1354,11 @@ private struct MenuDeArquivoAberto: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ItemDoMenuDeArquivo(simbolo: "photo.badge.magnifyingglass", titulo: "Editar imagem", acao: aoEditarImagem)
-            ItemDoMenuDeArquivo(simbolo: "pencil", titulo: "Renomear", acao: aoRenomear)
+            ItemDoMenuDeArquivo(simbolo: "pencil.and.outline", titulo: "Editar imagem", acao: aoEditarImagem)
+            ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
             ItemDoMenuDeArquivo(simbolo: "folder", titulo: "Mover para pasta", acao: aoMoverParaPasta)
-            ItemDoMenuDeArquivo(simbolo: "point.3.connected.trianglepath.dotted", titulo: "Compartilhar", acao: aoCompartilhar)
-            ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueado, acao: aoDuplicar)
+            ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
+            ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
             ItemDoMenuDeArquivo(simbolo: favorito ? "star.fill" : "star", titulo: favorito ? "Desfavoritar" : "Favoritar", acao: aoFavoritar)
 
             SeparadorPapagaio()
@@ -1092,7 +1369,7 @@ private struct MenuDeArquivoAberto: View {
                 simbolo: "trash",
                 titulo: "Mover para Lixeira",
                 destrutivo: true,
-                desabilitado: bloqueado,
+                desabilitado: bloqueioDeLixeira,
                 acao: aoMoverParaLixeira
             )
         }
@@ -1143,10 +1420,430 @@ private struct ItemDoMenuDeArquivo: View {
     }
 }
 
+private struct MetadadoDoCard: View {
+    let simbolo: String
+    let rotulo: String
+    let valor: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(rotulo)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
+                    .textCase(.uppercase)
+                Text(valor)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+        } icon: {
+            Image(systemName: simbolo)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+        }
+    }
+}
+
+struct EditorDeInformacoesDoCard: View {
+    let modo: Modo
+    @Binding var titulo: String
+    @Binding var entrevistado: String
+    @Binding var emailDoEntrevistado: String
+    @Binding var entrevistadores: String
+    @Binding var emailDosEntrevistadores: String
+    @Binding var descricao: String
+    @Binding var formato: String
+    @Binding var participantes: String
+    @Binding var data: Date
+    @Binding var duracao: String
+    let aoCancelar: () -> Void
+    let aoSalvar: () -> Void
+
+    enum Modo {
+        case nova
+        case edicao
+
+        var titulo: String {
+            switch self {
+            case .nova: "Nova Entrevista"
+            case .edicao: "Editar informações"
+            }
+        }
+
+        var subtitulo: String {
+            switch self {
+            case .nova: "Configure os detalhes da sua nova sessão"
+            case .edicao: "Atualize os dados que aparecem no card e no cabeçalho."
+            }
+        }
+
+        var botao: String {
+            switch self {
+            case .nova: "Continuar"
+            case .edicao: "Salvar informações"
+            }
+        }
+    }
+
+    private var podeSalvar: Bool {
+        !titulo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(modo.titulo)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(PapagaioTema.texto)
+                    Text(modo.subtitulo)
+                        .font(.callout)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+
+                Spacer()
+
+                Button(action: aoCancelar) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(26)
+
+            SeparadorPapagaio()
+
+            VStack(alignment: .leading, spacing: 26) {
+                campo("Título da entrevista") {
+                    TextField("Ex.: Entrevista com Stakeholders - UX Research", text: $titulo)
+                        .textFieldStyle(.plain)
+                        .campoPapagaio()
+                }
+
+                PessoasDaFichaDaEntrevista(
+                    titulo: "Entrevistado(s)",
+                    nome: $entrevistado,
+                    email: $emailDoEntrevistado,
+                    placeholderNome: "Ex.: Ana Silva",
+                    placeholderEmail: "ana.silva@email.com"
+                )
+
+                PessoasDaFichaDaEntrevista(
+                    titulo: "Entrevistador(es)",
+                    nome: $entrevistadores,
+                    email: $emailDosEntrevistadores,
+                    placeholderNome: "Ex.: João Santos",
+                    placeholderEmail: "joao.santos@empresa.com"
+                )
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        participantesEDuracao
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        participantesEDuracao
+                    }
+                }
+
+                campo("Formato") {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            botoesDeFormato
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            botoesDeFormato
+                        }
+                    }
+                }
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        dataEDescricao
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        dataEDescricao
+                    }
+                }
+            }
+            .padding(26)
+
+            SeparadorPapagaio()
+
+            HStack(spacing: 12) {
+                Spacer()
+
+                Button("Cancelar", systemImage: "xmark", action: aoCancelar)
+                    .buttonStyle(BotaoDeContornoPapagaio())
+
+                Button(modo.botao, systemImage: "arrow.right", action: aoSalvar)
+                    .buttonStyle(BotaoPrincipalPapagaio())
+                    .disabled(!podeSalvar)
+
+                Spacer()
+            }
+            .padding(22)
+            .background(PapagaioTema.superficieSuave.opacity(0.45))
+        }
+        .frame(minWidth: 360, idealWidth: 720, maxWidth: 780, alignment: .leading)
+        .background(PapagaioTema.fundo, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var participantesEDuracao: some View {
+        Group {
+            campo("Participantes") {
+                TextField("Ex.: 12", text: $participantes)
+                    .textFieldStyle(.plain)
+                    .campoPapagaio()
+            }
+
+            campo("Duração") {
+                TextField("Ex.: 45 min ou 1h 15min", text: $duracao)
+                    .textFieldStyle(.plain)
+                    .campoPapagaio()
+            }
+        }
+    }
+
+    private var botoesDeFormato: some View {
+        Group {
+                        BotaoDeFormatoDaEntrevista(
+                            titulo: "Online",
+                            simbolo: "video",
+                            selecionado: formato == "Online"
+                        ) {
+                            formato = "Online"
+                        }
+
+                        BotaoDeFormatoDaEntrevista(
+                            titulo: "Presencial",
+                            simbolo: "mappin.and.ellipse",
+                            selecionado: formato == "Presencial"
+                        ) {
+                            formato = "Presencial"
+                        }
+        }
+    }
+
+    private var dataEDescricao: some View {
+        Group {
+            campo("Data") {
+                DatePicker("Data", selection: $data, displayedComponents: [.date])
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .frame(height: 42)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            campo("Descrição (opcional)") {
+                TextField("Adicione uma descrição opcional", text: $descricao)
+                    .textFieldStyle(.plain)
+                    .campoPapagaio()
+            }
+        }
+    }
+
+    private func campo<Conteudo: View>(_ titulo: String, @ViewBuilder conteudo: () -> Conteudo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(titulo)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            conteudo()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct PessoasDaFichaDaEntrevista: View {
+    let titulo: String
+    @Binding var nome: String
+    @Binding var email: String
+    let placeholderNome: String
+    let placeholderEmail: String
+
+    private var quantidade: Int {
+        max(linhas(nome).count, linhas(email).count, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(titulo)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .textCase(.uppercase)
+
+            ForEach(0..<quantidade, id: \.self) { indice in
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 14) {
+                        camposDaPessoa(indice)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        camposDaPessoa(indice)
+                    }
+                }
+            }
+
+            Button {
+                adicionarPessoa()
+            } label: {
+                Label("Adicionar pessoa", systemImage: "plus.circle")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private func camposDaPessoa(_ indice: Int) -> some View {
+        Group {
+            campo("Nome") {
+                TextField(placeholderNome, text: bindingLinha($nome, indice: indice))
+                    .textFieldStyle(.plain)
+                    .campoPapagaio()
+            }
+
+            campo("E-mail") {
+                TextField(placeholderEmail, text: bindingLinha($email, indice: indice))
+                    .textFieldStyle(.plain)
+                    .campoPapagaio()
+            }
+
+            if quantidade > 1 {
+                        Button {
+                            removerPessoa(indice)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(PapagaioTema.textoSecundario)
+                                .frame(width: 36, height: 42)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remover pessoa")
+            }
+        }
+    }
+
+    private func campo<Conteudo: View>(_ titulo: String, @ViewBuilder conteudo: () -> Conteudo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(titulo)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            conteudo()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func bindingLinha(_ texto: Binding<String>, indice: Int) -> Binding<String> {
+        Binding(
+            get: { valorDaLinha(texto.wrappedValue, indice: indice) },
+            set: { novoValor in
+                texto.wrappedValue = definirLinha(texto.wrappedValue, indice: indice, valor: novoValor)
+            }
+        )
+    }
+
+    private func adicionarPessoa() {
+        nome = adicionarLinha(nome)
+        email = adicionarLinha(email)
+    }
+
+    private func removerPessoa(_ indice: Int) {
+        nome = removerLinha(nome, indice: indice)
+        email = removerLinha(email, indice: indice)
+    }
+
+    private func linhas(_ texto: String) -> [String] {
+        texto.components(separatedBy: .newlines)
+    }
+
+    private func valorDaLinha(_ texto: String, indice: Int) -> String {
+        let valores = linhas(texto)
+        guard valores.indices.contains(indice) else { return "" }
+        return valores[indice]
+    }
+
+    private func definirLinha(_ texto: String, indice: Int, valor: String) -> String {
+        var valores = linhas(texto)
+        while valores.count <= indice { valores.append("") }
+        valores[indice] = valor
+        return valores.joined(separator: "\n")
+    }
+
+    private func adicionarLinha(_ texto: String) -> String {
+        texto.isEmpty ? "\n" : texto + "\n"
+    }
+
+    private func removerLinha(_ texto: String, indice: Int) -> String {
+        var valores = linhas(texto)
+        guard valores.indices.contains(indice) else { return texto }
+        valores.remove(at: indice)
+        return valores.joined(separator: "\n")
+    }
+}
+
+private struct BotaoDeFormatoDaEntrevista: View {
+    let titulo: String
+    let simbolo: String
+    let selecionado: Bool
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            Label(titulo, systemImage: simbolo)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(selecionado ? .white : PapagaioTema.textoSecundario)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(
+                    selecionado ? PapagaioTema.destaque : PapagaioTema.superficie,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(selecionado ? Color.clear : PapagaioTema.borda, lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    func campoPapagaio() -> some View {
+        self
+            .font(.body)
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(PapagaioTema.borda, lineWidth: 1)
+            }
+    }
+}
+
+struct MetadadosVisuaisDoArquivo: Codable, Equatable {
+    var entrevistado: String = ""
+    var emailDoEntrevistado: String = ""
+    var entrevistadores: String = ""
+    var emailDosEntrevistadores: String = ""
+    var descricao: String = ""
+    var formato: String = ""
+    var participantes: Int?
+}
+
 enum PreferenciasVisuaisDoArquivo {
     private static let prefixoFavorito = "arquivoFavorito."
     private static let prefixoPasta = "arquivoPasta."
     private static let prefixoCapa = "arquivoCapa."
+    private static let prefixoMetadados = "arquivoMetadados."
 
     static func favorito(_ id: ArquivoID) -> Bool {
         UserDefaults.standard.bool(forKey: prefixoFavorito + id.rawValue.uuidString)
@@ -1216,6 +1913,18 @@ enum PreferenciasVisuaisDoArquivo {
         UserDefaults.standard.set(dados, forKey: prefixoCapa + id.rawValue.uuidString)
     }
 
+    static func metadados(_ id: ArquivoID) -> MetadadosVisuaisDoArquivo {
+        guard let dados = UserDefaults.standard.data(forKey: prefixoMetadados + id.rawValue.uuidString),
+              let metadados = try? JSONDecoder().decode(MetadadosVisuaisDoArquivo.self, from: dados)
+        else { return MetadadosVisuaisDoArquivo() }
+        return metadados
+    }
+
+    static func definirMetadados(_ metadados: MetadadosVisuaisDoArquivo, para id: ArquivoID) {
+        guard let dados = try? JSONEncoder().encode(metadados) else { return }
+        UserDefaults.standard.set(dados, forKey: prefixoMetadados + id.rawValue.uuidString)
+    }
+
     static func copiar(de origem: ArquivoID, para destino: ArquivoID) {
         definirFavorito(favorito(origem), para: destino)
         definirPasta(pasta(origem), para: destino)
@@ -1226,6 +1935,14 @@ enum PreferenciasVisuaisDoArquivo {
             UserDefaults.standard.set(dados, forKey: chaveDestino)
         } else {
             UserDefaults.standard.removeObject(forKey: chaveDestino)
+        }
+
+        let chaveMetadadosOrigem = prefixoMetadados + origem.rawValue.uuidString
+        let chaveMetadadosDestino = prefixoMetadados + destino.rawValue.uuidString
+        if let dados = UserDefaults.standard.data(forKey: chaveMetadadosOrigem) {
+            UserDefaults.standard.set(dados, forKey: chaveMetadadosDestino)
+        } else {
+            UserDefaults.standard.removeObject(forKey: chaveMetadadosDestino)
         }
     }
 }
@@ -1274,25 +1991,15 @@ private struct CapaDeConversa: View {
                     .foregroundStyle(PapagaioTema.destaqueEscuro.opacity(0.62))
             }
 
-            HStack {
-                Label("Áudio local", systemImage: "lock.fill")
+            if favorito {
+                Image(systemName: "star.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(.white.opacity(0.72), in: Capsule())
-                Spacer()
-
-                if favorito {
-                    Image(systemName: "star.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                        .padding(8)
-                        .background(.white.opacity(0.76), in: Circle())
-                }
+                    .padding(8)
+                    .background(.white.opacity(0.76), in: Circle())
+                    .padding(14)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
-            .padding(14)
-            .frame(maxHeight: .infinity, alignment: .bottom)
         }
         .frame(height: 116)
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
@@ -1303,39 +2010,52 @@ private struct CapaDeConversa: View {
 private struct PainelDeGravacao: View {
     let waveform: [Float]
     let tempoDeGravacao: TimeInterval
-    let processamentoAutomatico: Bool
+    let pausado: Bool
+    let aoPausar: () async -> Void
+    let aoContinuar: () async -> Void
     let aoFinalizar: () async -> Void
+    let aoCancelar: () async -> Void
 
     var body: some View {
-        HStack(spacing: 22) {
-            Image(systemName: "mic.fill")
+        HStack(spacing: 18) {
+            Image(systemName: pausado ? "pause.fill" : "mic.fill")
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 56, height: 56)
                 .background(PapagaioTema.destaqueSuave, in: Circle())
 
-            VStack(alignment: .leading, spacing: 5) {
-                SeloDeStatus(texto: "GRAVANDO", simbolo: "record.circle", estilo: .erro)
-                Text(
-                    processamentoAutomatico
-                        ? "A conversa será salva e adicionada à fila ao finalizar."
-                        : "A conversa será salva. Use Transcrever quando quiser iniciar o processamento."
-                )
-                    .font(.callout)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                Text(tempoCurto(tempoDeGravacao))
-                    .font(.system(.caption, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .monospacedDigit()
-            }
+            Text(tempoCurto(tempoDeGravacao))
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+                .monospacedDigit()
+                .frame(width: 72, alignment: .leading)
 
-            Waveform(amostras: waveform, ativo: true)
+            Waveform(amostras: waveform, ativo: !pausado)
                 .frame(minWidth: 160, maxWidth: .infinity, minHeight: 48, maxHeight: 48)
 
-            Button("Finalizar", systemImage: "stop.fill") {
-                Task { await aoFinalizar() }
+            HStack(spacing: 10) {
+                Button(pausado ? "Continuar" : "Pausar", systemImage: pausado ? "play.fill" : "pause.fill") {
+                    Task {
+                        if pausado {
+                            await aoContinuar()
+                        } else {
+                            await aoPausar()
+                        }
+                    }
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+
+                Button("Finalizar", systemImage: "stop.fill") {
+                    Task { await aoFinalizar() }
+                }
+                .buttonStyle(BotaoPrincipalPapagaio())
+
+                Button("Cancelar", systemImage: "xmark") {
+                    Task { await aoCancelar() }
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .foregroundStyle(PapagaioTema.perigo)
             }
-            .buttonStyle(BotaoPrincipalPapagaio())
         }
         .padding(18)
         .cartaoPapagaio()

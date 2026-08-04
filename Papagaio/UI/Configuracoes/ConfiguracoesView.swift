@@ -50,11 +50,11 @@ struct ConfiguracoesView: View {
                 RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
                     .stroke(PapagaioTema.borda, lineWidth: 1)
             }
-            .frame(maxWidth: 760, minHeight: 180, maxHeight: 180, alignment: .top)
+            .frame(maxWidth: 760, minHeight: 180, alignment: .top)
 
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: 760, alignment: .leading)
+        .larguraDeConteudoPapagaio()
         .padding(.horizontal, PapagaioTema.espacamentoDePagina)
         .padding(.vertical, PapagaioTema.espacamentoDePagina)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

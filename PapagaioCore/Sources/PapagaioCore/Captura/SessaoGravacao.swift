@@ -56,6 +56,7 @@ public actor SessaoGravacao {
     private var capturouSistema = false
     private var sistemaTeveSinal = false
     private var avisos: [String] = []
+    private var pausada = false
 
     /// Cadência do consumidor. 100 ms é folgado para um ring buffer de 30 s e
     /// barato o suficiente para não pesar.
@@ -91,7 +92,7 @@ public actor SessaoGravacao {
     /// estava no ring buffer, o que mantém os marcadores próximos ao instante
     /// real da gravação.
     public func tempoDecorrido() -> TimeInterval {
-        if arquivoMixagem != nil {
+        if arquivoMixagem != nil, !pausada {
             drenar()
         }
         return Self.duracao(paraAmostras: amostrasMixadas)
@@ -164,6 +165,34 @@ public actor SessaoGravacao {
         }
     }
 
+    public func pausar() {
+        guard !pausada else { return }
+        drenar()
+        pausada = true
+        descartarBuffersPendentes()
+    }
+
+    public func continuar() {
+        guard pausada else { return }
+        descartarBuffersPendentes()
+        pausada = false
+    }
+
+    public func descartar() async {
+        tarefaConsumo?.cancel()
+        tarefaConsumo = nil
+        microfone.parar()
+        sistema.parar()
+        arquivoMixagem = nil
+        arquivoMicrofone = nil
+        arquivoSistema = nil
+        if let pasta {
+            try? FileManager.default.removeItem(at: pasta)
+        }
+        pasta = nil
+        pausada = false
+    }
+
     public func parar() async -> Resultado {
         tarefaConsumo?.cancel()
         tarefaConsumo = nil
@@ -229,6 +258,10 @@ public actor SessaoGravacao {
     // MARK: - Consumo e mixagem
 
     private func drenar() {
+        guard !pausada else {
+            descartarBuffersPendentes()
+            return
+        }
         let doMicrofone = puxar(de: microfone.buffer, conversor: conversorMicrofone)
         let doSistema = puxar(de: sistema.buffer, conversor: conversorSistema)
 
@@ -255,6 +288,11 @@ public actor SessaoGravacao {
 
         escreverMixagem(mistura)
         amostrasMixadas += quadros
+    }
+
+    private func descartarBuffersPendentes() {
+        microfone.buffer.descartarPendentes()
+        sistema.buffer.descartarPendentes()
     }
 
     private func puxar(de buffer: RingBufferAudio, conversor: ConversorCanonico?) -> [Float] {

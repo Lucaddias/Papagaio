@@ -10,6 +10,7 @@ final class GravadorViewModel {
     enum Estado: Equatable {
         case ocioso
         case gravando
+        case pausado
         case processando
         case falhou(String)
     }
@@ -47,7 +48,8 @@ final class GravadorViewModel {
         }
     }
 
-    var gravando: Bool { estado == .gravando }
+    var gravando: Bool { estado == .gravando || estado == .pausado }
+    var pausado: Bool { estado == .pausado }
 
     // MARK: - Gravação
 
@@ -57,6 +59,40 @@ final class GravadorViewModel {
         } else {
             await iniciar()
         }
+    }
+
+    func pausar() async {
+        guard estado == .gravando, let sessao else { return }
+        tempoDeGravacao = await sessao.tempoDecorrido()
+        await sessao.pausar()
+        tarefaNivel?.cancel()
+        tarefaNivel = nil
+        estado = .pausado
+    }
+
+    func continuar() async {
+        guard estado == .pausado, let sessao else { return }
+        await sessao.continuar()
+        estado = .gravando
+        iniciarMonitoramentoDeNivel(sessao: sessao, identificador: identificadorDaGravacao ?? UUID())
+    }
+
+    func cancelar() async {
+        tarefaNivel?.cancel()
+        tarefaNivel = nil
+        guard let sessao else {
+            limparDepoisDeGravar()
+            estado = .ocioso
+            return
+        }
+        await sessao.descartar()
+        self.sessao = nil
+        identificadorDaGravacao = nil
+        avisos = ["Gravação cancelada — nenhum arquivo foi criado."]
+        tempoDeGravacao = 0
+        waveform = []
+        limparDepoisDeGravar()
+        estado = .ocioso
     }
 
     private func iniciar() async {
@@ -84,19 +120,7 @@ final class GravadorViewModel {
         // Waveform: amostra o nível a ~20 Hz. O medidor é atômico, então
         // ler daqui não toca na thread de áudio. O tempo vem da própria
         // sessão, para manter notas e áudio sincronizados mesmo com buffers.
-        let nivel = sessao.nivelMicrofone
-        tarefaNivel = Task { [weak self] in
-            while !Task.isCancelled {
-                let valor = nivel.normalizado
-                let tempo = await sessao.tempoDecorrido()
-                await MainActor.run {
-                    guard self?.identificadorDaGravacao == identificador else { return }
-                    self?.acrescentarAoWaveform(valor)
-                    self?.tempoDeGravacao = tempo
-                }
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-        }
+        iniciarMonitoramentoDeNivel(sessao: sessao, identificador: identificador)
     }
 
     private func parar() async {
@@ -128,7 +152,10 @@ final class GravadorViewModel {
                 return notaAjustada
             }
             await aoProduzirAudio?(
-                Self.tituloParaAgora(), resultado.pastaRelativa, resultado.duracao, notas
+                Self.tituloParaAgora(),
+                resultado.pastaRelativa,
+                resultado.duracao,
+                Self.notasParaArquivo(notas)
             )
         } else if !notasDaGravacao.isEmpty {
             avisos.append(
@@ -138,6 +165,29 @@ final class GravadorViewModel {
 
         // Uma gravação curta é descartada junto com o áudio, portanto não há
         // um arquivo ao qual as notas possam pertencer.
+        limparDepoisDeGravar()
+    }
+
+    private func iniciarMonitoramentoDeNivel(sessao: SessaoGravacao, identificador: UUID) {
+        identificadorDaGravacao = identificador
+        let nivel = sessao.nivelMicrofone
+        tarefaNivel = Task { [weak self] in
+            while !Task.isCancelled {
+                let valor = nivel.normalizado
+                let tempo = await sessao.tempoDecorrido()
+                await MainActor.run {
+                    guard self?.identificadorDaGravacao == identificador,
+                          self?.estado == .gravando
+                    else { return }
+                    self?.acrescentarAoWaveform(valor)
+                    self?.tempoDeGravacao = tempo
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+    }
+
+    private func limparDepoisDeGravar() {
         notasDaGravacao = []
         rascunhoDaNota = ""
         proximaNotaSeraCritica = false
@@ -149,6 +199,36 @@ final class GravadorViewModel {
     private static func tituloParaAgora() -> String {
         let formato = Date.FormatStyle(date: .abbreviated, time: .shortened)
         return "Gravação de \(Date().formatted(formato))"
+    }
+
+    private static func notasParaArquivo(_ notas: [NotaDaConversa]) -> [NotaDaConversa] {
+        var resultado = notas.filter { $0.tipo == .marcador }
+        let anotacoes = notas
+            .filter { $0.tipo == .nota }
+            .sorted { $0.start < $1.start }
+
+        if !anotacoes.isEmpty {
+            resultado.insert(
+                NotaDaConversa(
+                    texto: anotacoes.map { linhaDeNotaSalva($0) }.joined(separator: "\n"),
+                    start: 0,
+                    critica: anotacoes.contains { $0.critica },
+                    tipo: .nota
+                ),
+                at: 0
+            )
+        }
+
+        return resultado
+    }
+
+    private static func linhaDeNotaSalva(_ nota: NotaDaConversa) -> String {
+        "[\(tempoCurto(nota.start))] \(nota.texto)"
+    }
+
+    private static func tempoCurto(_ segundos: TimeInterval) -> String {
+        let total = max(0, Int(segundos))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private func acrescentarAoWaveform(_ valor: Float) {
@@ -164,7 +244,7 @@ final class GravadorViewModel {
     /// não viram cartões silenciosos no detalhe.
     func adicionarNota() {
         let texto = rascunhoDaNota.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard gravando, !texto.isEmpty else { return }
+        guard estado == .gravando, !texto.isEmpty else { return }
 
         notasDaGravacao.append(
             NotaDaConversa(
@@ -181,7 +261,7 @@ final class GravadorViewModel {
     /// Um marcador é uma nota sem texto livre que conserva o instante exato da
     /// conversa. Pode ser usado depois para localizar um ponto relevante.
     func inserirMarcador() {
-        guard gravando else { return }
+        guard estado == .gravando else { return }
 
         notasDaGravacao.append(
             NotaDaConversa(
@@ -213,7 +293,21 @@ final class GravadorViewModel {
                 importado.tituloSugerido, importado.pastaRelativa, importado.duracao, []
             )
         } catch {
-            estado = .falhou("\(error)")
+            estado = .falhou(Self.mensagemAmigavelDeImportacao(error))
         }
+    }
+
+    private static func mensagemAmigavelDeImportacao(_ error: Error) -> String {
+        let nsError = error as NSError
+        let texto = "\(nsError.localizedDescription) \(nsError.localizedFailureReason ?? "")"
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+
+        if texto.contains("iphone") || texto.contains("locked") || texto.contains("bloqueado") {
+            return "Você precisa desbloquear seu iPhone antes de importar esse áudio."
+        }
+        if nsError.domain == NSCocoaErrorDomain && [257, 260, 513].contains(nsError.code) {
+            return "Não consegui acessar esse áudio. Se ele estiver no iPhone, desbloqueie o aparelho e tente importar de novo."
+        }
+        return "\(error)"
     }
 }

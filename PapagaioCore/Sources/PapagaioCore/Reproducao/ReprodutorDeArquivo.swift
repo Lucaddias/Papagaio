@@ -33,8 +33,8 @@ public final class ReprodutorDeArquivo {
     }
     public var velocidade: Float = 1 {
         didSet {
-            velocidade = min(max(velocidade, 0.5), 2)
-            if tocando { player.rate = velocidade }
+            velocidade = Self.velocidadeNormalizada(velocidade)
+            aplicarVelocidadeSePossivel()
         }
     }
 
@@ -102,7 +102,7 @@ public final class ReprodutorDeArquivo {
     // MARK: - Transporte
 
     public func tocar() {
-        player.rate = velocidade
+        aplicarVelocidadeSePossivel()
         tocando = true
     }
 
@@ -113,6 +113,10 @@ public final class ReprodutorDeArquivo {
 
     public func alternar() {
         tocando ? pausar() : tocar()
+    }
+
+    public func definirVelocidade(_ novaVelocidade: Float) {
+        velocidade = novaVelocidade
     }
 
     public func voltar(_ segundos: TimeInterval = 10) async {
@@ -188,5 +192,14 @@ public final class ReprodutorDeArquivo {
     /// estado da classe.
     isolated deinit {
         encerrar()
+    }
+
+    private static func velocidadeNormalizada(_ valor: Float) -> Float {
+        min(max(valor.isFinite ? valor : 1, 0.5), 2)
+    }
+
+    private func aplicarVelocidadeSePossivel() {
+        guard player.currentItem?.status == .readyToPlay else { return }
+        player.rate = tocando ? velocidade : 0
     }
 }

@@ -1,4 +1,5 @@
 import PapagaioCore
+import AppKit
 import SwiftUI
 
 /// Editor de observações da conversa enquanto o áudio ainda está sendo
@@ -10,6 +11,10 @@ struct PainelDeNotasDuranteGravacao: View {
 
     private var rascunhoVazio: Bool {
         gravador.rascunhoDaNota.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var quantidadeDeNotas: Int {
+        gravador.notasDaGravacao.count + (rascunhoVazio ? 0 : 1)
     }
 
     var body: some View {
@@ -37,7 +42,7 @@ struct PainelDeNotasDuranteGravacao: View {
                 Spacer(minLength: 12)
 
                 SeloDeStatus(
-                    texto: "\(gravador.notasDaGravacao.count) notas",
+                    texto: "\(quantidadeDeNotas) notas",
                     simbolo: "bookmark",
                     estilo: .neutro
                 )
@@ -74,23 +79,19 @@ struct PainelDeNotasDuranteGravacao: View {
             }
 
             ZStack(alignment: .topLeading) {
-                TextEditor(text: $gravador.rascunhoDaNota)
-                    .font(.body)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .scrollContentBackground(.hidden)
+                EditorDeNotaAlinhado(texto: $gravador.rascunhoDaNota)
                     .focused($editorEstaFocado)
-                    .padding(8)
                     .accessibilityLabel("Nova nota da conversa")
                     .accessibilityHint(
-                        "Use Salvar nota para registrar o texto no tempo atual. O rascunho também será salvo ao finalizar a gravação."
+                        "O texto será salvo automaticamente quando a gravação finalizar."
                     )
 
                 if rascunhoVazio {
                     Text("Escreva uma observação, sentimento ou ponto importante…")
                         .font(.body)
                         .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 16)
+                        .padding(.leading, 18)
+                        .padding(.top, 14)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -101,32 +102,19 @@ struct PainelDeNotasDuranteGravacao: View {
                 in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
             )
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                Rectangle()
                     .fill(PapagaioTema.destaque)
                     .frame(width: 4)
-                    .padding(.vertical, 1)
             }
+            .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .stroke(PapagaioTema.borda, lineWidth: 1)
             }
 
-            HStack(spacing: 12) {
-                Text("⌘↩ para salvar rapidamente")
-                    .font(.caption)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-
-                Spacer()
-
-                Button("Salvar nota", systemImage: "plus.circle.fill") {
-                    gravador.adicionarNota()
-                    editorEstaFocado = true
-                }
-                .buttonStyle(BotaoPrincipalPapagaio())
-                .disabled(rascunhoVazio)
-                .keyboardShortcut(.return, modifiers: [.command])
-                .accessibilityHint("Adiciona a nota ao tempo atual da gravação.")
-            }
+            Text("As notas são salvas automaticamente ao finalizar a gravação.")
+                .font(.caption)
+                .foregroundStyle(PapagaioTema.textoSecundario)
 
             if !gravador.notasDaGravacao.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
@@ -156,6 +144,61 @@ struct PainelDeNotasDuranteGravacao: View {
         let minutos = total / 60
         let resto = total % 60
         return minutos > 0 ? "\(minutos) minutos e \(resto) segundos" : "\(resto) segundos"
+    }
+}
+
+private struct EditorDeNotaAlinhado: NSViewRepresentable {
+    @Binding var texto: String
+
+    func makeCoordinator() -> Coordenador {
+        Coordenador(texto: $texto)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .noBorder
+
+        let editor = NSTextView()
+        editor.delegate = context.coordinator
+        editor.drawsBackground = false
+        editor.isRichText = false
+        editor.allowsUndo = true
+        editor.font = .systemFont(ofSize: NSFont.systemFontSize)
+        editor.textColor = NSColor(PapagaioTema.texto)
+        editor.textContainerInset = NSSize(width: 18, height: 14)
+        editor.textContainer?.lineFragmentPadding = 0
+        editor.string = texto
+        editor.minSize = NSSize(width: 0, height: 0)
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        editor.isVerticallyResizable = true
+        editor.isHorizontallyResizable = false
+        editor.autoresizingMask = [.width]
+        editor.textContainer?.widthTracksTextView = true
+
+        scroll.documentView = editor
+        context.coordinator.editor = editor
+        return scroll
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let editor = context.coordinator.editor, editor.string != texto else { return }
+        editor.string = texto
+    }
+
+    final class Coordenador: NSObject, NSTextViewDelegate {
+        @Binding var texto: String
+        weak var editor: NSTextView?
+
+        init(texto: Binding<String>) {
+            _texto = texto
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let editor = notification.object as? NSTextView else { return }
+            texto = editor.string
+        }
     }
 }
 

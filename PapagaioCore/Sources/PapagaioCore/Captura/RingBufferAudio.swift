@@ -91,4 +91,9 @@ public final class RingBufferAudio: @unchecked Sendable {
         lidas.store(jaLidas + aLer, ordering: .releasing)
         return aLer
     }
+
+    public func descartarPendentes() {
+        let jaEscritas = escritas.load(ordering: .acquiring)
+        lidas.store(jaEscritas, ordering: .releasing)
+    }
 }

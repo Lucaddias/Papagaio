@@ -46,6 +46,8 @@ final class Biblioteca {
     /// continua sendo o único caminho para qualquer processamento manual ou
     /// automático, mantendo um único par de modelos carregado por vez.
     var processamentoAutomatico = true
+    var aoNotificar: (@MainActor (_ titulo: String, _ mensagem: String, _ tipo: NotificacaoDoApp.Tipo) -> Void)?
+    var aoConcluirProcessamento: (@MainActor (_ arquivo: Arquivo) -> Void)?
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
@@ -126,14 +128,14 @@ final class Biblioteca {
 
     // MARK: - Lixeira
 
-    /// Move um arquivo para a lixeira. O item ativo nunca pode ser movido:
-    /// o pipeline pode estar lendo seu áudio. Para um item aguardando na fila,
-    /// removemos a entrada **antes** do primeiro `await`; caso contrário o
-    /// pipeline poderia iniciá-lo enquanto o SwiftData salva o soft delete.
+    /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,
+    /// a execução atual é cancelada antes do soft delete para a UI não ficar
+    /// presa esperando o pipeline terminar.
     func moverParaLixeira(_ arquivo: Arquivo) async {
-        guard arquivoEmProcessamento != arquivo.id,
-              !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+        guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
         else { return }
+
+        cancelarProcessamentoDoArquivo(arquivo.id)
 
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
         if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
@@ -281,6 +283,39 @@ final class Biblioteca {
         }
     }
 
+    func atualizarMetadados(
+        _ arquivo: Arquivo,
+        titulo novoTitulo: String,
+        criadoEm: Date,
+        duracao: TimeInterval
+    ) async {
+        let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !tituloLimpo.isEmpty,
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
+        else { return }
+
+        var editado = arquivo
+        editado.titulo = tituloLimpo
+        editado.criadoEm = criadoEm
+        editado.duracao = max(0, duracao)
+        if let resumo = arquivo.resumo {
+            editado.resumo = Resumo(
+                titulo: tituloLimpo,
+                visaoGeral: resumo.visaoGeral,
+                temas: resumo.temas,
+                citacoes: resumo.citacoes,
+                proximosPassos: resumo.proximosPassos
+            )
+        }
+
+        do {
+            try await repositorio.salvar(editado)
+            substituir(editado)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
+        }
+    }
+
     func atualizarNotas(_ notas: [NotaDaConversa], de arquivo: Arquivo) async {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
 
@@ -364,6 +399,18 @@ final class Biblioteca {
         iniciarProximoProcessamentoSeNecessario()
     }
 
+    private func cancelarProcessamentoDoArquivo(_ arquivoID: ArquivoID) {
+        filaDeProcessamento.removeAll { $0 == arquivoID }
+        guard arquivoEmProcessamento == arquivoID else { return }
+
+        tarefaDeProcessamento?.cancel()
+        tarefaDeProcessamento = nil
+        arquivoEmProcessamento = nil
+        identificadorDaExecucao = nil
+        fases[arquivoID.rawValue] = nil
+        iniciarProximoProcessamentoSeNecessario()
+    }
+
     func estaProcessando(_ arquivo: Arquivo) -> Bool {
         arquivoEmProcessamento == arquivo.id
     }
@@ -435,12 +482,32 @@ final class Biblioteca {
                     self?.fases[chave] = fase
                 }
             }
+            guard identificadorDaExecucao == execucao,
+                  arquivos.contains(where: { $0.id == arquivo.id })
+            else { return }
             substituir(final)
+            aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
+                aoNotificar?(
+                    "Transcrição finalizada sem falas",
+                    "\(final.resumo?.titulo ?? final.titulo) não teve fala reconhecida.",
+                    .aviso
+                )
+            } else {
+                aoNotificar?(
+                    "Transcrição concluída",
+                    "\(final.resumo?.titulo ?? final.titulo) já está com transcrição e resumo prontos.",
+                    .sucesso
+                )
             }
         } catch {
             erros[chave] = "\(error)"
+            aoNotificar?(
+                "Transcrição falhou",
+                "\(arquivo.titulo): \(error.localizedDescription)",
+                .erro
+            )
         }
 
         // 13,7 GB não podem ficar residentes depois que o trabalho acabou.
