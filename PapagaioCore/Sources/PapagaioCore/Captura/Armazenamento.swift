@@ -64,6 +64,31 @@ public struct Armazenamento: Sendable {
         raiz.appendingPathComponent(relativo, isDirectory: true)
     }
 
+    /// Cria a pasta da gravação e devolve a URL absoluta de um arquivo de
+    /// áudio canônico dentro dela (`microfone.wav`, `sistema.m4a`, …).
+    @discardableResult
+    public func criarArquivoDeAudio(
+        id: UUID,
+        nome: String,
+        _ fm: FileManager = .default
+    ) throws -> URL {
+        let pasta = try criarPastaDaGravacao(id: id, fm)
+        return pasta.appendingPathComponent(nome)
+    }
+
+    /// URL absoluta de um arquivo importado dentro da pasta da gravação, com
+    /// a extensão do arquivo de origem preservada — copiamos do jeito que
+    /// veio, sem re-encodar (mesma escolha do Eko).
+    @discardableResult
+    public func criarArquivoImportado(
+        id: UUID,
+        extensao: String,
+        _ fm: FileManager = .default
+    ) throws -> URL {
+        let pasta = try criarPastaDaGravacao(id: id, fm)
+        return pasta.appendingPathComponent("\(Self.Nome.prefixoImportado).\(extensao)")
+    }
+
     /// Remove uma pasta de gravação somente quando o caminho persistido tem o
     /// formato canônico `Gravacoes/<UUID>`. A exclusão definitiva não deve
     /// aceitar uma string arbitrária do banco como alvo no filesystem.
@@ -85,18 +110,34 @@ public struct Armazenamento: Sendable {
     }
 
     /// Nomes canônicos dentro da pasta de uma gravação.
+    ///
+    /// O backend de áudio agora segue o Eko: sem mixagem prévia em disco.
+    /// Microfone e sistema são arquivos separados, e a reprodução junta os
+    /// dois **só no playback** — tocar uma mixagem AAC mono de 16 kHz foi o
+    /// que deixou o áudio "abafado" e a reprodução quebrada. Os nomes antigos
+    /// continuam aqui como leitura de gravações legadas.
     public enum Nome {
-        /// Arquivamento: mixagem dos dois canais, AAC.
-        public static let mixagem = "gravacao.m4a"
-        /// WAV canônico do microfone — mono, Float32, 16 kHz e insumo do ASR.
+        /// WAV do microfone gravado pelo `AVAudioRecorder` — 16 kHz mono,
+        /// 16 bits. É o canal "eu" e o insumo da transcrição.
+        public static let microfone = "microfone.wav"
+        /// WAV canônico do microfone (nome legado, idêntico ao atual).
         public static let wavMicrofone = "microfone.wav"
-        /// WAV canônico do áudio do sistema — mono, Float32, 16 kHz.
+        /// M4A do áudio do sistema, codificado pelo tap em taxa nativa AAC.
+        /// É o canal "interlocutor" — ver `SystemAudioTap`.
+        public static let sistema = "sistema.m4a"
+        /// Prefixo do arquivo importado: está sempre em `gravacao.<extensão>`
+        /// porque só o nome canônico permite que a `Biblioteca` resolva o
+        /// áudio guardando apenas a pasta relativa no modelo.
+        public static let prefixoImportado = "gravacao"
+        /// WAV canônico do áudio do sistema — nome legado (pré-Eko).
         public static let wavSistema = "sistema.wav"
         /// PCM canônico legado do microfone, mantido apenas para ler gravações
         /// feitas antes da migração para WAV.
         public static let pcmMicrofone = "microfone.pcm"
         /// PCM canônico legado do áudio do sistema.
         public static let pcmSistema = "sistema.pcm"
+        /// Arquivamento legado: mixagem dos dois canais em AAC mono 16 kHz.
+        public static let mixagem = "gravacao.m4a"
     }
 }
 

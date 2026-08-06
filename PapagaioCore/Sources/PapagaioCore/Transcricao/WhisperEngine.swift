@@ -41,7 +41,7 @@ public struct WhisperEngine: TranscriptionEngine {
         speaker: String?,
         initialPrompt: String? = nil
     ) async throws -> [Trecho] {
-        let amostras = try DecodificadorDeAudio.amostras(de: url)
+        let amostras = try await DecodificadorDeAudio.amostras(de: url)
         guard !amostras.isEmpty else { return [] }
         guard DetectorDeAtividadeDeVoz.contemFala(nas: amostras) else {
             // Em uma reunião de dois canais, o microfone pode estar em silêncio

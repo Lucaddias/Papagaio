@@ -23,7 +23,7 @@ private var audioDeTeste: URL? {
 // MARK: - Decodificação
 
 @Test("Decodificador entrega 16 kHz mono, reamostrando quando precisa")
-func decodificadorReamostra() throws {
+func decodificadorReamostra() async throws {
     let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: pasta) }
@@ -51,7 +51,7 @@ func decodificadorReamostra() throws {
         try arquivo.write(from: buffer)
     }
 
-    let amostras = try DecodificadorDeAudio.amostras(de: destino)
+    let amostras = try await DecodificadorDeAudio.amostras(de: destino)
     // 2 s a 16 kHz ≈ 32.000 amostras.
     #expect(amostras.count > 31_000)
     #expect(amostras.count < 33_000)
@@ -59,7 +59,7 @@ func decodificadorReamostra() throws {
 }
 
 @Test("Arquivo .pcm cru é lido sem conversão")
-func decodificadorPCMCru() throws {
+func decodificadorPCMCru() async throws {
     let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: pasta) }
@@ -68,7 +68,7 @@ func decodificadorPCMCru() throws {
     let destino = pasta.appendingPathComponent("canal.pcm")
     try original.withUnsafeBufferPointer { Data(buffer: $0) }.write(to: destino)
 
-    let lidas = try DecodificadorDeAudio.amostras(de: destino)
+    let lidas = try await DecodificadorDeAudio.amostras(de: destino)
     #expect(lidas.count == original.count)
     #expect(lidas.first == original.first)
     #expect(lidas.last == original.last)

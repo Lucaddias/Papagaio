@@ -73,7 +73,7 @@ case "transcrever":
             .appendingPathComponent(Pesos.whisperLargeV3.nomeArquivo)
     }
 
-    let amostras = try DecodificadorDeAudio.amostras(de: audio)
+    let amostras = try await DecodificadorDeAudio.amostras(de: audio)
     let duracao = DecodificadorDeAudio.duracao(de: amostras)
     print("áudio:  \(audio.lastPathComponent)")
     print("modelo: \(modelo.lastPathComponent)")

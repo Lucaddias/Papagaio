@@ -95,8 +95,19 @@ public struct PipelineDeArquivo: Sendable {
     /// de uma versão anterior.
     private func transcrever(_ arquivo: Arquivo) async throws -> [Trecho] {
         let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
-        let microfone = canalEm(pasta, wav: Armazenamento.Nome.wavMicrofone, legado: Armazenamento.Nome.pcmMicrofone)
-        let sistema = canalEm(pasta, wav: Armazenamento.Nome.wavSistema, legado: Armazenamento.Nome.pcmSistema)
+        // Canais separados (nova convenção): `microfone.wav` + `sistema.m4a`.
+        // Os nomes legados ficam na cadeia — wav do sistema, pcm, mixagem —
+        // para a biblioteca existente continuar transcrevendo até sair.
+        let microfone = Self.primeiroComConteudo(pasta, [
+            Armazenamento.Nome.microfone,
+            Armazenamento.Nome.wavMicrofone,
+            Armazenamento.Nome.pcmMicrofone,
+        ])
+        let sistema = Self.primeiroComConteudo(pasta, [
+            Armazenamento.Nome.sistema,
+            Armazenamento.Nome.wavSistema,
+            Armazenamento.Nome.pcmSistema,
+        ])
 
         let temMicrofone = Self.temConteudo(microfone)
         let temSistema = Self.temConteudo(sistema)
@@ -107,12 +118,13 @@ public struct PipelineDeArquivo: Sendable {
             return Segmentacao.mesclarCanais(microfone: doMicrofone, sistema: doSistema)
         }
 
-        let mixagem = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
+        let mixagem = Self.arquivoDeCanalUnico(em: pasta)
         guard FileManager.default.fileExists(atPath: mixagem.path) else {
             throw ErroCaptura.arquivoInvalido("não há áudio em \(arquivo.pastaRelativa)")
         }
-        // Mixagem: não dá para saber quem falou. `nil` é honesto; inventar
-        // "eu" atribuiria as falas do interlocutor ao usuário.
+        // Canal único (mixagem legada ou importado): não dá para saber quem
+        // falou. `nil` é honesto; inventar "eu" atribuiria as falas do
+        // interlocutor ao usuário.
         return Segmentacao.agrupar(try await transcrever(mixagem, nil))
     }
 
@@ -123,11 +135,29 @@ public struct PipelineDeArquivo: Sendable {
         return tamanho > 0
     }
 
-    /// Prefere os WAVs das novas gravações; o fallback mantém a biblioteca
-    /// existente íntegra até que os PCM legados sejam naturalmente removidos.
-    private func canalEm(_ pasta: URL, wav: String, legado: String) -> URL {
-        let arquivoWAV = pasta.appendingPathComponent(wav)
-        if Self.temConteudo(arquivoWAV) { return arquivoWAV }
-        return pasta.appendingPathComponent(legado)
+    /// Primeiro candidato que existe com conteúdo — a nova convenção primeiro,
+    /// os legados como fallback natural.
+    private static func primeiroComConteudo(_ pasta: URL, _ candidatos: [String]) -> URL {
+        for nome in candidatos {
+            let url = pasta.appendingPathComponent(nome)
+            if temConteudo(url) { return url }
+        }
+        return pasta.appendingPathComponent(candidatos.last ?? "")
+    }
+
+    /// O arquivo único quando não há canais separados: a mixagem legada
+    /// (`gravacao.m4a`) ou o importado copiado como veio (`gravacao.<ext>`).
+    private static func arquivoDeCanalUnico(em pasta: URL) -> URL {
+        let mixagem = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
+        if temConteudo(mixagem) { return mixagem }
+        let conteudo = (try? FileManager.default.contentsOfDirectory(
+            at: pasta, includingPropertiesForKeys: nil
+        )) ?? []
+        if let importado = conteudo.first(where: {
+            $0.lastPathComponent.hasPrefix(Armazenamento.Nome.prefixoImportado + ".")
+        }) {
+            return importado
+        }
+        return mixagem
     }
 }

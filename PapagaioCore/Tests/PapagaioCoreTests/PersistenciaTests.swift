@@ -190,7 +190,7 @@ func persistenciaMoveRestauraEApagaDefinitivamente() async throws {
     let id = UUID()
     let pasta = try armazenamento.criarPastaDaGravacao(id: id)
     defer { try? FileManager.default.removeItem(at: pasta) }
-    let m4a = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
+    let m4a = pasta.appendingPathComponent(Armazenamento.Nome.microfone)
     try Data("audio".utf8).write(to: m4a)
     #expect(FileManager.default.fileExists(atPath: m4a.path))
 

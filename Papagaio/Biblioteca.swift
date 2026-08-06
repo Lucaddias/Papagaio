@@ -538,10 +538,51 @@ final class Biblioteca {
         arquivos.first { $0.id.rawValue == id }
     }
 
+    /// Canal principal para reprodução, na nova convenção: `microfone.wav`.
+    ///
+    /// Gravações antigas e arquivos importados têm **um único arquivo** (a
+    /// mixagem legada `gravacao.m4a` ou o original copiado como `gravacao.<ext>`);
+    /// nesses casos ele é o canal único. A reprodução em dois canais usa
+    /// `audioSecundario` junto.
     func audio(de arquivo: Arquivo) -> URL {
-        armazenamento
-            .resolver(relativo: arquivo.pastaRelativa)
-            .appendingPathComponent(Armazenamento.Nome.mixagem)
+        let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
+        let microfone = pasta.appendingPathComponent(Armazenamento.Nome.microfone)
+        if Self.existe(microfone) { return microfone }
+        return Self.arquivoDeCanalUnico(em: pasta)
+    }
+
+    /// Canal do sistema tocado em paralelo ao microfone — `sistema.m4a`.
+    ///
+    /// Só existe quando a gravação capturou os dois canais (o tap subiu).
+    /// Importado e legado são canal único: `nil` aqui, e a reprodução toca
+    /// só o principal.
+    func audioSecundario(de arquivo: Arquivo) -> URL? {
+        let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
+        guard Self.existe(pasta.appendingPathComponent(Armazenamento.Nome.microfone)) else {
+            return nil
+        }
+        let sistema = pasta.appendingPathComponent(Armazenamento.Nome.sistema)
+        return Self.existe(sistema) ? sistema : nil
+    }
+
+    private static func existe(_ url: URL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// O arquivo único de quando não há canais separados: a mixagem legada
+    /// `gravacao.m4a`, ou o importado copiado como veio (`gravacao.<ext>`).
+    private static func arquivoDeCanalUnico(em pasta: URL) -> URL {
+        let mixagem = pasta.appendingPathComponent(Armazenamento.Nome.mixagem)
+        if existe(mixagem) { return mixagem }
+        let conteudo = (try? FileManager.default.contentsOfDirectory(
+            at: pasta, includingPropertiesForKeys: nil
+        )) ?? []
+        if let importado = conteudo.first(where: {
+            $0.lastPathComponent.hasPrefix(Armazenamento.Nome.prefixoImportado + ".")
+        }) {
+            return importado
+        }
+        return mixagem
     }
 
     func estado(de arquivo: Arquivo) -> String {

@@ -10,6 +10,9 @@ import UniformTypeIdentifiers
 struct ArquivoDetalheView: View {
     let arquivo: Arquivo
     let audio: URL
+    /// Canal do sistema (`sistema.m4a`) para reprodução em paralelo ao
+    /// microfone — `nil` para importado e gravação legada, que têm canal único.
+    let audioSecundario: URL?
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: String
@@ -169,7 +172,7 @@ struct ArquivoDetalheView: View {
             sincronizarNotasComArquivo()
             carregarMidias()
             carregarTarefas()
-            let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos)
+            let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos, secundario: audioSecundario)
             await novo.preparar()
             reprodutor = novo
         }
@@ -925,21 +928,31 @@ struct ArquivoDetalheView: View {
 
     // MARK: - Exportação
 
-    /// O painel do sistema já grava o `.md`. Depois, copiamos o áudio para a
-    /// mesma pasta com o nome-base do Markdown, evitando sobrescrever uma
-    /// exportação anterior que também se chamava `gravacao.m4a`.
+    /// O painel do sistema já grava o `.md`. Depois copiamos o áudio para a
+    /// mesma pasta com o nome-base do Markdown, preservando a extensão — sem
+    /// sobrescrever uma exportação anterior que também se chamava `gravacao.m4a`.
+    /// Quando a gravação tem dois canais, o `sistema.m4a` vai junto.
     private func copiarAudioAnexo(para markdown: URL) {
         let pasta = markdown.deletingLastPathComponent()
-        let destino = pasta
-            .appendingPathComponent(markdown.deletingPathExtension().lastPathComponent)
-            .appendingPathExtension("m4a")
+        let base = markdown.deletingPathExtension().lastPathComponent
         let acessou = pasta.startAccessingSecurityScopedResource()
         defer {
             if acessou { pasta.stopAccessingSecurityScopedResource() }
         }
 
+        let principal = pasta
+            .appendingPathComponent(base)
+            .appendingPathExtension(audio.pathExtension.isEmpty ? "m4a" : audio.pathExtension)
         do {
-            try FileManager.default.copyItem(at: audio, to: destino)
+            try FileManager.default.copyItem(at: audio, to: principal)
+            if let secundario = audioSecundario,
+               let extensaoSecundaria = secundario.pathExtension.isEmpty
+                   ? nil : secundario.pathExtension {
+                let canalSecundario = pasta
+                    .appendingPathComponent("\(base).sistema")
+                    .appendingPathExtension(extensaoSecundaria)
+                try FileManager.default.copyItem(at: secundario, to: canalSecundario)
+            }
         } catch {
             erroDeExportacao = error.localizedDescription
         }

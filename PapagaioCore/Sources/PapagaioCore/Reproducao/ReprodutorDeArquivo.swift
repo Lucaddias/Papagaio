@@ -2,18 +2,22 @@ import AVFoundation
 import Foundation
 import Observation
 
-/// Player de um arquivo, com navegação por trecho.
+/// Player de áudio com navegação por trecho — backend portado do Eko
+/// (`AudioPlaybackController`).
 ///
-/// Fica em `PapagaioCore` e não no app: é AVFoundation, não SwiftUI — a regra do
-/// Passo 1 é que a biblioteca não arraste SwiftUI, não que ela não conheça
-/// áudio. Estar aqui é o que permite testar salto e destaque sem abrir a
-/// interface.
+/// Toca **dois arquivos em paralelo**: o microfone (`.wav`) e o canal do
+/// sistema (`.m4a`) são reproduzidos juntos, sincronizados pelo
+/// `deviceCurrentTime` do `AVAudioPlayer` — o "merge só no playback" do Eko.
+/// Nunca há mixagem prévia em disco, e é por isso que o áudio não sai mais
+/// abafado (a mixagem antiga re-encodava tudo para AAC mono de 16 kHz).
 ///
-/// `AVPlayer`, não `AVAudioPlayer`: `addPeriodicTimeObserver` e o salto com
-/// tolerância zero são de `AVPlayer` — ver D-10.1.
+/// Para arquivo de canal único (importado ou gravação antiga) o secundário é
+/// `nil` e toca normal. Usa `AVAudioPlayer`, não `AVPlayer` — é o que o Eko
+/// usa, e é o que abre o `.wav` do microfone e o `.m4a` do tap sem os
+/// problemas do player antigo.
 ///
 /// - Important: quem cria **tem que chamar `encerrar()`** ao sair da tela. O
-///   observador periódico retém o bloco e sobrevive à view que o criou.
+///   temporizador de observação retém o bloco e sobrevive à view que o criou.
 @MainActor
 @Observable
 public final class ReprodutorDeArquivo {
@@ -21,20 +25,22 @@ public final class ReprodutorDeArquivo {
     /// bastante para não acordar a main thread à toa. É o intervalo do Passo 10.
     public static let intervaloDeObservacao: TimeInterval = 0.1
 
-    /// Posição atual, em segundos. Alimentada pelo observador periódico.
+    /// Posição atual, em segundos. Alimentada pelo temporizador de observação.
     public private(set) var tempo: TimeInterval = 0
-    /// Duração do arquivo, disponível depois de `preparar()`.
+    /// Duração do arquivo — o maior dos dois canais quando existem dois.
     public private(set) var duracao: TimeInterval = 0
     public private(set) var tocando = false
     public var volume: Float = 1 {
         didSet {
-            player.volume = min(max(volume, 0), 1)
+            let nivel = min(max(volume, 0), 1)
+            primario?.volume = nivel
+            secundario?.volume = nivel
         }
     }
     public var velocidade: Float = 1 {
         didSet {
             velocidade = Self.velocidadeNormalizada(velocidade)
-            aplicarVelocidadeSePossivel()
+            aplicarVelocidade()
         }
     }
 
@@ -48,66 +54,74 @@ public final class ReprodutorDeArquivo {
         NavegacaoPorTrecho.indiceAtivo(em: tempo, trechos: trechos)
     }
 
-    /// Existe para o critério de aceite "sair da view não deixa observer vivo":
-    /// é o que o teste consegue afirmar sem inspecionar o `AVPlayer`.
-    public var observando: Bool { observador != nil }
+    /// Existe para o critério de aceite "sair da view não deixa observador vivo":
+    /// é o que o teste consegue afirmar sem inspecionar o player.
+    public var observando: Bool { temporizador != nil }
 
-    @ObservationIgnored private let player: AVPlayer
-    @ObservationIgnored private var observador: Any?
-    @ObservationIgnored private var fimDaReproducao: (any NSObjectProtocol)?
+    /// Canal do microfone (ou o arquivo único, no caso de importado/legado).
+    private let primario: AVAudioPlayer?
+    /// Canal do sistema, tocado em paralelo ao microfone quando ambos existem.
+    private let secundario: AVAudioPlayer?
+
+    @ObservationIgnored private var temporizador: Timer?
 
     public init(
         audio: URL,
         trechos: [Trecho],
+        secundario urlSecundario: URL? = nil,
         intervalo: TimeInterval = ReprodutorDeArquivo.intervaloDeObservacao
     ) {
         self.trechos = trechos
-        let item = AVPlayerItem(url: audio)
-        player = AVPlayer(playerItem: item)
-        // Sem isto o player volta para o começo ao terminar.
-        player.actionAtItemEnd = .pause
+        self.primario = try? AVAudioPlayer(contentsOf: audio)
+        self.secundario = urlSecundario.flatMap { try? AVAudioPlayer(contentsOf: $0) }
+        self.intervaloDeObservacao = intervalo
 
-        let passo = CMTime(seconds: intervalo, preferredTimescale: 600)
-        observador = player.addPeriodicTimeObserver(forInterval: passo, queue: .main) {
-            [weak self] agora in
-            // O bloco é entregue na main queue, então a isolação já é a certa.
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.tempo = agora.seconds.isFinite ? agora.seconds : 0
-                self.tocando = self.player.timeControlStatus == .playing
-            }
-        }
-
-        // O observador periódico não garante um tick no fim do arquivo: sem
-        // isto o botão continuaria mostrando "pausar" com o áudio parado.
-        fimDaReproducao = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.didPlayToEndTimeNotification,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tocando = false }
-        }
+        primario?.enableRate = true
+        primario?.volume = volume
+        secundario?.enableRate = true
+        secundario?.volume = volume
     }
 
-    /// Carrega a duração do arquivo.
+    /// `preparar()` carrega a duração e liga o observador.
     ///
-    /// Assíncrono porque ler `AVAsset.duration` de forma síncrona bloqueia a
-    /// main thread — a API síncrona está depreciada desde o macOS 13.
+    /// A duração do `AVAudioPlayer` já vem sincrona do `init`; aqui é onde o
+    /// observador de tempo nasce — antes de qualquer `tocar()`, para que o
+    /// `tempo` publicado nunca fique preso no 0.
     public func preparar() async {
-        guard let item = player.currentItem else { return }
-        let segundos = (try? await item.asset.load(.duration).seconds) ?? 0
-        duracao = segundos.isFinite ? segundos : 0
+        let primaria = primario?.duration ?? 0
+        let secundaria = secundario?.duration ?? 0
+        duracao = max(primaria, secundaria)
+        temporizador?.invalidate()
+        // `Timer.scheduledTimer` é indisponível de contexto async no Swift 6.2
+        // (pode nunca disparar); criar o timer e anexá-lo ao RunLoop da main
+        // foge disso e garante o modo `.common` (roda também durante gestos).
+        let timer = Timer(
+            timeInterval: intervaloDeObservacao,
+            target: self,
+            selector: #selector(atualizarTempo),
+            userInfo: nil,
+            repeats: true
+        )
+        temporizador = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     // MARK: - Transporte
 
     public func tocar() {
-        aplicarVelocidadeSePossivel()
+        guard let primario, !primario.isPlaying else { return }
+        // Sincroniza os dois pelo mesmo deviceCurrentTime — evita que um
+        // comece perceptivelmente antes do outro.
+        let inicio = primario.deviceCurrentTime + 0.05
+        aplicarVelocidade()
+        primario.play(atTime: inicio)
+        secundario?.play(atTime: inicio)
         tocando = true
     }
 
     public func pausar() {
-        player.pause()
+        primario?.pause()
+        secundario?.pause()
         tocando = false
     }
 
@@ -134,54 +148,38 @@ public final class ReprodutorDeArquivo {
         await saltar(paraSegundo: trecho.start)
     }
 
-    /// Vai ao começo do trecho e inicia a escuta. A ordem é importante: dar
-    /// `play()` antes do fim do `seek` pode produzir alguns décimos do ponto
-    /// anterior em arquivos AAC.
+    /// Vai ao começo do trecho e inicia a escuta.
     public func tocar(aPartirDe trecho: Trecho) async {
         await saltar(para: trecho)
         tocar()
     }
 
-    /// Salta para um instante, com **tolerância zero**.
-    ///
-    /// Tolerância padrão faria o player cair no quadro sincronizado mais
-    /// próximo, que em AAC pode estar segundos antes — clicar num trecho
-    /// pousaria no meio do trecho anterior.
+    /// Salta para um instante. No `AVAudioPlayer` o `currentTime` é exato —
+    /// sem a tolerância de quadro sincronizado do `AVPlayer` que fazia cliques
+    /// em AAC pousarem no trecho anterior.
     public func saltar(paraSegundo segundo: TimeInterval) async {
         let teto = duracao > 0 ? duracao : segundo
         let alvo = min(max(0, segundo), teto)
 
-        // Atualiza antes do `await`: o destaque responde ao clique, não ao
+        // Atualiza antes do tick: o destaque responde ao clique, não ao
         // próximo tick do observador.
         tempo = alvo
-
-        await player.seek(
-            to: CMTime(seconds: alvo, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        )
-
-        let real = player.currentTime().seconds
-        if real.isFinite { tempo = real }
+        primario?.currentTime = alvo
+        secundario?.currentTime = alvo
     }
 
     // MARK: - Encerramento
 
-    /// Remove o observador periódico e para o áudio.
+    /// Para o áudio e remove o observador.
     ///
-    /// Chame no `onDisappear`. `addPeriodicTimeObserver` retém o bloco até o
-    /// `removeTimeObserver`; sem isso a view morre e o bloco continua rodando,
-    /// que é exatamente o que o critério de aceite do Passo 10 proíbe.
+    /// Chame no `onDisappear`. O `Timer` retém o alvo até o `invalidate`;
+    /// sem isto a view morre e o observador continua rodando, que é
+    /// exatamente o que o critério de aceite do Passo 10 proíbe.
     public func encerrar() {
-        if let observador {
-            player.removeTimeObserver(observador)
-            self.observador = nil
-        }
-        if let fimDaReproducao {
-            NotificationCenter.default.removeObserver(fimDaReproducao)
-            self.fimDaReproducao = nil
-        }
-        player.pause()
+        temporizador?.invalidate()
+        temporizador = nil
+        primario?.stop()
+        secundario?.stop()
         tocando = false
     }
 
@@ -194,12 +192,21 @@ public final class ReprodutorDeArquivo {
         encerrar()
     }
 
-    private static func velocidadeNormalizada(_ valor: Float) -> Float {
-        min(max(valor.isFinite ? valor : 1, 0.5), 2)
+    // MARK: - Observação
+
+    @objc private func atualizarTempo() {
+        tempo = primario?.currentTime ?? 0
+        tocando = primario?.isPlaying ?? false
     }
 
-    private func aplicarVelocidadeSePossivel() {
-        guard player.currentItem?.status == .readyToPlay else { return }
-        player.rate = tocando ? velocidade : 0
+    private func aplicarVelocidade() {
+        primario?.rate = velocidade
+        secundario?.rate = velocidade
+    }
+
+    private let intervaloDeObservacao: TimeInterval
+
+    private static func velocidadeNormalizada(_ valor: Float) -> Float {
+        min(max(valor.isFinite ? valor : 1, 0.5), 2)
     }
 }

@@ -33,10 +33,10 @@ private func montarGravacao(
     // é como o pipeline decide se o canal existe.
     let bytes = Data(repeating: 0, count: 64)
     if microfone {
-        try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.pcmMicrofone))
+        try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.microfone))
     }
     if sistema {
-        try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.pcmSistema))
+        try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.sistema))
     }
     if mixagem {
         try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.mixagem))
@@ -69,7 +69,7 @@ func pipelineMesclaOsCanais() async throws {
         idResumo: "qwen-falso",
         transcrever: { url, speaker in
             // O speaker recebido é o do canal; o texto identifica a origem.
-            let doMicrofone = url.lastPathComponent == Armazenamento.Nome.pcmMicrofone
+            let doMicrofone = url.lastPathComponent == Armazenamento.Nome.microfone
             #expect(speaker == (doMicrofone ? Speaker.eu : Speaker.interlocutor))
             return doMicrofone
                 ? [Trecho(start: 0, end: 3, texto: "oi")]
@@ -111,6 +111,43 @@ func pipelineUsaMixagemQuandoNaoHaCanais() async throws {
     let final = try await pipeline.processar(arquivo)
     #expect(final.trechos.count == 1)
     #expect(final.trechos[0].speaker == nil)
+}
+
+@Test("Gravação legada (PCM) continua transcrevendo pelo fallback")
+func pipelineLePcmLegado() async throws {
+    // Mesma montagem do backend antigo: só `.pcm`, sem WAVs.
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let armazenamento = Armazenamento(raiz: raiz)
+    let id = UUID()
+    let pasta = try armazenamento.criarPastaDaGravacao(id: id)
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    let bytes = Data(repeating: 0, count: 64)
+    try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.pcmMicrofone))
+    try bytes.write(to: pasta.appendingPathComponent(Armazenamento.Nome.pcmSistema))
+
+    let arquivo = Arquivo(
+        titulo: "Legada",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: id),
+        espaco: EspacoID()
+    )
+
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { url, speaker in
+            let eDoMicrofone = url.lastPathComponent == Armazenamento.Nome.pcmMicrofone
+            #expect(eDoMicrofone || url.lastPathComponent == Armazenamento.Nome.pcmSistema)
+            #expect(speaker == (eDoMicrofone ? Speaker.eu : Speaker.interlocutor))
+            return [Trecho(start: 0, end: 1, texto: url.lastPathComponent)]
+        },
+        resumir: { _ in resumoDeMentira }
+    )
+
+    let final = try await pipeline.processar(arquivo)
+    #expect(final.trechos.count == 2)
+    #expect(Set(final.trechos.map(\.speaker)) == [Speaker.eu, Speaker.interlocutor])
 }
 
 @Test("A transcrição é salva antes de o resumo começar")

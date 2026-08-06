@@ -3,78 +3,22 @@ import Foundation
 import Testing
 @testable import PapagaioCore
 
-// Testes do Passo 2. Cobrem o que dá para verificar sem microfone, sem
-// permissão de TCC e sem uma reunião real: o ring buffer, os caminhos sob
-// sandbox, o medidor de nível, a reamostragem e a importação de arquivo.
+// Testes do Passo 2, atualizados para o backend do Eko. Cobrem o que dá para
+// verificar sem microfone, sem permissão de TCC e sem uma reunião real: o
+// medidor de nível, os caminhos sob sandbox, os formatos de gravação e a
+// importação de arquivo.
 //
 // O que NÃO dá para testar aqui está listado no relatório do passo: gravação
-// de chamada real, inteligibilidade das duas vozes e ausência de alocação nos
-// blocos de tap (isso é Instruments, não teste unitário).
-
-// MARK: - Ring buffer
-
-@Test("Ring buffer devolve na ordem o que foi escrito")
-func ringBufferOrdem() {
-    let buffer = RingBufferAudio(capacidade: 16)
-    var entrada: [Float] = [1, 2, 3, 4, 5]
-    entrada.withUnsafeBufferPointer { _ = buffer.escrever($0.baseAddress!, quantidade: 5) }
-
-    #expect(buffer.pendentes == 5)
-
-    var saida = [Float](repeating: 0, count: 5)
-    let lidas = saida.withUnsafeMutableBufferPointer {
-        buffer.ler(para: $0.baseAddress!, quantidade: 5)
-    }
-
-    #expect(lidas == 5)
-    #expect(saida == entrada)
-    #expect(buffer.pendentes == 0)
-}
-
-@Test("Ring buffer dá a volta sem embaralhar as amostras")
-func ringBufferCircular() {
-    let buffer = RingBufferAudio(capacidade: 8)
-
-    // Enche, esvazia parcialmente e escreve de novo para forçar o wrap.
-    var primeiro = [Float](repeating: 0, count: 6)
-    for i in 0..<6 { primeiro[i] = Float(i) }
-    primeiro.withUnsafeBufferPointer { _ = buffer.escrever($0.baseAddress!, quantidade: 6) }
-
-    var descarte = [Float](repeating: 0, count: 4)
-    _ = descarte.withUnsafeMutableBufferPointer { buffer.ler(para: $0.baseAddress!, quantidade: 4) }
-
-    var segundo: [Float] = [100, 101, 102, 103]
-    segundo.withUnsafeBufferPointer { _ = buffer.escrever($0.baseAddress!, quantidade: 4) }
-
-    var saida = [Float](repeating: 0, count: 6)
-    let lidas = saida.withUnsafeMutableBufferPointer {
-        buffer.ler(para: $0.baseAddress!, quantidade: 6)
-    }
-
-    #expect(lidas == 6)
-    #expect(saida == [4, 5, 100, 101, 102, 103])
-}
-
-@Test("Ring buffer cheio descarta e contabiliza, em vez de corromper")
-func ringBufferDescarte() {
-    let buffer = RingBufferAudio(capacidade: 4)
-    var entrada: [Float] = [1, 2, 3, 4, 5, 6]
-
-    let coube = entrada.withUnsafeBufferPointer {
-        buffer.escrever($0.baseAddress!, quantidade: 6)
-    }
-
-    #expect(coube == false)
-    #expect(buffer.amostrasDescartadas == 2)
-    #expect(buffer.pendentes == 4)
-}
+// de chamada real, subida do `SystemAudioTap`, inteligibilidade das duas
+// vozes e ausência de alocação nos blocos de tap (isso é Instruments, não
+// teste unitário).
 
 // MARK: - Nível
 
 @Test("NivelAudio calcula RMS e normaliza em dB")
 func nivelRMS() {
     let nivel = NivelAudio()
-    var amostras = [Float](repeating: 0.5, count: 100)
+    let amostras = [Float](repeating: 0.5, count: 100)
     amostras.withUnsafeBufferPointer { nivel.registrar($0.baseAddress!, quantidade: 100) }
 
     #expect(abs(nivel.rms - 0.5) < 0.0001)
@@ -82,16 +26,42 @@ func nivelRMS() {
     #expect(abs(nivel.normalizado - 0.9) < 0.01)
 
     let silencio = NivelAudio()
-    var zeros = [Float](repeating: 0, count: 10)
+    let zeros = [Float](repeating: 0, count: 10)
     zeros.withUnsafeBufferPointer { silencio.registrar($0.baseAddress!, quantidade: 10) }
     #expect(silencio.normalizado == 0)
 }
 
-@Test("Duração da sessão é calculada pelas amostras mixadas")
-func duracaoDaSessaoPorAmostras() {
-    #expect(SessaoGravacao.duracao(paraAmostras: 0) == 0)
-    #expect(SessaoGravacao.duracao(paraAmostras: 40_000) == 2.5)
-    #expect(SessaoGravacao.duracao(paraAmostras: -1) == 0)
+@Test("NivelAudio aceita valor normalizado do medidor do AVAudioRecorder")
+func nivelDefinidoNormalizado() {
+    let nivel = NivelAudio()
+    nivel.definirNormalizado(0.9)
+    #expect(abs(nivel.normalizado - 0.9) < 0.01)
+
+    nivel.definirNormalizado(0)
+    #expect(nivel.normalizado == 0)
+
+    // O medidor entrega dB reais; 0 dBFS vira 1, e o clamp protege a UI.
+    nivel.definirNormalizado(2)
+    #expect(nivel.normalizado == 1)
+    nivel.definirNormalizado(-1)
+    #expect(nivel.normalizado == 0)
+}
+
+// MARK: - Formato de gravação
+
+@Test("Formato do microfone é WAV PCM 16 kHz mono de 16 bits")
+func formatoMicrofone() {
+    let formato = FormatoAudio.microfoneWAV
+    #expect(formato[AVFormatIDKey] as? UInt32 == kAudioFormatLinearPCM)
+    #expect(formato[AVSampleRateKey] as? Double == FormatoAudio.taxaCanonica)
+    #expect(formato[AVNumberOfChannelsKey] as? Int == 1)
+    #expect(formato[AVLinearPCMBitDepthKey] as? Int == 16)
+    #expect(formato[AVLinearPCMIsFloatKey] as? Bool == false)
+}
+
+@Test("Gravação mais curta que 1 s é descartada como clique acidental")
+func duracaoMinima() {
+    #expect(SessaoGravacao.duracaoMinima == 1.0)
 }
 
 // MARK: - Armazenamento
@@ -116,24 +86,26 @@ func armazenamentoCaminhoRelativo() throws {
     #expect(armazenamento.resolver(relativo: relativo).standardizedFileURL == pasta.standardizedFileURL)
 }
 
-// MARK: - Conversão
+@Test("Arquivos de áudio canônicos nascem com os nomes da nova convenção")
+func armazenamentoArquivosCanonicos() throws {
+    let temporaria = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: temporaria) }
 
-@Test("Conversor reamostra 48 kHz para os 16 kHz canônicos")
-func conversorReamostra() throws {
-    let conversor = try #require(ConversorCanonico(taxaNativa: 48_000))
+    let armazenamento = Armazenamento(raiz: temporaria)
+    let id = UUID()
 
-    // 48.000 amostras = 1 s a 48 kHz → ~16.000 amostras a 16 kHz.
-    let entrada = [Float](repeating: 0.1, count: 48_000)
-    let saida = conversor.converter(entrada)
+    let microfone = try armazenamento.criarArquivoDeAudio(id: id, nome: Armazenamento.Nome.microfone)
+    #expect(microfone.lastPathComponent == "microfone.wav")
+    #expect(microfone.deletingLastPathComponent().lastPathComponent == id.uuidString)
+    #expect(FileManager.default.fileExists(atPath: microfone.deletingLastPathComponent().path))
 
-    #expect(saida.count > 15_000)
-    #expect(saida.count < 17_000)
-}
+    let sistema = try armazenamento.criarArquivoDeAudio(id: id, nome: Armazenamento.Nome.sistema)
+    #expect(sistema.lastPathComponent == "sistema.m4a")
 
-@Test("Conversor recusa taxa inválida em vez de crashar")
-func conversorTaxaInvalida() {
-    #expect(ConversorCanonico(taxaNativa: 0) == nil)
-    #expect(ConversorCanonico(taxaNativa: -1) == nil)
+    let importado = try armazenamento.criarArquivoImportado(id: id, extensao: "m4a")
+    #expect(importado.lastPathComponent == "gravacao.m4a")
+    let importadoWav = try armazenamento.criarArquivoImportado(id: id, extensao: "wav")
+    #expect(importadoWav.lastPathComponent == "gravacao.wav")
 }
 
 // MARK: - Importação
@@ -166,7 +138,7 @@ private func gerarAudioDeTeste(em destino: URL, segundos: Double = 2) throws {
     try arquivo.write(from: buffer)
 }
 
-@Test("Importa .m4a externo, converte e copia para dentro do container")
+@Test("Importa .m4a externo copiando como veio, sem re-encodar")
 func importacaoCopiaParaContainer() async throws {
     let temporaria = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: temporaria, withIntermediateDirectories: true)
@@ -187,13 +159,14 @@ func importacaoCopiaParaContainer() async throws {
     // O arquivo tem que estar dentro do container, não ser referência ao original.
     let destino = armazenamento
         .resolver(relativo: resultado.pastaRelativa)
-        .appendingPathComponent(Armazenamento.Nome.mixagem)
+        .appendingPathComponent("gravacao.m4a")
     #expect(FileManager.default.fileExists(atPath: destino.path))
 
-    // E tem que ter sido reescrito no formato canônico: mono, 16 kHz.
-    let convertido = try AVAudioFile(forReading: destino)
-    #expect(convertido.fileFormat.sampleRate == 16_000)
-    #expect(convertido.fileFormat.channelCount == 1)
+    // E tem que ter sido copiado no formato original, sem conversão — a
+    // conversão acontece na leitura (`DecodificadorDeAudio`), não na importação.
+    let copiado = try AVAudioFile(forReading: destino)
+    #expect(copiado.fileFormat.sampleRate == 44_100)
+    #expect(copiado.fileFormat.channelCount == 1)
 }
 
 @Test("Importação recusa arquivo que não tem trilha de áudio")

@@ -63,7 +63,7 @@ final class GravadorViewModel {
 
     func pausar() async {
         guard estado == .gravando, let sessao else { return }
-        tempoDeGravacao = await sessao.tempoDecorrido()
+        tempoDeGravacao = sessao.tempoDecorrido
         await sessao.pausar()
         tarefaNivel?.cancel()
         tarefaNivel = nil
@@ -131,7 +131,7 @@ final class GravadorViewModel {
         // A última atualização visual acontece a cada 50 ms. Antes de anexar
         // um rascunho ao término, consultamos a sessão diretamente para que o
         // timestamp final não fique preso à última atualização da waveform.
-        tempoDeGravacao = await sessao.tempoDecorrido()
+        tempoDeGravacao = sessao.tempoDecorrido
         confirmarRascunhoDaNota()
 
         estado = .processando
@@ -174,7 +174,7 @@ final class GravadorViewModel {
         tarefaNivel = Task { [weak self] in
             while !Task.isCancelled {
                 let valor = nivel.normalizado
-                let tempo = await sessao.tempoDecorrido()
+                let tempo = sessao.tempoDecorrido
                 await MainActor.run {
                     guard self?.identificadorDaGravacao == identificador,
                           self?.estado == .gravando

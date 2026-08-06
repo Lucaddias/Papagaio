@@ -4,18 +4,26 @@ import Foundation
 /// Lê qualquer arquivo de áudio e devolve amostras no formato que o Whisper
 /// consome: PCM Float32 **mono 16 kHz**.
 ///
+/// A decodificação foi portada do `AudioSampleLoader` do Eko: usa
+/// `AVAssetReader` em vez de `AVAudioFile` + `AVAudioConverter`. O
+/// `AVAudioFile`/`ExtAudioFile` falha ao decodificar certos contêineres
+/// AAC/.m4a "fora do padrão" (mesmo quando o `AVPlayer` toca o arquivo sem
+/// problema); o `AVAssetReader` usa o MESMO pipeline de decodificação do
+/// `AVPlayer`, pedindo direto PCM Float32 16 kHz mono como `outputSettings`
+/// — ele mesmo resolve o resample/downmix internamente.
+///
 /// O Whisper não reamostra por conta própria — mandar 48 kHz produz uma
 /// transcrição de lixo, não um erro. Por isso a conversão é obrigatória aqui.
 public enum DecodificadorDeAudio {
-    /// Arquivos `.pcm` do Papagaio já são Float32 mono 16 kHz crus (é o que a
-    /// `SessaoGravacao` escreve por canal). Ler é só reinterpretar os bytes.
+    /// Arquivos `.pcm` legados do Papagaio são Float32 mono 16 kHz crus. Ler
+    /// é só reinterpretar os bytes.
     public static let extensaoCrua = "pcm"
 
-    public static func amostras(de url: URL) throws -> [Float] {
+    public static func amostras(de url: URL) async throws -> [Float] {
         if url.pathExtension.lowercased() == extensaoCrua {
             return try amostrasCruas(de: url)
         }
-        return try amostrasDecodificadas(de: url)
+        return try await amostrasDecodificadas(de: url)
     }
 
     private static func amostrasCruas(de url: URL) throws -> [Float] {
@@ -26,68 +34,80 @@ public enum DecodificadorDeAudio {
         }
     }
 
-    private static func amostrasDecodificadas(de url: URL) throws -> [Float] {
-        let arquivo = try AVAudioFile(forReading: url)
-        let formatoDoArquivo = arquivo.processingFormat
-        let quadros = AVAudioFrameCount(arquivo.length)
-        guard quadros > 0 else { return [] }
+    private static func amostrasDecodificadas(de url: URL) async throws -> [Float] {
+        let asset = AVURLAsset(url: url)
 
-        guard let entrada = AVAudioPCMBuffer(pcmFormat: formatoDoArquivo, frameCapacity: quadros)
-        else { throw ErroCaptura.arquivoInvalido("não foi possível alocar buffer de leitura") }
-        try arquivo.read(into: entrada)
-
-        // Já está no formato canônico? Devolve direto.
-        let canonico = FormatoAudio.canonico
-        if formatoDoArquivo.sampleRate == canonico.sampleRate,
-           formatoDoArquivo.channelCount == 1,
-           let canal = entrada.floatChannelData {
-            return Array(UnsafeBufferPointer(start: canal[0], count: Int(entrada.frameLength)))
+        let trilhas: [AVAssetTrack]
+        do {
+            trilhas = try await asset.loadTracks(withMediaType: .audio)
+        } catch {
+            throw ErroCaptura.arquivoInvalido("loadTracks falhou: \(error.localizedDescription)")
+        }
+        guard let trilha = trilhas.first else {
+            throw ErroCaptura.arquivoInvalido("\(url.lastPathComponent) não tem trilha de áudio")
         }
 
-        guard let conversor = AVAudioConverter(from: formatoDoArquivo, to: canonico) else {
-            throw ErroCaptura.arquivoInvalido("sem conversor de \(formatoDoArquivo) para 16 kHz mono")
+        let saidaTrilha = AVAssetReaderTrackOutput(
+            track: trilha,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: FormatoAudio.taxaCanonica,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsNonInterleaved: true,
+                AVLinearPCMIsBigEndianKey: false,
+            ]
+        )
+        saidaTrilha.alwaysCopiesSampleData = false
+
+        let leitor: AVAssetReader
+        do {
+            leitor = try AVAssetReader(asset: asset)
+        } catch {
+            throw ErroCaptura.arquivoInvalido("AVAssetReader não inicializou: \(error.localizedDescription)")
+        }
+        guard leitor.canAdd(saidaTrilha) else {
+            throw ErroCaptura.arquivoInvalido("AVAssetReader recusou a trilha de áudio")
+        }
+        leitor.add(saidaTrilha)
+
+        guard leitor.startReading() else {
+            throw ErroCaptura.arquivoInvalido(
+                leitor.error?.localizedDescription ?? "startReading falhou sem detalhe"
+            )
         }
 
-        // `convert(to:error:withInputFrom:)` **não consome todo o input numa
-        // chamada** — ele preenche o buffer de saída e volta. Com um arquivo
-        // inteiro na entrada, uma única chamada devolve só o primeiro pedaço, e
-        // o resto do áudio some sem erro nenhum. Por isso o laço.
-        let razao = canonico.sampleRate / formatoDoArquivo.sampleRate
-        let estimativa = Int(Double(entrada.frameLength) * razao) + 4096
-        var acumulado = [Float]()
-        acumulado.reserveCapacity(estimativa)
+        var amostras: [Float] = []
+        while let buffer = saidaTrilha.copyNextSampleBuffer() {
+            defer { CMSampleBufferInvalidate(buffer) }
+            guard let bloco = CMSampleBufferGetDataBuffer(buffer) else { continue }
+            let bytes = CMBlockBufferGetDataLength(bloco)
+            guard bytes > 0 else { continue }
 
-        var jaEntregue = false
-        let porChamada = AVAudioFrameCount(min(estimativa, 1 << 18))
-
-        while true {
-            guard let saida = AVAudioPCMBuffer(pcmFormat: canonico, frameCapacity: porChamada)
-            else { throw ErroCaptura.arquivoInvalido("não foi possível alocar buffer de saída") }
-
-            var erro: NSError?
-            let status = conversor.convert(to: saida, error: &erro) { _, statusEntrada in
-                if jaEntregue {
-                    statusEntrada.pointee = .endOfStream
-                    return nil
-                }
-                jaEntregue = true
-                statusEntrada.pointee = .haveData
-                return entrada
+            let quantidade = bytes / MemoryLayout<Float>.size
+            var pedaco = [Float](repeating: 0, count: quantidade)
+            let status = pedaco.withUnsafeMutableBytes { bruto -> OSStatus in
+                CMBlockBufferCopyDataBytes(
+                    bloco, atOffset: 0, dataLength: bytes, destination: bruto.baseAddress!
+                )
             }
-
-            if status == .error {
-                throw ErroCaptura.arquivoInvalido(erro?.localizedDescription ?? "conversão falhou")
+            guard status == noErr else {
+                throw ErroCaptura.arquivoInvalido("CMBlockBufferCopyDataBytes: OSStatus \(status)")
             }
-            if let canal = saida.floatChannelData, saida.frameLength > 0 {
-                acumulado.append(contentsOf: UnsafeBufferPointer(
-                    start: canal[0], count: Int(saida.frameLength)
-                ))
-            }
-            if status == .endOfStream || status == .inputRanDry || saida.frameLength == 0 {
-                break
-            }
+            amostras.append(contentsOf: pedaco)
         }
-        return acumulado
+
+        if leitor.status == .failed {
+            throw ErroCaptura.arquivoInvalido(
+                leitor.error?.localizedDescription ?? "AVAssetReader terminou com falha"
+            )
+        }
+
+        guard !amostras.isEmpty else {
+            throw ErroCaptura.arquivoInvalido("\(url.lastPathComponent) está vazio")
+        }
+        return amostras
     }
 
     /// Duração em segundos de um vetor de amostras no formato canônico.
