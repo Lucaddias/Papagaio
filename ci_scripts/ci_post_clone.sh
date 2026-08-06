@@ -5,11 +5,10 @@
 //  Created by Felipe Azambuja Carvalho on 06/08/26.
 //
 
-#!/fig/sh
+#!/bin/sh
 
-# Instala e inicializa o Git LFS no servidor do Xcode Cloud
-brew install git-lfs
+# Configura o Git nativo do servidor para reconhecer os ponteiros do LFS
 git lfs install
 
-# Força o download de todos os binários pesados (llama, whisper, onnxruntime)
+# Baixa os binários reais (llama, whisper, onnxruntime) direto para o build
 git lfs pull
