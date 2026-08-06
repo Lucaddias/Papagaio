@@ -101,6 +101,24 @@ func agrupamentoPausaLonga() {
     #expect((agrupados.first?.end ?? 999) < 45)
 }
 
+@Test("Agrupamento concatena as palavras na ordem dos segmentos")
+func agrupamentoConcatenaPalavras() {
+    let a = Trecho(start: 0, end: 6, texto: "oi mundo", palavras: [
+        Palavra(start: 0, end: 1, texto: "oi"),
+        Palavra(start: 1, end: 2, texto: "mundo"),
+    ])
+    let b = Trecho(start: 6, end: 9, texto: "tudobem", palavras: [
+        Palavra(start: 6, end: 7, texto: "tudo"),
+        Palavra(start: 7, end: 9, texto: "bem"),
+    ])
+
+    let agrupados = Segmentacao.agrupar([a, b])
+    #expect(agrupados.count == 1)
+    #expect(agrupados.first?.palavras.map(\.texto) == ["oi", "mundo", "tudo", "bem"])
+    // A linha do tempo das palavras segue a do trecho combinado.
+    #expect(agrupados.first?.palavras.last?.end ?? 0 <= agrupados.first?.end ?? -1)
+}
+
 @Test("Mesclagem de canais ordena por tempo e atribui falante pela origem")
 func mesclagemDeCanais() {
     let microfone = segmentos(quantidade: 2, inicio: 0).map {

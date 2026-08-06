@@ -14,6 +14,32 @@ public struct EspacoID: Hashable, Sendable, Codable, RawRepresentable {
     public init() { self.rawValue = UUID() }
 }
 
+// MARK: - Palavra
+
+/// Uma palavra da transcrição com âncora de tempo **própria**.
+///
+/// `start`/`end` vêm do `token_timestamps` do Whisper — nunca são uma divisão
+/// do tempo do trecho — e são medidos em segundos desde o início do áudio,
+/// como `Trecho.start`.
+public struct Palavra: Sendable, Identifiable, Codable, Equatable {
+    public let id: UUID
+    public let start: TimeInterval
+    public let end: TimeInterval
+    public let texto: String
+
+    public init(
+        id: UUID = UUID(),
+        start: TimeInterval,
+        end: TimeInterval,
+        texto: String
+    ) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.texto = texto
+    }
+}
+
 // MARK: - Trecho
 
 /// Unidade navegável da transcrição. `start` é a chave da navegação do player
@@ -33,18 +59,25 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
     /// Use as constantes de `Speaker` em vez de literais soltos.
     public let speaker: String?
 
+    /// Palavras com timestamps próprios do Whisper, na ordem da fala.
+    ///
+    /// Vazio para transcrições legadas — a interface volta ao `Text` inteiro.
+    public let palavras: [Palavra]
+
     public init(
         id: UUID = UUID(),
         start: TimeInterval,
         end: TimeInterval,
         texto: String,
-        speaker: String? = nil
+        speaker: String? = nil,
+        palavras: [Palavra] = []
     ) {
         self.id = id
         self.start = start
         self.end = end
         self.texto = texto
         self.speaker = speaker
+        self.palavras = palavras
     }
 
     public var duracao: TimeInterval { end - start }

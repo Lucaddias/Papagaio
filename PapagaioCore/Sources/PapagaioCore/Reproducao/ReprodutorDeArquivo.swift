@@ -44,15 +44,31 @@ public final class ReprodutorDeArquivo {
         }
     }
 
-    /// Mutável de propósito: a transcrição chega **depois** de a tela abrir
+/// Mutável de propósito: a transcrição chega **depois** de a tela abrir
     /// (o processamento leva minutos). Recriar o player nesse momento faria o
     /// áudio voltar ao começo no meio da escuta.
-    public var trechos: [Trecho]
+    public var trechos: [Trecho] {
+        didSet {
+            // Nova transcrição chegou: o cursor da palavra pode apontar para um
+            // trecho que não existe mais. Re-sincroniza no próximo tick.
+            indiceDePalavraAtiva = nil
+            idDoTrechoDaPalavraAtiva = nil
+        }
+    }
 
-    /// Índice do trecho a destacar agora — `nil` antes do primeiro trecho.
+    /// O trecho e a palavra que estão tocando. O **trecho** é calculado por
+    /// busca binária a cada leitura; a **palavra** dentro do trecho é
+    /// incrementada pelo observador (etapa de `atualizarTempo`) e re-sincroniza
+    /// com binária a cada `saltar` — buscar sempre custaria pouco numa lista de
+    /// 150 elementos, mas o estado incremental mantém o custo **O(1) amortizado**
+    /// no caminho quente dos 10 Hz.
     public var indiceAtivo: Int? {
         NavegacaoPorTrecho.indiceAtivo(em: tempo, trechos: trechos)
     }
+
+    /// Índice da palavra ativa dentro do trecho ativo — `nil` quando o trecho
+    /// ainda não começou, ou é legado e não tem palavras.
+    public private(set) var indiceDePalavraAtiva: Int?
 
     /// Existe para o critério de aceite "sair da view não deixa observador vivo":
     /// é o que o teste consegue afirmar sem inspecionar o player.
@@ -64,6 +80,8 @@ public final class ReprodutorDeArquivo {
     private let secundario: AVAudioPlayer?
 
     @ObservationIgnored private var temporizador: Timer?
+    /// Trecho de onde veio o cursor da palavra — mudou de trecho, re-sincroniza.
+    @ObservationIgnored private var idDoTrechoDaPalavraAtiva: UUID?
 
     public init(
         audio: URL,
@@ -157,6 +175,10 @@ public final class ReprodutorDeArquivo {
     /// Salta para um instante. No `AVAudioPlayer` o `currentTime` é exato —
     /// sem a tolerância de quadro sincronizado do `AVPlayer` que fazia cliques
     /// em AAC pousarem no trecho anterior.
+    ///
+    /// O cursor da palavra re-sincroniza com binária aqui: um seek pode ir para
+    /// frente ou para trás a qualquer momento, e a heurística incremental do
+    /// tick não sabe disso.
     public func saltar(paraSegundo segundo: TimeInterval) async {
         let teto = duracao > 0 ? duracao : segundo
         let alvo = min(max(0, segundo), teto)
@@ -166,6 +188,7 @@ public final class ReprodutorDeArquivo {
         tempo = alvo
         primario?.currentTime = alvo
         secundario?.currentTime = alvo
+        atualizarPalavraAtiva(aposSalto: true)
     }
 
     // MARK: - Encerramento
@@ -197,6 +220,54 @@ public final class ReprodutorDeArquivo {
     @objc private func atualizarTempo() {
         tempo = primario?.currentTime ?? 0
         tocando = primario?.isPlaying ?? false
+        atualizarPalavraAtiva()
+    }
+
+    /// Cursor incremental da palavra dentro do trecho ativo.
+    ///
+    /// No caminho quente (tick do observador) o trabalho é olhar **só a próxima
+    /// palavra**: se ela já começou, avança; senão, o destaque continua onde
+    /// está — O(1) amortizado. Re-sincroniza com binária quando o trecho muda,
+    /// quando o tempo andou para trás sem seek (clock do player) ou após um
+    /// `saltar`.
+    private func atualizarPalavraAtiva(aposSalto: Bool = false) {
+        guard let indiceDoTrecho = NavegacaoPorTrecho.indiceAtivo(em: tempo, trechos: trechos),
+              indiceDoTrecho < trechos.count
+        else {
+            indiceDePalavraAtiva = nil
+            idDoTrechoDaPalavraAtiva = nil
+            return
+        }
+
+        let palavras = trechos[indiceDoTrecho].palavras
+        guard let atual = indiceDePalavraAtiva,
+              idDoTrechoDaPalavraAtiva == trechos[indiceDoTrecho].id
+        else {
+            // Primeiro tick ou trecho novo: começa com binária na nova lista.
+            indiceDePalavraAtiva = NavegacaoPorPalavra.indiceAtivo(em: tempo, palavras: palavras)
+            idDoTrechoDaPalavraAtiva = trechos[indiceDoTrecho].id
+            return
+        }
+
+        // Trecho legado (sem palavras) ou índice inválido após troca de lista.
+        guard palavras.indices.contains(atual) else {
+            indiceDePalavraAtiva = nil
+            return
+        }
+
+        if aposSalto || palavras[atual].start > tempo {
+            indiceDePalavraAtiva = NavegacaoPorPalavra.indiceAtivo(em: tempo, palavras: palavras)
+            return
+        }
+
+        // Avanço incremental: anda até a última palavra que já começou.
+        var andando = atual
+        while andando + 1 < palavras.count, palavras[andando + 1].start <= tempo {
+            andando += 1
+        }
+        if andando != atual {
+            indiceDePalavraAtiva = andando
+        }
     }
 
     private func aplicarVelocidade() {

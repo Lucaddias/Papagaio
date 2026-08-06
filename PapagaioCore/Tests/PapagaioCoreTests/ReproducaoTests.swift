@@ -46,6 +46,31 @@ func navegacaoNoSilencio() {
     #expect(NavegacaoPorTrecho.indiceAtivo(em: 99, trechos: trechosDeExemplo) == 2)
 }
 
+// MARK: - Navegação por palavra
+
+private let palavrasDeExemplo: [Palavra] = [
+    Palavra(start: 0.0, end: 0.3, texto: "olá"),
+    Palavra(start: 0.4, end: 0.7, texto: "mundo"),
+    // Pausa de 1,3 s: silêncio entre palavras do mesmo trecho.
+    Palavra(start: 2.0, end: 2.4, texto: "tudo"),
+    Palavra(start: 2.5, end: 2.9, texto: "bem"),
+]
+
+@Test("A palavra ativa segue o tempo dentro do trecho, na borda de cada uma")
+func palavraAcompanha() {
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 0, palavras: palavrasDeExemplo) == 0)
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 0.39, palavras: palavrasDeExemplo) == 0)
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 0.4, palavras: palavrasDeExemplo) == 1)
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 1.9, palavras: palavrasDeExemplo) == 1)
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 2.0, palavras: palavrasDeExemplo) == 2)
+}
+
+@Test("Sem palavras ou antes da primeira não há destaque")
+func palavraSemDestaque() {
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: -1, palavras: palavrasDeExemplo) == nil)
+    #expect(NavegacaoPorPalavra.indiceAtivo(em: 0, palavras: []) == nil)
+}
+
 // MARK: - Player com áudio real
 
 /// Gera um `.m4a` no mesmo formato de arquivamento da captura (AAC 16 kHz mono).
@@ -173,6 +198,56 @@ struct TestesDoPlayer {
         #expect(player.tempo == ultimo, "o observador continuou publicando depois do encerrar()")
 
         // Encerrar duas vezes não pode explodir — `onDisappear` pode repetir.
+        player.encerrar()
+    }
+
+    @Test("indiceDePalavraAtiva acompanha o trecho ativo e os seeks", .timeLimit(.minutes(1)))
+    func palavraAtivaNoPlayer() async throws {
+        let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: pasta) }
+
+        let audio = try gerarM4A(segundos: 20, em: pasta)
+        let trechos = [
+            Trecho(start: 0, end: 10, texto: "a", palavras: [
+                Palavra(start: 0, end: 4, texto: "marco"),
+                Palavra(start: 4, end: 8, texto: "final"),
+                Palavra(start: 8, end: 10, texto: "bom"),
+            ]),
+            Trecho(start: 10, end: 20, texto: "b", palavras: [
+                Palavra(start: 10, end: 15, texto: "depois"),
+                Palavra(start: 15, end: 20, texto: "tudo"),
+            ]),
+        ]
+        let player = ReprodutorDeArquivo(audio: audio, trechos: trechos)
+        await player.preparar()
+
+        // Seek vai e volta no mesmo trecho: a binária re-sincroniza o cursor.
+        await player.saltar(paraSegundo: 4.5)
+        #expect(player.indiceDePalavraAtiva == 1)
+        await player.saltar(paraSegundo: 1)
+        #expect(player.indiceDePalavraAtiva == 0)
+        await player.saltar(paraSegundo: 9)
+        #expect(player.indiceDePalavraAtiva == 2)
+
+        // Cruza a fronteira do trecho: o cursor muda de lista.
+        await player.saltar(paraSegundo: 16)
+        #expect(player.indiceDePalavraAtiva == 1)
+
+        // Trocar a transcrição (chegou depois de a tela abrir) zera o cursor;
+        // o próximo seek recalcula na lista nova.
+        player.trechos = [
+            Trecho(start: 0, end: 20, texto: "novo", palavras: [
+                Palavra(start: 0, end: 20, texto: "reescrito"),
+            ]),
+        ]
+        #expect(player.indiceDePalavraAtiva == nil)
+        await player.saltar(paraSegundo: 5)
+        #expect(player.indiceDePalavraAtiva == 0)
+
+        // Trecho sem palavras (legado): fica `nil`, sem crashar.
+        player.trechos = [Trecho(start: 0, end: 20, texto: "legado")]
+        #expect(player.indiceDePalavraAtiva == nil)
         player.encerrar()
     }
 }

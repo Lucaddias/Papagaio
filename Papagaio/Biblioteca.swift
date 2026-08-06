@@ -354,7 +354,7 @@ final class Biblioteca {
                 pastaRelativa: pastaNovaRelativa,
                 espaco: espaco,
                 trechos: arquivo.trechos.map {
-                    Trecho(start: $0.start, end: $0.end, texto: $0.texto, speaker: $0.speaker)
+                    Trecho(start: $0.start, end: $0.end, texto: $0.texto, speaker: $0.speaker, palavras: $0.palavras)
                 },
                 notas: arquivo.notas.map {
                     NotaDaConversa(texto: $0.texto, start: $0.start, critica: $0.critica, tipo: $0.tipo)

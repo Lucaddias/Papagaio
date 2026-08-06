@@ -82,6 +82,13 @@ public final class TrechoPersistido {
     /// `"eu"` | `"interlocutor"` | `nil` — vem do canal de origem.
     public var speaker: String?
 
+    /// Palavras com timestamps codificadas como JSON (`[Palavra]`).
+    ///
+    /// `Data?` em vez de uma relação nova: mantém a migração leve (coluna
+    /// opcional a mais) e o `nil` preserva transcrições legadas. O mapeamento
+    /// para o domínio degrada para `[]`, que cai no `Text` inteiro na UI.
+    public var palavrasJSON: Data?
+
     public var arquivo: ArquivoPersistido?
 
     public init(id: UUID = UUID()) {

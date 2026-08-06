@@ -67,8 +67,20 @@ public struct WhisperEngine: TranscriptionEngine {
             let segmentos = try await contexto.transcrever(amostras: amostrasDaJanela, initialPrompt: initialPrompt)
             // O Whisper devolve t0/t1 relativos ao início da JANELA — soma o
             // deslocamento para voltar à linha do tempo do arquivo original.
-            trechos.append(contentsOf: segmentos.map {
-                Trecho(start: $0.start + janela.inicio, end: $0.end + janela.inicio, texto: $0.texto, speaker: speaker)
+            trechos.append(contentsOf: segmentos.map { segmento in
+                Trecho(
+                    start: segmento.start + janela.inicio,
+                    end: segmento.end + janela.inicio,
+                    texto: segmento.texto,
+                    speaker: speaker,
+                    palavras: segmento.palavras.map {
+                        Palavra(
+                            start: $0.start + janela.inicio,
+                            end: $0.end + janela.inicio,
+                            texto: $0.texto
+                        )
+                    }
+                )
             })
         }
         return trechos

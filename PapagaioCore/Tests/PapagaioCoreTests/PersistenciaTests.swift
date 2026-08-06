@@ -50,7 +50,10 @@ func persistenciaRoundTrip() async throws {
         titulo: "Reunião de kickoff",
         espaco: espaco,
         trechos: [
-            Trecho(start: 0, end: 40, texto: "abertura", speaker: Speaker.eu),
+            Trecho(start: 0, end: 40, texto: "abertura", speaker: Speaker.eu, palavras: [
+                Palavra(start: 0, end: 3, texto: "bom"),
+                Palavra(start: 3, end: 6, texto: "dia"),
+            ]),
             Trecho(start: 40, end: 82, texto: "resposta", speaker: Speaker.interlocutor),
         ],
         resumo: resumo
@@ -73,11 +76,31 @@ func persistenciaRoundTrip() async throws {
     #expect(volta.trechos[1].speaker == Speaker.interlocutor)
     #expect(volta.trechos[0].start < volta.trechos[1].start)
 
+    // Palavras com timestamps sobrevivem ao JSON; trecho sem palavras volta vazio.
+    #expect(volta.trechos[0].palavras.count == 2)
+    #expect(volta.trechos[0].palavras[0].texto == "bom")
+    #expect(volta.trechos[0].palavras[0].start == 0)
+    #expect(volta.trechos[0].palavras[1].end == 6)
+    #expect(volta.trechos[1].palavras.isEmpty)
+
     // O resumo é reconstruído a partir dos insights.
     #expect(volta.resumo?.titulo == "Kickoff")
     #expect(volta.resumo?.temas.first?.detalhe == "Entrega em setembro.")
     #expect(volta.resumo?.citacoes.first?.start == 91.2)
     #expect(volta.resumo?.proximosPassos.first?.responsavel == "Luca")
+}
+
+@Test("Cura de palavras legadas arranca o token especial sem perder a fala")
+func curaDePalavrasLegadas() async throws {
+    // A primeira versão mesclava o `[_TT_…]` do fim do segmento à última
+    // palavra real (`"Alô?[_TT_200]"`) e criava palavras só de código
+    // (`[_BEG_]`). A cura tem que devolver a palavra real e descartar só o
+    // código — nunca a palavra inteira como o filtro `contains("[")` fazia.
+    #expect(SwiftDataRepository.curarTextoDePalavraLegada("Alô?[_TT_200]") == "Alô?")
+    #expect(SwiftDataRepository.curarTextoDePalavraLegada("[_BEG_]") == "")
+    #expect(SwiftDataRepository.curarTextoDePalavraLegada("marcador[_TT_400]") == "marcador")
+    #expect(SwiftDataRepository.curarTextoDePalavraLegada("cara") == "cara")
+    #expect(SwiftDataRepository.curarTextoDePalavraLegada("a[_TT_800][_BEG_]b") == "ab")
 }
 
 @Test("Salvar e listar preserva notas temporizadas e seus marcadores")

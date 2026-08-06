@@ -72,6 +72,9 @@ public actor SwiftDataRepository: ArquivoRepository {
             t.fim = trecho.end
             t.texto = trecho.texto
             t.speaker = trecho.speaker
+            // Vazio é o mesmo que ausente: transcrições sem palavras guardam
+            // `nil`, e a leitura cai no fallback do `Text` inteiro.
+            t.palavrasJSON = trecho.palavras.isEmpty ? nil : try? JSONEncoder().encode(trecho.palavras)
             t.arquivo = persistido
             modelContext.insert(t)
         }
@@ -292,11 +295,38 @@ public actor SwiftDataRepository: ArquivoRepository {
 
     // MARK: - Mapeamento para o domínio
 
+    /// Arranca o código de token especial (`[_BEG_]`, `[_TT_88]`) que a primeira
+    /// versão da extração mesclou a palavras reais (`"Alô?[_TT_200]"` → `"Alô?"`).
+    /// Palavra que vira só o código (caso do `[_BEG_]` isolado) fica vazia e é
+    /// descartada pelo `filter` do chamador.
+    static func curarTextoDePalavraLegada(_ texto: String) -> String {
+        texto.replacingOccurrences(of: #"\[_[^]]*\]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     static func paraDominio(_ p: ArquivoPersistido) -> Arquivo {
         let trechos = (p.trechos ?? [])
             .sorted { $0.start < $1.start }
-            .map { Trecho(id: $0.id, start: $0.start, end: $0.fim,
-                          texto: $0.texto, speaker: $0.speaker) }
+            .map { pTrecho in
+                Trecho(
+                    id: pTrecho.id,
+                    start: pTrecho.start,
+                    end: pTrecho.fim,
+                    texto: pTrecho.texto,
+                    speaker: pTrecho.speaker,
+                    // `nil` (ou JSON corrompido) = transcrição legada: a UI
+                    // volta ao `Text` inteiro em vez de quebrar o detalhe.
+                    // Transcrições da primeira versão vazaram o id dos tokens
+                    // especiais (`[_BEG_]`, `[_TT_88]`) para as palavras — e o
+                    // `[_TT_…]` do fim do segmento foi **mesclado à última
+                    // palavra real** (sem espaço), o que faria o filtro por
+                    // `contains("[")` apagar a palavra inteira junto. Aqui a
+                    // cura arranca só o código e mantém a fala:
+                    palavras: (try? JSONDecoder().decode([Palavra].self, from: pTrecho.palavrasJSON ?? Data()))?
+                        .map { Palavra(id: $0.id, start: $0.start, end: $0.end, texto: curarTextoDePalavraLegada($0.texto)) }
+                        .filter { !$0.texto.isEmpty } ?? []
+                )
+            }
 
         let insights = (p.insights ?? []).sorted { $0.ordem < $1.ordem }
         let notas = (p.notas ?? [])

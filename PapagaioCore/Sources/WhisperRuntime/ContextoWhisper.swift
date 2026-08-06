@@ -2,9 +2,11 @@ import Foundation
 // `internal`: o módulo C não vaza para quem importa este target. Ver D-3.2.
 internal import whisper
 
-/// Um segmento nativo do Whisper. Tipo Swift puro — nenhum tipo do ggml
-/// atravessa a fronteira deste target, que é o que permite o `internal import`.
-public struct SegmentoWhisper: Sendable, Equatable {
+/// Uma palavra com timestamps reais do Whisper (`token_timestamps`).
+///
+/// Os tempos vêm em centésimos de segundo, como os do segmento. O agrupamento
+/// dos tokens em palavras é do `ContextoWhisper` — aqui só viaja o valor.
+public struct PalavraWhisper: Sendable, Equatable {
     public let start: TimeInterval
     public let end: TimeInterval
     public let texto: String
@@ -13,6 +15,28 @@ public struct SegmentoWhisper: Sendable, Equatable {
         self.start = start
         self.end = end
         self.texto = texto
+    }
+}
+
+/// Um segmento nativo do Whisper. Tipo Swift puro — nenhum tipo do ggml
+/// atravessa a fronteira deste target, que é o que permite o `internal import`.
+public struct SegmentoWhisper: Sendable, Equatable {
+    public let start: TimeInterval
+    public let end: TimeInterval
+    public let texto: String
+    /// Palavras com timestamps próprios, na ordem da fala.
+    public let palavras: [PalavraWhisper]
+
+    public init(
+        start: TimeInterval,
+        end: TimeInterval,
+        texto: String,
+        palavras: [PalavraWhisper] = []
+    ) {
+        self.start = start
+        self.end = end
+        self.texto = texto
+        self.palavras = palavras
     }
 }
 
@@ -124,6 +148,11 @@ public actor ContextoWhisper {
         // Uma hipótese ruim não pode contaminar janelas posteriores e virar
         // repetição em cascata durante silêncio ou ruído.
         params.no_context = true
+        // Timestamps por token: é o que permite destacar a palavra exata que
+        // está tocando (a UI não cai em divisão do tempo do trecho). O large-v3
+        // foi treinado com timestamps de palavra, então o `t0`/`t1` dos tokens
+        // é medido, não estimado por distribuição.
+        params.token_timestamps = true
 
         let codigo: Int32
         if let initialPrompt, !initialPrompt.isEmpty {
@@ -159,9 +188,72 @@ public actor ContextoWhisper {
             let t0 = TimeInterval(whisper_full_get_segment_t0(contexto, indice)) / 100
             let t1 = TimeInterval(whisper_full_get_segment_t1(contexto, indice)) / 100
 
-            segmentos.append(SegmentoWhisper(start: t0, end: t1, texto: texto))
+            segmentos.append(SegmentoWhisper(
+                start: t0,
+                end: t1,
+                texto: texto,
+                palavras: palavrasDoSegmento(indice)
+            ))
         }
         return segmentos
+    }
+
+    /// Agrupa os tokens do segmento em palavras, na ordem da fala.
+    ///
+    /// O tokenizer do Whisper prefixa o espaço à token que **abre** uma palavra
+    /// (`" olá"`, `" mundo"`); as tokens seguintes sem espaço (`"lá"`) são
+    /// fragmentos da mesma palavra (BPE). Combinar um espaço à frente →
+    /// palavra nova reproduz o desmembramento de frase do próprio whisper.cpp.
+    ///
+    /// `t0`/`t1` de cada token são medidos em centésimos: a palavra herda o
+    /// início da primeira token e o fim da última.
+    private func palavrasDoSegmento(_ indice: Int32) -> [PalavraWhisper] {
+        let total = whisper_full_n_tokens(contexto, indice)
+        guard total > 0 else { return [] }
+
+        var palavras: [PalavraWhisper] = []
+        palavras.reserveCapacity(Int(total))
+        var textoDaPalavra = ""
+        var inicioDaPalavra: TimeInterval = 0
+        var fimDaPalavra: TimeInterval = 0
+
+        func fecharPalavra() {
+            guard !textoDaPalavra.isEmpty else { return }
+            palavras.append(PalavraWhisper(
+                start: inicioDaPalavra,
+                end: fimDaPalavra,
+                texto: textoDaPalavra
+            ))
+            textoDaPalavra = ""
+        }
+
+for token in 0..<total {
+            let dados = whisper_full_get_token_data(contexto, indice, token)
+
+            // Tokens especiais não são fala — timestamps, controle (`<|SOT|>`),
+            // idiomas, etc. Todos têm id a partir do `eot`. Filtra-se por **id**,
+            // nunca pelo texto: este build do whisper.cpp os renderiza como
+            // `[_BEG_]` e `[_TT_88]`, sem o `<|` do vocabulário, e o filtro de
+            // texto da primeira tentativa os vazou para as palavras mostradas.
+            guard dados.id < whisper_token_eot(contexto) else { continue }
+
+            guard let cToken = whisper_full_get_token_text(contexto, indice, token) else { continue }
+            let textoDoToken = String(cString: cToken)
+            let t0 = TimeInterval(dados.t0) / 100
+            let t1 = TimeInterval(dados.t1) / 100
+
+            if textoDoToken.hasPrefix(" ") {
+                fecharPalavra()
+                textoDaPalavra = textoDoToken.trimmingCharacters(in: .whitespaces)
+                inicioDaPalavra = t0
+                fimDaPalavra = t1
+            } else {
+                textoDaPalavra += textoDoToken
+                fimDaPalavra = t1
+            }
+        }
+        fecharPalavra()
+        return palavras
     }
 
     /// Capacidades do build, para diagnóstico.

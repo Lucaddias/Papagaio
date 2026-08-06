@@ -34,7 +34,10 @@ public enum Segmentacao {
                 start: primeiro.start,
                 end: ultimo.end,
                 texto: acumulados.map(\.texto).joined(separator: " "),
-                speaker: primeiro.speaker
+                speaker: primeiro.speaker,
+                // As palavras já vêm na linha do tempo do arquivo; concatena
+                // na ordem dos segmentos, como o texto.
+                palavras: acumulados.flatMap(\.palavras)
             ))
             acumulados.removeAll()
         }
@@ -95,7 +98,8 @@ public enum Segmentacao {
             start: trecho.start,
             end: trecho.end,
             texto: trecho.texto,
-            speaker: speaker
+            speaker: speaker,
+            palavras: trecho.palavras
         )
     }
 

@@ -873,16 +873,21 @@ struct ArquivoDetalheView: View {
             ScrollViewReader { rolagem in
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(trechos.enumerated()), id: \.element.id) { indice, trecho in
-                        Button {
-                            tocar(trecho, no: reprodutor)
-                        } label: {
-                            linha(trecho, ativo: indice == reprodutor.indiceAtivo)
-                        }
-                        .buttonStyle(.plain)
-                        .id(trecho.id)
-                        .accessibilityHint(
-                            "Inicia a reprodução a partir de \(tempoLongo(trecho.start))."
+                        let ativo = indice == reprodutor.indiceAtivo
+                        LinhaDeTranscricao(
+                            trecho: trecho,
+                            ativo: ativo,
+                            // Só o trecho ativo consulta a palavra: o destaque
+                            // por palavra é observado na linha certa, não na
+                            // transcrição inteira.
+                            indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
+                            animacao: animacaoDeInterface,
+                            aoTocarLinha: { tocar(trecho, no: reprodutor) },
+                            aoTocarPalavra: { palavra in
+                                tocar(palavra, no: reprodutor)
+                            }
                         )
+                        .id(trecho.id)
                     }
                 }
                 .onChange(of: reprodutor.indiceAtivo) { _, novo in
@@ -922,8 +927,13 @@ struct ArquivoDetalheView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func linha(_ trecho: Trecho, ativo: Bool) -> some View {
-        LinhaDeTranscricao(trecho: trecho, ativo: ativo)
+    private func tocar(_ palavra: Palavra, no reprodutor: ReprodutorDeArquivo) {
+        tempoEmEdicao = nil
+        Task { @MainActor in
+            // O timestamp é próprio da palavra (token_timestamps) — o salto
+            // pousa no átomo da fala, não numa divisão do trecho.
+            await reprodutor.saltar(paraSegundo: palavra.start)
+        }
     }
 
     // MARK: - Exportação

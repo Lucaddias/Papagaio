@@ -73,12 +73,20 @@ struct BarraDeSecoesDaConversa: View {
     }
 }
 
-/// Linha interativa da transcrição. A ação de tocar pertence ao container;
+/// Linha interativa da transcrição. As ações de tocar pertencem ao container;
 /// assim a célula continua puramente visual e pode ser usada dentro de um
 /// `Button` sem duplicar lógica de AVFoundation.
 struct LinhaDeTranscricao: View {
     let trecho: Trecho
     let ativo: Bool
+    /// Palavra destacada dentro do trecho — `nil` quando o trecho está inativo
+    /// ou é legado (sem `palavras`).
+    let indiceDePalavraAtiva: Int?
+    /// Animação do destaque de palavra, vinda do container (respeita o modo de
+    /// reduzir movimento).
+    let animacao: Animation?
+    let aoTocarLinha: () -> Void
+    let aoTocarPalavra: (Palavra) -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -95,11 +103,7 @@ struct LinhaDeTranscricao: View {
                         .foregroundStyle(PapagaioTema.textoSecundario)
                 }
 
-                Text(trecho.texto)
-                    .font(.body)
-                    .fontWeight(ativo ? .medium : .regular)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .multilineTextAlignment(.leading)
+                corpoDaTranscricao
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -120,9 +124,42 @@ struct LinhaDeTranscricao: View {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(ativo ? PapagaioTema.borda : PapagaioTema.borda.opacity(0.58), lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(tempoLongo(trecho.start)). \(trecho.texto)")
+        .contentShape(Rectangle())
+        .onTapGesture {
+            aoTocarLinha()
+        }
+        // `contain` em vez de `combine`: com palavras clicáveis, juntar tudo
+        // num elemento só engoliria os botões do VoiceOver.
+        .accessibilityElement(children: .contain)
+        .accessibilityAction {
+            aoTocarLinha()
+        }
+        .accessibilityHint("Inicia a reprodução a partir de \(tempoLongo(trecho.start)).")
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
+    }
+
+    @ViewBuilder
+    private var corpoDaTranscricao: some View {
+        if !trecho.palavras.isEmpty {
+            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3) {
+                ForEach(Array(trecho.palavras.enumerated()), id: \.element.id) { indice, palavra in
+                    BotaoDePalavra(
+                        palavra: palavra,
+                        ativa: indice == indiceDePalavraAtiva,
+                        animacao: animacao,
+                        acao: { aoTocarPalavra(palavra) }
+                    )
+                }
+            }
+        } else {
+            // Transcrição legada (salva antes das palavras existirem): cai no
+            // parágrafo inteiro, como sempre foi.
+            Text(trecho.texto)
+                .font(.body)
+                .fontWeight(ativo ? .medium : .regular)
+                .foregroundStyle(PapagaioTema.texto)
+                .multilineTextAlignment(.leading)
+        }
     }
 
     private func tempoCurto(_ segundos: TimeInterval) -> String {
@@ -135,6 +172,39 @@ struct LinhaDeTranscricao: View {
         let minutos = inteiros / 60
         let resto = inteiros % 60
         return minutos > 0 ? "\(minutos) min \(resto) s" : "\(resto) s"
+    }
+}
+
+/// Uma palavra clicável do parágrafo corrido. O tap salta o áudio para o
+/// timestamp próprio dela; o destaque segue `indiceDePalavraAtiva` do trecho.
+private struct BotaoDePalavra: View {
+    let palavra: Palavra
+    let ativa: Bool
+    let animacao: Animation?
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            Text(palavra.texto)
+                .font(.body)
+                // Peso constante: a palavra ativa não pode ocupar mais espaço
+                // que as outras. Semiforte alarga o glifo e o parágrafo inteiro
+                // se remexe a cada palavra nova — o destaque vive só na cor e
+                // no fundo, que não custam largura nenhuma.
+                .foregroundStyle(ativa ? PapagaioTema.destaqueEscuro : PapagaioTema.texto)
+                .padding(.vertical, 1.5)
+                .padding(.horizontal, 2)
+                .background(
+                    ativa ? PapagaioTema.destaqueSuave : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(animacao, value: ativa)
+        .help("Ouvir a partir desta palavra")
+        .accessibilityLabel(palavra.texto)
+        .accessibilityHint("Salta o áudio para o instante desta palavra.")
+        .accessibilityAddTraits(ativa ? [.isSelected] : [])
     }
 }
 

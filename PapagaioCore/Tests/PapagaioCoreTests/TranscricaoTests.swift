@@ -110,6 +110,24 @@ struct TestesComModeloWhisper {
         // Números são o que mais quebra em ASR — este é o teste que importa.
         #expect(tudo.contains("1.730") || tudo.contains("1730"))
 
+        // Palavras com timestamps próprios acompanham cada trecho: todas têm
+        // texto, tempos válidos e ficam dentro do intervalo do trecho — a âncora
+        // é do Whisper, não uma divisão forçada.
+        let totalDePalavras = trechos.reduce(0) { $0 + $1.palavras.count }
+        #expect(totalDePalavras > 50, "poucas palavras: \(totalDePalavras)")
+        for trecho in trechos {
+            #expect(!trecho.palavras.isEmpty, "trecho sem palavras: \(trecho.texto)")
+            var anterior: TimeInterval = -1
+            for palavra in trecho.palavras {
+                #expect(!palavra.texto.isEmpty)
+                #expect(palavra.end >= palavra.start)
+                #expect(palavra.start >= trecho.start - 0.02)
+                #expect(palavra.end <= trecho.end + 0.02)
+                #expect(palavra.start >= anterior - 0.02)
+                anterior = palavra.start
+            }
+        }
+
         await engine.descarregar()
     }
 
