@@ -75,15 +75,6 @@ func decodificadorPCMCru() async throws {
     #expect(abs(DecodificadorDeAudio.duracao(de: lidas) - 1) < 0.001)
 }
 
-@Test("VAD recusa silêncio e aceita fala com energia sustentada")
-func detectorDeAtividadeDeVoz() {
-    let silencio = [Float](repeating: 0, count: 16_000)
-    let fala = [Float](repeating: 0.02, count: 16_000)
-
-    #expect(!DetectorDeAtividadeDeVoz.contemFala(nas: silencio))
-    #expect(DetectorDeAtividadeDeVoz.contemFala(nas: fala))
-}
-
 // MARK: - Transcrição real
 
 /// Testes que carregam os 3 GB do Whisper.

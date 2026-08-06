@@ -11,9 +11,14 @@ let package = Package(
     targets: [
         // Runtimes locais, pré-compilados com backend Metal.
         // Baixados por Scripts/bootstrap-runtimes.sh (versão + SHA-256 fixados),
-        // fora do git por causa do tamanho (~1 GB). Ver D-3.1.
+        // fora do git por causa do tamanho (~1 GB + 52 MB do ONNX Runtime).
+        // Ver D-3.1.
         .binaryTarget(name: "whisper", path: "Frameworks/whisper.xcframework"),
         .binaryTarget(name: "llama", path: "Frameworks/llama.xcframework"),
+        // ONNX Runtime (M.1): roda o Silero VAD em CPU. O pod archive oficial
+        // não publica module map; o bootstrap acrescenta um ao framework
+        // (ver Scripts/bootstrap-runtimes.sh).
+        .binaryTarget(name: "onnxruntime", path: "Frameworks/onnxruntime.xcframework"),
 
         // Cada runtime fica isolado no seu próprio target Swift.
         //
@@ -21,7 +26,10 @@ let package = Package(
         // **diferentes** do ggml, e importar `whisper` e `llama` no mesmo
         // contexto de módulo quebra o build com "'ggml_type' has different
         // definitions in different modules". Separando os targets, cada módulo
-        // clang enxerga só o seu ggml. Ver D-3.2.
+        // clang enxerga só o seu ggml. O ONNX Runtime não conflita com ggml
+        // (símbolos próprios), mas segue a mesma regra por consistência — o
+        // module C do onnxruntime não atravessa a fronteira deste target.
+        // Ver D-3.2.
         .target(
             name: "WhisperRuntime",
             dependencies: ["whisper"],
@@ -32,12 +40,24 @@ let package = Package(
             dependencies: ["llama"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        .target(
+            name: "OnnxApi",
+            dependencies: ["onnxruntime"],
+            swiftSettings: [.swiftLanguageMode(.v6)],
+            // O onnxruntime.framework é C++ (libc++).
+            linkerSettings: [.linkedLibrary("c++")]
+        ),
 
         // Biblioteca de domínio. NÃO importa SwiftUI — a CLI depende dela.
-        // Também não importa `whisper`/`llama` direto: só os wrappers acima.
+        // Também não importa `whisper`/`llama`/`onnxruntime` direto: só os
+        // wrappers acima.
         .target(
             name: "PapagaioCore",
-            dependencies: ["WhisperRuntime", "LlamaRuntime"],
+            dependencies: ["WhisperRuntime", "LlamaRuntime", "OnnxApi"],
+            // O modelo do Silero VAD entra no bundle do alvo (2,3 MB). Veja
+            // Scripts/bootstrap-runtimes.sh, que o baixa com versão e SHA-256
+            // fixados dentro de Sources/PapagaioCore/Resources/.
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(

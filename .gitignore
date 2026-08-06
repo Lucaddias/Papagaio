@@ -1,5 +1,10 @@
-# XCFrameworks de whisper.cpp e llama.cpp — ~1 GB, baixados por
+# XCFrameworks de whisper.cpp, llama.cpp e ONNX Runtime — ~1 GB, baixados por
 # Scripts/bootstrap-runtimes.sh com versão e SHA-256 fixados.
 PapagaioCore/Frameworks/
+
+# Modelo do Silero VAD (M.1) — 2,3 MB, baixado pelo mesmo script para
+# Sources/PapagaioCore/Resources/, de onde vira resource do PapagaioCore.
+PapagaioCore/Sources/PapagaioCore/Resources/silero_vad.onnx
+
 .build/
 *.xcuserdatad/

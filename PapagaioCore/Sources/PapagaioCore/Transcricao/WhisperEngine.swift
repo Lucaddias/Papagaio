@@ -36,6 +36,12 @@ public struct WhisperEngine: TranscriptionEngine {
     /// Não há modelo de diarização: microfone é `"eu"`, tap do sistema é
     /// `"interlocutor"`, e arquivo importado é `nil` — ver skill
     /// `papagaio-speaker-attribution`.
+    ///
+    /// Chama o Whisper **uma vez por janela de fala** (ver
+    /// `DetectorDeAtividadeDeVoz.janelasDeFala`), não uma vez para o arquivo
+    /// inteiro — silêncio longo entre janelas nunca chega ao decoder. Ver o
+    /// comentário de `DetectorDeAtividadeDeVoz.swift` para o porquê: era
+    /// isso que causava a repetição/alucinação em cascata.
     public func transcribe(
         _ url: URL,
         speaker: String?,
@@ -43,7 +49,9 @@ public struct WhisperEngine: TranscriptionEngine {
     ) async throws -> [Trecho] {
         let amostras = try await DecodificadorDeAudio.amostras(de: url)
         guard !amostras.isEmpty else { return [] }
-        guard DetectorDeAtividadeDeVoz.contemFala(nas: amostras) else {
+
+        let janelas = try await DetectorDeAtividadeDeVoz.janelasDeFala(nas: amostras)
+        guard !janelas.isEmpty else {
             // Em uma reunião de dois canais, o microfone pode estar em silêncio
             // enquanto só o interlocutor fala. Devolver vazio permite que o
             // pipeline preserve o outro canal; se ambos estiverem vazios, ele
@@ -51,10 +59,19 @@ public struct WhisperEngine: TranscriptionEngine {
             return []
         }
 
-        let segmentos = try await contexto.transcrever(amostras: amostras, initialPrompt: initialPrompt)
-        return segmentos.map {
-            Trecho(start: $0.start, end: $0.end, texto: $0.texto, speaker: speaker)
+        var trechos: [Trecho] = []
+        for janela in janelas {
+            let amostrasDaJanela = DetectorDeAtividadeDeVoz.amostras(de: amostras, na: janela)
+            guard !amostrasDaJanela.isEmpty else { continue }
+
+            let segmentos = try await contexto.transcrever(amostras: amostrasDaJanela, initialPrompt: initialPrompt)
+            // O Whisper devolve t0/t1 relativos ao início da JANELA — soma o
+            // deslocamento para voltar à linha do tempo do arquivo original.
+            trechos.append(contentsOf: segmentos.map {
+                Trecho(start: $0.start + janela.inicio, end: $0.end + janela.inicio, texto: $0.texto, speaker: speaker)
+            })
         }
+        return trechos
     }
 
     /// Carrega o modelo antecipadamente, para a primeira transcrição não pagar
