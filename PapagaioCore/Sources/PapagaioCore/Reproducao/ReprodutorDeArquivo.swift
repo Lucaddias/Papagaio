@@ -95,13 +95,17 @@ public final class ReprodutorDeArquivo {
         // `Timer.scheduledTimer` é indisponível de contexto async no Swift 6.2
         // (pode nunca disparar); criar o timer e anexá-lo ao RunLoop da main
         // foge disso e garante o modo `.common` (roda também durante gestos).
-        let timer = Timer(
-            timeInterval: intervaloDeObservacao,
-            target: self,
-            selector: #selector(atualizarTempo),
-            userInfo: nil,
-            repeats: true
-        )
+        //
+        // Bloco, e não `target:`/`selector:`, por dois motivos. O `#selector`
+        // exige um método `@objc`, e só classe que herda de `NSObject` pode
+        // declarar membro `@objc` — esta não herda (é `@Observable` puro).
+        // E o inicializador com alvo **retém** o alvo: o `deinit` abaixo nunca
+        // rodaria, justamente a rede de segurança que ele existe para ser.
+        //
+        // O timer é entregue no RunLoop da main, então a isolação já é a certa.
+        let timer = Timer(timeInterval: intervaloDeObservacao, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.atualizarTempo() }
+        }
         temporizador = timer
         RunLoop.main.add(timer, forMode: .common)
     }
@@ -194,7 +198,7 @@ public final class ReprodutorDeArquivo {
 
     // MARK: - Observação
 
-    @objc private func atualizarTempo() {
+    private func atualizarTempo() {
         tempo = primario?.currentTime ?? 0
         tocando = primario?.isPlaying ?? false
     }
