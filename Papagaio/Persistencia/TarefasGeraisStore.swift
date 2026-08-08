@@ -1,0 +1,38 @@
+import Foundation
+import PapagaioCore
+
+enum TarefasGeraisStore {
+    static func carregar(_ arquivo: Arquivo) -> [TarefaDaConversa] {
+        if let dados = UserDefaults.standard.data(forKey: chave(arquivo.id)),
+           let tarefas = try? JSONDecoder().decode([TarefaDaConversa].self, from: dados) {
+            return tarefas
+        }
+
+        let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
+        let tarefas = (arquivo.resumo?.proximosPassos ?? []).enumerated().map { indice, passo in
+            TarefaDaConversa(
+                titulo: passo.descricao,
+                origem: titulo,
+                prioridade: indice < 2 ? .alta : .media,
+                status: .emAndamento,
+                responsavel: passo.responsavel,
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm)
+            )
+        }
+
+        if !tarefas.isEmpty {
+            salvar(tarefas, para: arquivo.id)
+        }
+
+        return tarefas
+    }
+
+    static func salvar(_ tarefas: [TarefaDaConversa], para arquivoID: ArquivoID) {
+        guard let dados = try? JSONEncoder().encode(tarefas) else { return }
+        UserDefaults.standard.set(dados, forKey: chave(arquivoID))
+    }
+
+    private static func chave(_ arquivoID: ArquivoID) -> String {
+        "tarefasDaConversa.\(arquivoID.rawValue.uuidString)"
+    }
+}

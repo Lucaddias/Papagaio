@@ -1,0 +1,107 @@
+import SwiftUI
+
+struct CartaoDeTarefaGeral: View {
+    let tarefa: TarefaGeral
+    let aoEditar: () -> Void
+    let aoAlternarConclusao: () -> Void
+    let aoExcluir: () -> Void
+
+    private var concluida: Bool { tarefa.tarefa.status == .concluida }
+    private var progresso: Double {
+        concluida ? 1 : 0
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                SeloDePrioridade(prioridade: tarefa.tarefa.prioridade)
+                Spacer()
+                SeloDeStatusDaTarefa(status: tarefa.tarefa.status)
+                Menu {
+                    Button("Editar", systemImage: "pencil", action: aoEditar)
+                    Button(concluida ? "Marcar em andamento" : "Marcar concluída", systemImage: concluida ? "clock" : "checkmark", action: aoAlternarConclusao)
+                    Button("Excluir", systemImage: "trash", role: .destructive, action: aoExcluir)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Circle())
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .help("Ações da tarefa")
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text(tarefa.tarefa.titulo)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(concluida ? PapagaioTema.textoSecundario : PapagaioTema.texto)
+                    .strikethrough(concluida, color: PapagaioTema.textoSecundario)
+                    .lineLimit(2)
+
+                Text(tarefa.conversa.titulo)
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                avatarResponsavel
+                Spacer(minLength: 0)
+                Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(corDoPrazo)
+                    .lineLimit(1)
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                ProgressView(value: progresso)
+                    .progressViewStyle(.linear)
+                    .tint(concluida ? PapagaioTema.sucesso : PapagaioTema.destaqueEscuro)
+
+                Text(concluida ? "100% Concluído" : "Em andamento")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(concluida ? PapagaioTema.sucesso : PapagaioTema.destaqueEscuro)
+            }
+        }
+        .padding(PapagaioTema.Espaco.largo)
+        .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
+        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1)
+        }
+        .shadow(color: PapagaioTema.destaque.opacity(0.08), radius: 10, y: 6)
+    }
+
+    private var avatarResponsavel: some View {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            Text(iniciais(de: tarefa.tarefa.responsavel ?? "?"))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.texto)
+                .frame(width: 30, height: 30)
+                .background(PapagaioTema.destaqueSuave, in: Circle())
+
+            Text(tarefa.tarefa.responsavel?.isEmpty == false ? tarefa.tarefa.responsavel! : "Sem responsável")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .lineLimit(1)
+        }
+    }
+
+    private var rotuloDoPrazo: String {
+        guard let prazo = tarefa.tarefa.prazo else { return "Sem deadline" }
+        if Calendar.current.isDateInToday(prazo) { return "Hoje" }
+        if Calendar.current.isDateInTomorrow(prazo) { return "Amanhã" }
+        return prazo.formatted(.dateTime.day().month().year())
+    }
+
+    private var corDoPrazo: Color {
+        guard let prazo = tarefa.tarefa.prazo, !concluida else { return PapagaioTema.textoSecundario }
+        if prazo <= Calendar.current.date(byAdding: .day, value: 2, to: Date()) ?? Date() {
+            return PapagaioTema.perigo
+        }
+        return PapagaioTema.textoSecundario
+    }
+}
