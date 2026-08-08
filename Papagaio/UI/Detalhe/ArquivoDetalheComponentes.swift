@@ -33,38 +33,47 @@ struct BarraDeSecoesDaConversa: View {
     let secaoSelecionada: SecaoDoDetalhe
     let aoSelecionar: (SecaoDoDetalhe) -> Void
 
+    /// As abas dividiam a largura inteira da janela: em tela cheia sobravam
+    /// ~250pt entre "Resumo" e "Transcrição", e a barra deixava de ler como um
+    /// grupo. Agora cada aba tem a largura do seu rótulo e o conjunto fica
+    /// ancorado à esquerda, alinhado com o título da página.
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: PapagaioTema.Espaco.secao) {
             ForEach(SecaoDoDetalhe.allCases) { secao in
                 let estaSelecionada = secaoSelecionada == secao
 
                 Button {
                     aoSelecionar(secao)
                 } label: {
-                    VStack(spacing: 9) {
+                    VStack(spacing: PapagaioTema.Espaco.curto) {
                         Label(secao.rawValue, systemImage: secao.simbolo)
                             .labelStyle(.titleAndIcon)
-                            .font(.callout.weight(estaSelecionada ? .semibold : .regular))
+                            .font(PapagaioTema.Tipo.apoio.weight(estaSelecionada ? .semibold : .regular))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .fixedSize(horizontal: true, vertical: false)
                             .foregroundStyle(
                                 estaSelecionada
                                     ? PapagaioTema.destaqueEscuro
                                     : PapagaioTema.textoSecundario
                             )
-                            .frame(maxWidth: .infinity)
 
                         Rectangle()
                             .fill(estaSelecionada ? PapagaioTema.destaque : .clear)
                             .frame(height: 3)
                     }
+                    // `Rectangle` é guloso: sem fixar o eixo horizontal ele
+                    // esticava a aba inteira e as cinco voltavam a se espalhar
+                    // pela janela, mesmo com o rótulo já dimensionado.
+                    .fixedSize(horizontal: true, vertical: false)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(estaSelecionada ? .isSelected : [])
             }
+
+            Spacer(minLength: 0)
         }
-        .padding(.top, 4)
+        .padding(.top, PapagaioTema.Espaco.minimo)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(PapagaioTema.borda.opacity(0.72))
@@ -89,14 +98,14 @@ struct LinhaDeTranscricao: View {
     let aoTocarPalavra: (Palavra) -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(tempoCurto(trecho.start))
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+            Text(trecho.start.comoRelogio)
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 if let speaker = trecho.speaker {
                     Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
                         .font(.caption.weight(.semibold))
@@ -107,8 +116,8 @@ struct LinhaDeTranscricao: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 13)
-        .padding(.horizontal, 16)
+        .padding(.vertical, PapagaioTema.Espaco.medio)
+        .padding(.horizontal, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             ativo ? PapagaioTema.destaqueSuave.opacity(0.76) : PapagaioTema.superficie,
@@ -118,7 +127,7 @@ struct LinhaDeTranscricao: View {
             Capsule()
                 .fill(ativo ? PapagaioTema.destaque : .clear)
                 .frame(width: 4)
-                .padding(.vertical, 10)
+                .padding(.vertical, PapagaioTema.Espaco.curto)
         }
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
@@ -162,11 +171,6 @@ struct LinhaDeTranscricao: View {
         }
     }
 
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let inteiros = Int(max(0, segundos))
-        return String(format: "%d:%02d", inteiros / 60, inteiros % 60)
-    }
-
     private func tempoLongo(_ segundos: TimeInterval) -> String {
         let inteiros = Int(max(0, segundos))
         let minutos = inteiros / 60
@@ -193,10 +197,10 @@ private struct BotaoDePalavra: View {
                 // no fundo, que não custam largura nenhuma.
                 .foregroundStyle(ativa ? PapagaioTema.destaqueEscuro : PapagaioTema.texto)
                 .padding(.vertical, 1.5)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, PapagaioTema.Espaco.minimo)
                 .background(
                     ativa ? PapagaioTema.destaqueSuave : Color.clear,
-                    in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 )
         }
         .buttonStyle(.plain)
@@ -220,22 +224,22 @@ struct BarraDeAudioDaConversa: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 24) {
+            HStack(spacing: PapagaioTema.Espaco.secao) {
                 blocoDoArquivo
                 controlesCentrais
                 progresso
                 volumeEVelocidade
             }
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 14) {
+                    HStack(spacing: PapagaioTema.Espaco.medio) {
                         blocoDoArquivo
                         Spacer(minLength: 0)
                         controlesCentrais
                     }
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         blocoDoArquivo
                         controlesCentrais
                     }
@@ -246,8 +250,8 @@ struct BarraDeAudioDaConversa: View {
                 volumeEVelocidade
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
+        .padding(.horizontal, PapagaioTema.Espaco.secao)
+        .padding(.vertical, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, minHeight: 88)
         .background(PapagaioTema.superficie)
         .overlay(alignment: .top) {
@@ -258,14 +262,14 @@ struct BarraDeAudioDaConversa: View {
     }
 
     private var blocoDoArquivo: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
             Image(systemName: "mic")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 48, height: 48)
-                .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 Text(titulo)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
@@ -280,7 +284,7 @@ struct BarraDeAudioDaConversa: View {
     }
 
     private var controlesCentrais: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
             BotaoCircularDoPlayer(simbolo: "gobackward.10", tamanho: 18, destaque: false) {
                 Task { await reprodutor.voltar(10) }
             }
@@ -304,8 +308,8 @@ struct BarraDeAudioDaConversa: View {
     }
 
     private var progresso: some View {
-        HStack(spacing: 12) {
-            Text(tempoCurto(posicaoAtual))
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            Text(posicaoAtual.comoRelogio)
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .foregroundStyle(PapagaioTema.texto)
                 .monospacedDigit()
@@ -326,7 +330,7 @@ struct BarraDeAudioDaConversa: View {
             .accessibilityLabel("Posição do áudio")
             .accessibilityValue("\(tempoLongo(posicaoAtual)) de \(tempoLongo(reprodutor.duracao))")
 
-            Text(tempoCurto(reprodutor.duracao))
+            Text(reprodutor.duracao.comoRelogio)
                 .font(.system(.caption, design: .monospaced).weight(.medium))
                 .foregroundStyle(PapagaioTema.texto)
                 .monospacedDigit()
@@ -337,11 +341,11 @@ struct BarraDeAudioDaConversa: View {
 
     private var volumeEVelocidade: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
+            HStack(spacing: PapagaioTema.Espaco.medio) {
                 controlesDeVolumeEVelocidade
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 controlesDeVolumeEVelocidade
             }
         }
@@ -369,8 +373,8 @@ struct BarraDeAudioDaConversa: View {
                 Text(textoDaVelocidade)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
+                    .padding(.horizontal, PapagaioTema.Espaco.curto)
+                    .frame(height: PapagaioTema.Altura.compacta)
                     .background(PapagaioTema.superficieSuave, in: Capsule())
             }
             .menuStyle(.button)
@@ -408,12 +412,6 @@ struct BarraDeAudioDaConversa: View {
         reprodutor.velocidade = proxima
     }
 
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        guard segundos.isFinite, segundos >= 0 else { return "0:00" }
-        let inteiros = Int(segundos)
-        return String(format: "%d:%02d", inteiros / 60, inteiros % 60)
-    }
-
     private func tempoLongo(_ segundos: TimeInterval) -> String {
         let inteiros = Int(max(0, segundos))
         let minutos = inteiros / 60
@@ -432,7 +430,7 @@ private struct BotaoCircularDoPlayer: View {
         Button(action: acao) {
             Image(systemName: simbolo)
                 .font(.system(size: tamanho, weight: .semibold))
-                .foregroundStyle(destaque ? .white : PapagaioTema.textoSecundario)
+                .foregroundStyle(destaque ? PapagaioTema.textoSobrePrimario : PapagaioTema.textoSecundario)
                 .frame(width: destaque ? 48 : 34, height: destaque ? 48 : 34)
                 .background(destaque ? PapagaioTema.destaqueEscuro : Color.clear, in: Circle())
         }
@@ -479,11 +477,11 @@ struct MidiaDaConversaView: View {
     let aoRemover: (AnexoDeMidiaDaConversa) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
             HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     Text("Arquivos e Mídia")
-                        .font(.system(size: 30, weight: .bold))
+                        .font(PapagaioTema.Tipo.tituloDePagina)
                         .foregroundStyle(PapagaioTema.texto)
 
                     Text("Fotos, vídeos, áudios, documentos e anexos salvos nesta conversa.")
@@ -493,30 +491,30 @@ struct MidiaDaConversaView: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
                     Text(anexos.count == 1 ? "1 arquivo" : "\(anexos.count) arquivos")
                     Text(tamanhoTotal)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
-                .padding(.horizontal, 12)
-                .frame(height: 30)
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .frame(height: PapagaioTema.Altura.compacta)
                 .background(PapagaioTema.superficieSuave, in: Capsule())
             }
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: 20, alignment: .top)],
-                spacing: 20
+                columns: [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)],
+                spacing: PapagaioTema.Espaco.largo
             ) {
                 Button(action: aoAdicionar) {
-                    VStack(spacing: 14) {
+                    VStack(spacing: PapagaioTema.Espaco.medio) {
                         Image(systemName: "plus")
                             .font(.system(size: 24, weight: .medium))
                             .foregroundStyle(PapagaioTema.textoSecundario)
                             .frame(width: 54, height: 54)
                             .background(PapagaioTema.superficieSuave, in: Circle())
 
-                        VStack(spacing: 5) {
+                        VStack(spacing: PapagaioTema.Espaco.minimo) {
                             Text("Adicionar mídia")
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(PapagaioTema.texto)
@@ -561,20 +559,20 @@ private struct CartaoDeAnexoDeMidia: View {
     let aoRemover: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
             Button(action: aoAbrir) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                     PreviaDoAnexoDeMidia(anexo: anexo)
                         .frame(maxWidth: .infinity)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                         Text(anexo.nome)
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(PapagaioTema.texto)
                             .lineLimit(2)
                             .frame(minHeight: 44, alignment: .topLeading)
 
-                        HStack(spacing: 6) {
+                        HStack(spacing: PapagaioTema.Espaco.minimo) {
                             SeloDeMidia(texto: anexo.tipoVisual, simbolo: anexo.simbolo)
                             SeloDeMidia(texto: anexo.extensaoVisual, simbolo: "doc.text")
                             SeloDeMidia(texto: formatoDeBytes(anexo.tamanho), simbolo: "externaldrive")
@@ -604,7 +602,7 @@ private struct CartaoDeAnexoDeMidia: View {
                     .foregroundStyle(PapagaioTema.perigo)
             }
         }
-        .padding(18)
+        .padding(PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318, alignment: .topLeading)
         .cartaoPapagaio()
     }
@@ -616,7 +614,7 @@ private struct PreviaDoAnexoDeMidia: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .fill(PapagaioTema.superficieSuave)
 
             if let miniatura {
@@ -627,9 +625,9 @@ private struct PreviaDoAnexoDeMidia: View {
                     .clipped()
             } else if anexo.tipoVisual == "Áudio" {
                 PreviaDeAudio()
-                    .padding(20)
+                    .padding(PapagaioTema.Espaco.largo)
             } else {
-                VStack(spacing: 10) {
+                VStack(spacing: PapagaioTema.Espaco.curto) {
                     Image(systemName: anexo.simbolo)
                         .font(.system(size: 34, weight: .semibold))
                     Text(anexo.tipoVisual)
@@ -646,13 +644,13 @@ private struct PreviaDoAnexoDeMidia: View {
                 }
                 Spacer()
             }
-            .padding(10)
+            .padding(PapagaioTema.Espaco.curto)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 150)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(PapagaioTema.borda.opacity(0.72), lineWidth: 1)
         }
         .task(id: anexo.url) {
@@ -689,7 +687,7 @@ private struct PreviaDoAnexoDeMidia: View {
 
 private struct PreviaDeAudio: View {
     var body: some View {
-        HStack(alignment: .center, spacing: 4) {
+        HStack(alignment: .center, spacing: PapagaioTema.Espaco.minimo) {
             ForEach(0..<28, id: \.self) { indice in
                 Capsule()
                     .fill(PapagaioTema.destaque)
@@ -698,12 +696,12 @@ private struct PreviaDeAudio: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(PapagaioTema.destaqueSuave.opacity(0.52), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(PapagaioTema.destaqueSuave.opacity(0.52), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
             Image(systemName: "waveform")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
-                .padding(14)
+                .padding(PapagaioTema.Espaco.medio)
                 .background(PapagaioTema.superficie.opacity(0.86), in: Circle())
         }
     }
@@ -721,8 +719,8 @@ private struct SeloDeTipoDoArquivo: View {
         Text(texto)
             .font(.caption.weight(.bold))
             .foregroundStyle(PapagaioTema.texto)
-            .padding(.horizontal, 9)
-            .frame(height: 24)
+            .padding(.horizontal, PapagaioTema.Espaco.curto)
+            .frame(height: PapagaioTema.Altura.compacta)
             .background(PapagaioTema.superficie.opacity(0.88), in: Capsule())
             .overlay {
                 Capsule()
@@ -740,8 +738,8 @@ private struct SeloDeMidia: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSecundario)
             .lineLimit(1)
-            .padding(.horizontal, 8)
-            .frame(height: 24)
+            .padding(.horizontal, PapagaioTema.Espaco.curto)
+            .frame(height: PapagaioTema.Altura.compacta)
             .background(PapagaioTema.superficieSuave, in: Capsule())
     }
 }
@@ -871,9 +869,9 @@ struct TarefasDaConversaView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
             HStack(alignment: .center) {
-                HStack(spacing: 10) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
                     ForEach(FiltroDeTarefas.allCases) { opcao in
                         Button {
                             withAnimation(.snappy(duration: 0.18)) {
@@ -882,11 +880,11 @@ struct TarefasDaConversaView: View {
                         } label: {
                             Text(opcao.rawValue)
                                 .font(.callout.weight(.semibold))
-                                .foregroundStyle(filtro == opcao ? .white : PapagaioTema.textoSecundario)
-                                .padding(.horizontal, 18)
-                                .frame(height: 38)
+                                .foregroundStyle(filtro == opcao ? PapagaioTema.textoSobrePrimario : PapagaioTema.textoSecundario)
+                                .padding(.horizontal, PapagaioTema.Espaco.largo)
+                                .frame(height: PapagaioTema.Altura.padrao)
                                 .background(
-                                    filtro == opcao ? PapagaioTema.destaque : PapagaioTema.superficie,
+                                    filtro == opcao ? PapagaioTema.preenchimentoPrimario : PapagaioTema.superficie,
                                     in: Capsule()
                                 )
                                 .overlay {
@@ -903,9 +901,9 @@ struct TarefasDaConversaView: View {
                 Button(action: aoAdicionar) {
                     Image(systemName: "plus")
                         .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(PapagaioTema.textoSobrePrimario)
                         .frame(width: 48, height: 48)
-                        .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .help("Adicionar tarefa")
@@ -920,7 +918,7 @@ struct TarefasDaConversaView: View {
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
             } else {
-                VStack(alignment: .leading, spacing: 30) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                     secoesVisiveis
                 }
             }
@@ -1062,15 +1060,15 @@ struct NovaTarefaDaConversaSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 Image(systemName: modo.simbolo)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
                     .frame(width: 44, height: 44)
-                    .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text(modo.titulo)
                         .font(.title2.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
@@ -1084,7 +1082,7 @@ struct NovaTarefaDaConversaSheet: View {
                 Spacer()
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Título")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1092,21 +1090,21 @@ struct NovaTarefaDaConversaSheet: View {
                 TextField("Ex.: Revisar pontos da entrevista", text: $titulo)
                     .textFieldStyle(.plain)
                     .font(.body)
-                    .padding(.horizontal, 12)
-                    .frame(height: 42)
-                    .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, PapagaioTema.Espaco.medio)
+                    .frame(height: PapagaioTema.Altura.padrao)
+                    .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                             .stroke(PapagaioTema.borda, lineWidth: 1)
                     }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Responsável")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
 
-                VStack(spacing: 8) {
+                VStack(spacing: PapagaioTema.Espaco.curto) {
                     Menu {
                         Button("Sem responsável") {
                             responsavel = ""
@@ -1120,7 +1118,7 @@ struct NovaTarefaDaConversaSheet: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: PapagaioTema.Espaco.curto) {
                             Image(systemName: "person.crop.circle")
                             Text(responsavel.isEmpty ? "Escolher da equipe" : responsavel)
                                 .lineLimit(1)
@@ -1130,11 +1128,11 @@ struct NovaTarefaDaConversaSheet: View {
                         }
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
-                        .padding(.horizontal, 12)
-                        .frame(height: 42)
-                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .padding(.horizontal, PapagaioTema.Espaco.medio)
+                        .frame(height: PapagaioTema.Altura.padrao)
+                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                                 .stroke(PapagaioTema.borda, lineWidth: 1)
                         }
                     }
@@ -1144,17 +1142,17 @@ struct NovaTarefaDaConversaSheet: View {
                     TextField("Ou digite nome, e-mail ou login", text: $responsavel)
                         .textFieldStyle(.plain)
                         .font(.body)
-                        .padding(.horizontal, 12)
-                        .frame(height: 42)
-                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .padding(.horizontal, PapagaioTema.Espaco.medio)
+                        .frame(height: PapagaioTema.Altura.padrao)
+                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                                 .stroke(PapagaioTema.borda, lineWidth: 1)
                         }
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Prioridade")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1167,7 +1165,7 @@ struct NovaTarefaDaConversaSheet: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Status")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1180,7 +1178,7 @@ struct NovaTarefaDaConversaSheet: View {
                 )
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Deadline")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1196,7 +1194,7 @@ struct NovaTarefaDaConversaSheet: View {
                 }
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: PapagaioTema.Espaco.medio) {
                 Button("Cancelar", action: aoCancelar)
                     .buttonStyle(BotaoDeContornoPapagaio())
 
@@ -1210,7 +1208,7 @@ struct NovaTarefaDaConversaSheet: View {
                 .keyboardShortcut(.return, modifiers: [.command])
             }
         }
-        .padding(24)
+        .padding(PapagaioTema.Espaco.secao)
         .frame(minWidth: 340, idealWidth: 500, maxWidth: 520, alignment: .leading)
         .background(PapagaioTema.fundo)
     }
@@ -1224,11 +1222,11 @@ private struct ControleSegmentadoPapagaio<Opcao: Hashable>: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
                 botoes
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 botoes
             }
         }
@@ -1250,21 +1248,21 @@ private struct ControleSegmentadoPapagaio<Opcao: Hashable>: View {
                 selecionado = opcao
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: PapagaioTema.Espaco.minimo) {
                 if let simbolo = simbolo(opcao) {
                     Image(systemName: simbolo)
                 }
                 Text(titulo(opcao))
             }
             .font(.callout.weight(.semibold))
-            .foregroundStyle(ativo ? .white : PapagaioTema.textoSecundario)
+            .foregroundStyle(ativo ? PapagaioTema.textoSobrePrimario : PapagaioTema.textoSecundario)
             .lineLimit(1)
             .minimumScaleFactor(0.82)
             .frame(maxWidth: .infinity)
-            .frame(height: 38)
-            .background(ativo ? PapagaioTema.destaque : PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .frame(height: PapagaioTema.Altura.padrao)
+            .background(ativo ? PapagaioTema.preenchimentoPrimario : PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .stroke(ativo ? Color.clear : PapagaioTema.borda, lineWidth: 1)
             }
         }
@@ -1283,8 +1281,8 @@ private struct SecaoDeTarefas: View {
     @State private var recebendoDrop = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 9) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
                 Circle()
                     .fill(cor)
                     .frame(width: 10, height: 10)
@@ -1303,15 +1301,15 @@ private struct SecaoDeTarefas: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
-            .padding(.leading, 8)
+            .padding(.leading, PapagaioTema.Espaco.curto)
 
-            VStack(spacing: 10) {
+            VStack(spacing: PapagaioTema.Espaco.curto) {
                 if tarefas.isEmpty {
                     Text("Solte uma tarefa aqui para mudar para \(titulo.lowercased()).")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .frame(maxWidth: .infinity, minHeight: 62)
-                        .background(PapagaioTema.superficie.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(PapagaioTema.superficie.opacity(0.45), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 }
 
                 ForEach(tarefas) { tarefa in
@@ -1327,7 +1325,7 @@ private struct SecaoDeTarefas: View {
         .padding(recebendoDrop ? 10 : 0)
         .background(
             recebendoDrop ? cor.opacity(0.08) : Color.clear,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .dropDestination(for: String.self) { ids, _ in
             guard let idTexto = ids.first,
@@ -1356,18 +1354,18 @@ private struct LinhaDeTarefaDaConversa: View {
             conteudoHorizontal
             conteudoCompacto
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, PapagaioTema.Espaco.largo)
+        .padding(.vertical, PapagaioTema.Espaco.medio)
         .frame(minHeight: 86)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(PapagaioTema.borda, lineWidth: 1)
         }
     }
 
     private var conteudoHorizontal: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
             botaoConclusao
 
             tituloDaTarefa
@@ -1406,8 +1404,8 @@ private struct LinhaDeTarefaDaConversa: View {
     }
 
     private var conteudoCompacto: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 botaoConclusao
                 tituloDaTarefa
                 Spacer()
@@ -1418,9 +1416,9 @@ private struct LinhaDeTarefaDaConversa: View {
                 .background(PapagaioTema.borda)
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 135), spacing: 12, alignment: .leading)],
+                columns: [GridItem(.adaptive(minimum: 135), spacing: PapagaioTema.Espaco.medio, alignment: .leading)],
                 alignment: .leading,
-                spacing: 12
+                spacing: PapagaioTema.Espaco.medio
             ) {
                 ColunaDaTarefa(rotulo: "Prioridade") {
                     SeloDePrioridade(prioridade: tarefa.prioridade)
@@ -1446,7 +1444,7 @@ private struct LinhaDeTarefaDaConversa: View {
         Button(action: aoAlternarConclusao) {
             Image(systemName: concluida ? "checkmark.square.fill" : "square")
                 .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(concluida ? Color(red: 0.48, green: 0.62, blue: 0.92) : PapagaioTema.textoSecundario)
+                .foregroundStyle(concluida ? PapagaioTema.sucesso : PapagaioTema.textoSecundario)
         }
         .buttonStyle(.plain)
         .help(concluida ? "Marcar como em andamento" : "Concluir")
@@ -1465,7 +1463,7 @@ private struct LinhaDeTarefaDaConversa: View {
     }
 
     private var tituloDaTarefa: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             Text(tarefa.titulo)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(concluida ? PapagaioTema.textoSecundario : PapagaioTema.texto)
@@ -1480,7 +1478,7 @@ private struct LinhaDeTarefaDaConversa: View {
     }
 
     private var responsavelDaTarefa: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
             if let responsavel = tarefa.responsavel, !responsavel.isEmpty {
                 Text(iniciais(de: responsavel))
                     .font(.caption.weight(.bold))
@@ -1517,7 +1515,7 @@ private struct ColunaDaTarefa<Conteudo: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             Text(rotulo)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1542,9 +1540,9 @@ private struct SeloDePrioridade: View {
         Text(texto)
             .font(.caption.weight(.bold))
             .foregroundStyle(cor)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, PapagaioTema.Espaco.curto)
+            .frame(height: PapagaioTema.Altura.compacta)
+            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     private var texto: String {
@@ -1563,9 +1561,9 @@ private struct SeloDeStatusDaTarefa: View {
         Text(status.titulo)
             .font(.caption.weight(.bold))
             .foregroundStyle(cor)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, PapagaioTema.Espaco.curto)
+            .frame(height: PapagaioTema.Altura.compacta)
+            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     private var cor: Color {

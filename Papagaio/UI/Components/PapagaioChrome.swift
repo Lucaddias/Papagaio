@@ -34,45 +34,64 @@ struct BarraSuperiorPapagaioView: View {
     let aoGerenciarPerfil: () -> Void
     let aoGerenciarEquipe: () -> Void
 
+    /// A barra era um `ScrollView` horizontal com `minWidth: 760`. Abaixo disso
+    /// ela não encolhia: rolava, e o botão de conta — único acesso a perfil,
+    /// equipe e sair — saía da tela sem nenhum indício de que ainda estava lá.
+    ///
+    /// Agora ela se resolve sozinha em três estágios: completa; sem o rótulo da
+    /// conta; e, no mais apertado, com os dois grupos de ícones fundidos num
+    /// menu "⋯". Nenhuma ação fica inalcançável em nenhuma largura.
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                if exibindoBotaoVoltar {
-                    Button(action: aoVoltar) {
-                        Image(systemName: "chevron.backward")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                            .frame(width: 38, height: 38)
-                            .background(PapagaioTema.superficie, in: Circle())
-                            .overlay {
-                                Circle().stroke(PapagaioTema.borda, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .help("Voltar")
-                    .accessibilityLabel("Voltar")
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            if exibindoBotaoVoltar {
+                Button(action: aoVoltar) {
+                    Image(systemName: "chevron.backward")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
+                        .background(PapagaioTema.superficie, in: Circle())
+                        .overlay {
+                            Circle().stroke(PapagaioTema.borda, lineWidth: 1)
+                        }
+                }
+                .buttonStyle(.plain)
+                .help("Voltar")
+                .accessibilityLabel("Voltar")
+            }
+
+            campoDeBusca
+
+            Spacer(minLength: PapagaioTema.Espaco.curto)
+
+            // Degradação em três estágios. Depender do tamanho mínimo da janela
+            // não funcionou — `windowResizability(.contentMinSize)` não segurou
+            // o `minWidth` através do `NavigationStack`, e a janela continuava
+            // encolhendo até a barra transbordar pelos dois lados. Aqui a barra
+            // se resolve sozinha em qualquer largura.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
+                    atalhos
+                    grupoDeAcoes
+                    botaoDePerfil(comRotulo: true)
                 }
 
-                BarraDeBuscaEAtalhos(
-                    consulta: $consulta,
-                    legendaAtiva: $legendaAtiva,
-                    exibindoBotaoVoltar: exibindoBotaoVoltar,
-                    bibliotecaSelecionada: bibliotecaSelecionada,
-                    tarefasSelecionada: tarefasSelecionada,
-                    aoAbrirBiblioteca: aoAbrirBiblioteca,
-                    aoAbrirTarefas: aoAbrirTarefas
-                )
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    atalhos
+                    grupoDeAcoes
+                    botaoDePerfil(comRotulo: false)
+                }
 
-                Spacer(minLength: 18)
-
-                grupoDeAcoes
-                botaoDePerfil
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    menuDeAcoesCompacto
+                    botaoDePerfil(comRotulo: false)
+                }
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 10)
-            .frame(minWidth: 760, maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
+        // Padding menor que o das páginas: a barra é cromo, e cada ponto aqui
+        // é ponto que falta para o botão de conta caber na janela mínima.
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.vertical, PapagaioTema.Espaco.curto)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(PapagaioTema.fundo)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -82,7 +101,7 @@ struct BarraSuperiorPapagaioView: View {
     }
 
     private var grupoDeAcoes: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
             Button {
                 exibindoNotificacoes = true
                 aoMarcarNotificacoesComoLidas()
@@ -128,56 +147,117 @@ struct BarraSuperiorPapagaioView: View {
             .buttonStyle(.plain)
             .help("Lixeira")
         }
-        .padding(.horizontal, 8)
-        .frame(height: 46)
+        .padding(.horizontal, PapagaioTema.Espaco.minimo)
+        .frame(height: PapagaioTema.Altura.padrao)
         .background(PapagaioTema.superficie, in: Capsule())
         .overlay {
             Capsule().stroke(PapagaioTema.borda.opacity(0.82), lineWidth: 1)
         }
+        .fixedSize()
     }
 
-    private var botaoDePerfil: some View {
+    /// Estágio final da barra: um menu só com tudo o que os dois grupos de
+    /// ícones ofereciam. Nada fica inacessível quando a janela aperta.
+    private var menuDeAcoesCompacto: some View {
+        Menu {
+            Button("Biblioteca de conversas", systemImage: "folder", action: aoAbrirBiblioteca)
+            Button("Tarefas", systemImage: "list.clipboard", action: aoAbrirTarefas)
+
+            Divider()
+
+            Button(action: {
+                exibindoNotificacoes = true
+                aoMarcarNotificacoesComoLidas()
+            }) {
+                Label(
+                    quantidadeDeAvisos > 0 ? "Notificações (\(quantidadeDeAvisos))" : "Notificações",
+                    systemImage: "bell"
+                )
+            }
+            Button("Configurações", systemImage: "gearshape", action: aoAbrirConfiguracoes)
+            Button("Lixeira", systemImage: "trash", action: aoAbrirLixeira)
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
+                .background(PapagaioTema.superficie, in: Circle())
+                .overlay {
+                    Circle().stroke(PapagaioTema.borda.opacity(0.82), lineWidth: 1)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if quantidadeDeAvisos > 0 {
+                        Circle()
+                            .fill(PapagaioTema.destaque)
+                            .frame(width: 8, height: 8)
+                    }
+                }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Mais ações")
+        .accessibilityLabel("Mais ações")
+        .popover(isPresented: $exibindoNotificacoes, arrowEdge: .top) {
+            ListaDeNotificacoesDoApp(
+                notificacoes: notificacoes,
+                processandoBiblioteca: processandoBiblioteca,
+                gravando: gravando,
+                aoLimpar: aoLimparNotificacoes
+            )
+        }
+    }
+
+    private func botaoDePerfil(comRotulo: Bool) -> some View {
         Button {
             exibindoMenuDePerfil = true
         } label: {
-            HStack(spacing: 9) {
-                AvatarDaContaNaBarra(
-                    url: contextoDaConta == .perfil ? avatarURL : nil,
-                    simbolo: contextoDaConta.simbolo,
-                    conectado: perfilConectado
-                )
-
-                Text(tituloDaContaAtiva)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-
-                Image(systemName: "chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-            }
-            .padding(.leading, 3)
-            .padding(.trailing, 10)
-            .frame(minWidth: 176, idealWidth: 190, alignment: .leading)
-            .frame(height: 40)
-            .background(PapagaioTema.superficie, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(PapagaioTema.borda.opacity(0.82), lineWidth: 1)
-            }
+            conteudoDoBotaoDePerfil(comRotulo: comRotulo)
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .help(perfilConectado ? tituloDaContaAtiva : "Perfil")
+        .accessibilityLabel(perfilConectado ? "Conta ativa: \(tituloDaContaAtiva)" : "Perfil")
         .popover(isPresented: $exibindoMenuDePerfil, arrowEdge: .top) {
             menuDePerfil
         }
     }
 
+    private func conteudoDoBotaoDePerfil(comRotulo: Bool) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            AvatarDaContaNaBarra(
+                url: contextoDaConta == .perfil ? avatarURL : nil,
+                simbolo: contextoDaConta.simbolo,
+                conectado: perfilConectado
+            )
+
+            if comRotulo {
+                Text(tituloDaContaAtiva)
+                    .font(PapagaioTema.Tipo.apoio.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
+            }
+        }
+        .padding(.leading, PapagaioTema.Espaco.minimo)
+        .padding(.trailing, comRotulo ? PapagaioTema.Espaco.medio : PapagaioTema.Espaco.minimo)
+        .frame(height: PapagaioTema.Altura.padrao)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(PapagaioTema.borda.opacity(0.82), lineWidth: 1)
+        }
+    }
+
     private var menuDePerfil: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             if perfilConectado {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text("Conta ativa")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PapagaioTema.textoSecundario)
@@ -223,220 +303,63 @@ struct BarraSuperiorPapagaioView: View {
                 .disabled(perfilVerificando)
             }
         }
-        .padding(14)
+        .padding(PapagaioTema.Espaco.medio)
         .frame(width: 280, alignment: .leading)
     }
 
-    private var tituloDaContaAtiva: String {
-        contextoDaConta == .perfil ? "Perfil pessoal" : equipeAtiva.nome
+    private var campoDeBusca: some View {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            TextField("Buscar conversas…", text: $consulta)
+                .textFieldStyle(.plain)
+                .foregroundStyle(PapagaioTema.texto)
+                .accessibilityLabel("Buscar conversas")
+        }
+        // Único elemento elástico da barra: cresce até 420 e cede até 100.
+        // Sem `layoutPriority` — ele deve ser servido depois dos grupos de
+        // ícones, que são `fixedSize` e não têm como encolher em troca.
+        .frame(minWidth: 100, idealWidth: 360, maxWidth: 420)
+        .molduraDeControlePapagaio()
     }
-}
 
-/// Conteúdo da barra de ferramentas nativa. Só expõe ações existentes — não
-/// adiciona ícones decorativos sem comportamento.
-struct BarraSuperiorPapagaio: ToolbarContent {
-    @Binding var consulta: String
-    @Binding var legendaAtiva: LegendaDaBarra?
-    @State private var exibindoMenuDePerfil = false
-    @State private var exibindoNotificacoes = false
-    let exibindoBotaoVoltar: Bool
-    let bibliotecaSelecionada: Bool
-    let tarefasSelecionada: Bool
-    let configuracoesSelecionada: Bool
-    let lixeiraSelecionada: Bool
-    let perfilConectado: Bool
-    let perfilVerificando: Bool
-    let avatarURL: URL?
-    let contextoDaConta: ContextoDaConta
-    let equipeAtiva: EquipeDisponivel
-    let gravando: Bool
-    let processandoBiblioteca: Bool
-    let quantidadeDeAvisos: Int
-    let notificacoes: [NotificacaoDoApp]
-    let aoEntrar: () -> Void
-    let aoSair: () -> Void
-    let aoMarcarNotificacoesComoLidas: () -> Void
-    let aoLimparNotificacoes: () -> Void
-    let aoVoltar: () -> Void
-    let aoAbrirBiblioteca: () -> Void
-    let aoAbrirTarefas: () -> Void
-    let aoAbrirConfiguracoes: () -> Void
-    let aoAbrirLixeira: () -> Void
-    let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
-    let aoGerenciarPerfil: () -> Void
-    let aoGerenciarEquipe: () -> Void
-
-    var body: some ToolbarContent {
-        if exibindoBotaoVoltar {
-            ToolbarItem(placement: .navigation) {
-                Button(action: aoVoltar) {
-                    Image(systemName: "chevron.backward")
-                }
-                .help("Voltar à biblioteca")
-                .accessibilityLabel("Voltar à biblioteca")
-            }
-        }
-
-        ToolbarItem(placement: .principal) {
-            BarraDeBuscaEAtalhos(
-                consulta: $consulta,
-                legendaAtiva: $legendaAtiva,
-                exibindoBotaoVoltar: exibindoBotaoVoltar,
-                bibliotecaSelecionada: bibliotecaSelecionada,
-                tarefasSelecionada: tarefasSelecionada,
-                aoAbrirBiblioteca: aoAbrirBiblioteca,
-                aoAbrirTarefas: aoAbrirTarefas
-            )
-        }
-        ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 10) {
-                Button {
-                    exibindoNotificacoes = true
-                    aoMarcarNotificacoesComoLidas()
-                } label: {
-                    BotaoDeIconeDaBarra(
-                        simbolo: "bell",
-                        legenda: "Notificações",
-                        legendaAtiva: $legendaAtiva,
-                        selecionado: exibindoNotificacoes,
-                        mostraIndicador: temNotificacoesAtivas
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Notificações")
-                .accessibilityLabel("Notificações")
-                .popover(isPresented: $exibindoNotificacoes, arrowEdge: .top) {
-                    ListaDeNotificacoesDoApp(
-                        notificacoes: notificacoes,
-                        processandoBiblioteca: processandoBiblioteca,
-                        gravando: gravando,
-                        aoLimpar: aoLimparNotificacoes
-                    )
-                }
-
-                Button(action: aoAbrirConfiguracoes) {
-                    BotaoDeIconeDaBarra(
-                        simbolo: "gearshape",
-                        legenda: "Configurações",
-                        legendaAtiva: $legendaAtiva,
-                        selecionado: configuracoesSelecionada
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Configurações")
-                .accessibilityLabel("Configurações")
-                .accessibilityHint("Abre as preferências de transcrição.")
-
-                Button(action: aoAbrirLixeira) {
-                    BotaoDeIconeDaBarra(
-                        simbolo: "trash",
-                        legenda: "Lixeira",
-                        legendaAtiva: $legendaAtiva,
-                        selecionado: lixeiraSelecionada
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Lixeira")
-                .accessibilityLabel("Lixeira")
-                .accessibilityHint("Abre os arquivos removidos da biblioteca.")
-            }
-            .padding(.horizontal, 4)
-        }
-
-        ToolbarSpacer(.fixed, placement: .primaryAction)
-
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                exibindoMenuDePerfil = true
-            } label: {
-                HStack(spacing: 8) {
-                    AvatarDaContaNaBarra(
-                        url: contextoDaConta == .perfil ? avatarURL : nil,
-                        simbolo: contextoDaConta.simbolo,
-                        conectado: perfilConectado
-                    )
-
-                    Text(tituloDaContaAtiva)
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                }
-                .padding(.leading, 2)
-                .padding(.trailing, 8)
-                .frame(height: 36)
-                .background(PapagaioTema.superficie, in: Capsule())
-                .overlay {
-                    Capsule()
-                        .stroke(PapagaioTema.borda.opacity(0.82), lineWidth: 1)
-                }
-                .frame(minWidth: 44, idealWidth: 160, maxWidth: 190)
+    private var atalhos: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Button(action: aoAbrirBiblioteca) {
+                BotaoDeAtalhoDaBarra(
+                    simbolo: "folder",
+                    legenda: "Biblioteca de conversas",
+                    legendaAtiva: $legendaAtiva,
+                    selecionado: bibliotecaSelecionada
+                )
             }
             .buttonStyle(.plain)
-            .help(perfilConectado ? tituloDaContaAtiva : "Perfil")
-            .accessibilityLabel(perfilConectado ? "Conta ativa: \(tituloDaContaAtiva)" : "Perfil")
-            .popover(isPresented: $exibindoMenuDePerfil, arrowEdge: .top) {
-                VStack(alignment: .leading, spacing: 12) {
-                    if perfilConectado {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Conta ativa")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(PapagaioTema.textoSecundario)
-                            Text(tituloDaContaAtiva)
-                                .font(.headline)
-                                .foregroundStyle(PapagaioTema.texto)
-                        }
+            .help("Biblioteca de conversas")
+            .accessibilityLabel("Biblioteca de conversas")
 
-                        SeletorDeContextoDaConta(
-                            contexto: contextoDaConta,
-                            equipeAtiva: equipeAtiva,
-                            aoUsarPerfil: {
-                                exibindoMenuDePerfil = false
-                                aoUsarPerfil()
-                            },
-                            aoUsarEquipe: {
-                                exibindoMenuDePerfil = false
-                                aoUsarEquipe()
-                            }
-                        )
-
-                        Divider()
-
-                        Button("Gerenciar perfil", systemImage: "person.crop.circle") {
-                            exibindoMenuDePerfil = false
-                            aoGerenciarPerfil()
-                        }
-
-                        Button("Gerenciar equipe", systemImage: "person.3.sequence") {
-                            exibindoMenuDePerfil = false
-                            aoGerenciarEquipe()
-                        }
-
-                        Button("Sair", role: .destructive) {
-                            exibindoMenuDePerfil = false
-                            aoSair()
-                        }
-                    } else {
-                        Button("Entrar com Apple") {
-                            exibindoMenuDePerfil = false
-                            aoEntrar()
-                        }
-                        .disabled(perfilVerificando)
-                    }
-                }
-                .padding(14)
-                .frame(width: 260, alignment: .leading)
+            Button(action: aoAbrirTarefas) {
+                BotaoDeAtalhoDaBarra(
+                    simbolo: "list.clipboard",
+                    legenda: "Tarefas",
+                    legendaAtiva: $legendaAtiva,
+                    selecionado: tarefasSelecionada
+                )
             }
+            .buttonStyle(.plain)
+            .help("Tarefas")
+            .accessibilityLabel("Tarefas")
         }
-    }
-
-    private var temNotificacoesAtivas: Bool {
-        quantidadeDeAvisos > 0
+        .padding(.horizontal, PapagaioTema.Espaco.minimo)
+        .frame(height: PapagaioTema.Altura.padrao)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1)
+        }
+        .fixedSize()
     }
 
     private var tituloDaContaAtiva: String {
@@ -466,12 +389,12 @@ private struct AvatarDaContaNaBarra: View {
                     .scaledToFill()
             } else {
                 Image(systemName: simbolo)
-                    .font(.system(size: 21, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(conectado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                    .frame(width: 32, height: 32)
+                    .frame(width: PapagaioTema.Altura.compacta, height: PapagaioTema.Altura.compacta)
             }
         }
-        .frame(width: 32, height: 32)
+        .frame(width: PapagaioTema.Altura.compacta, height: PapagaioTema.Altura.compacta)
         .background(.regularMaterial, in: Circle())
         .clipShape(Circle())
         .overlay {
@@ -493,9 +416,9 @@ private struct BotaoDeIconeDaBarra: View {
         GeometryReader { geometria in
             ZStack(alignment: .topTrailing) {
                 Image(systemName: simbolo)
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                    .frame(width: 38, height: 38)
+                    .frame(width: PapagaioTema.Altura.compacta, height: PapagaioTema.Altura.compacta)
                     .background(fundo, in: Circle())
                     .overlay {
                         Circle()
@@ -519,7 +442,7 @@ private struct BotaoDeIconeDaBarra: View {
                 }
             }
         }
-        .frame(width: 38, height: 38)
+        .frame(width: PapagaioTema.Altura.compacta, height: PapagaioTema.Altura.compacta)
         .zIndex(pairando ? 10 : 0)
         .animation(.easeOut(duration: 0.14), value: pairando)
         .animation(.easeOut(duration: 0.14), value: selecionado)
@@ -542,10 +465,10 @@ private struct BotaoDeAtalhoDaBarra: View {
     var body: some View {
         GeometryReader { geometria in
             Image(systemName: simbolo)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                .frame(width: 42, height: 32)
-                .background(fundo, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 36, height: PapagaioTema.Altura.compacta)
+                .background(fundo, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 .contentShape(Rectangle())
                 .onHover { ativo in
                     pairando = ativo
@@ -556,7 +479,7 @@ private struct BotaoDeAtalhoDaBarra: View {
                     }
                 }
         }
-            .frame(width: 42, height: 32)
+            .frame(width: 36, height: PapagaioTema.Altura.compacta)
             .onHover { ativo in
                 if !ativo, legendaAtiva?.texto == legenda {
                     legendaAtiva = nil
@@ -574,94 +497,6 @@ private struct BotaoDeAtalhoDaBarra: View {
     }
 }
 
-private struct BarraDeBuscaEAtalhos: View {
-    @Binding var consulta: String
-    @Binding var legendaAtiva: LegendaDaBarra?
-    let exibindoBotaoVoltar: Bool
-    let bibliotecaSelecionada: Bool
-    let tarefasSelecionada: Bool
-    let aoAbrirBiblioteca: () -> Void
-    let aoAbrirTarefas: () -> Void
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                campoDeBusca
-                atalhos
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    campoDeBusca
-                    atalhos
-                }
-                .padding(.horizontal, 2)
-            }
-            .frame(minWidth: 220, maxWidth: 390)
-        }
-    }
-
-    private var campoDeBusca: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(PapagaioTema.textoSecundario)
-            TextField("Buscar conversas…", text: $consulta)
-                .textFieldStyle(.plain)
-                .foregroundStyle(PapagaioTema.texto)
-                .accessibilityLabel("Buscar conversas")
-        }
-        .padding(.horizontal, 14)
-        .frame(
-            minWidth: 170,
-            idealWidth: exibindoBotaoVoltar ? 360 : 520,
-            maxWidth: exibindoBotaoVoltar ? 500 : 700
-        )
-        .frame(height: 38)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
-        }
-    }
-
-    private var atalhos: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Button(action: aoAbrirBiblioteca) {
-                    BotaoDeAtalhoDaBarra(
-                        simbolo: "folder",
-                        legenda: "Biblioteca de conversas",
-                        legendaAtiva: $legendaAtiva,
-                        selecionado: bibliotecaSelecionada
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Biblioteca de conversas")
-                .accessibilityLabel("Biblioteca de conversas")
-
-                Button(action: aoAbrirTarefas) {
-                    BotaoDeAtalhoDaBarra(
-                        simbolo: "list.clipboard",
-                        legenda: "Tarefas",
-                        legendaAtiva: $legendaAtiva,
-                        selecionado: tarefasSelecionada
-                    )
-                }
-                .buttonStyle(.plain)
-                .help("Tarefas")
-                .accessibilityLabel("Tarefas")
-            }
-        }
-        .padding(.horizontal, 4)
-        .frame(height: 38)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
-        }
-    }
-}
-
 private struct ListaDeNotificacoesDoApp: View {
     let notificacoes: [NotificacaoDoApp]
     let processandoBiblioteca: Bool
@@ -669,7 +504,7 @@ private struct ListaDeNotificacoesDoApp: View {
     let aoLimpar: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack {
                 Text("Notificações")
                     .font(.headline)
@@ -685,7 +520,7 @@ private struct ListaDeNotificacoesDoApp: View {
             }
 
             if gravando || processandoBiblioteca {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     if gravando {
                         LinhaDeNotificacaoTemporaria(
                             simbolo: "mic.fill",
@@ -711,7 +546,7 @@ private struct ListaDeNotificacoesDoApp: View {
                     .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: PapagaioTema.Espaco.curto) {
                         ForEach(notificacoes) { notificacao in
                             LinhaDeNotificacaoDoApp(notificacao: notificacao)
                         }
@@ -720,7 +555,7 @@ private struct ListaDeNotificacoesDoApp: View {
                 .frame(maxHeight: 280)
             }
         }
-        .padding(14)
+        .padding(PapagaioTema.Espaco.medio)
         .frame(width: 340, alignment: .leading)
         .background(PapagaioTema.fundo)
     }
@@ -730,13 +565,13 @@ private struct LinhaDeNotificacaoDoApp: View {
     let notificacao: NotificacaoDoApp
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
             Image(systemName: notificacao.simbolo)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(cor)
                 .frame(width: 24, height: 24)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 Text(notificacao.titulo)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
@@ -754,13 +589,13 @@ private struct LinhaDeNotificacaoDoApp: View {
 
             Spacer(minLength: 0)
         }
-        .padding(10)
+        .padding(PapagaioTema.Espaco.curto)
         .background(
             notificacao.lida ? PapagaioTema.superficie : PapagaioTema.destaqueSuave.opacity(0.65),
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(PapagaioTema.borda.opacity(0.75), lineWidth: 1)
         }
     }
@@ -780,13 +615,13 @@ private struct LinhaDeNotificacaoTemporaria: View {
     let mensagem: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
             Image(systemName: simbolo)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 24, height: 24)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 Text(titulo)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
@@ -795,8 +630,8 @@ private struct LinhaDeNotificacaoTemporaria: View {
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
         }
-        .padding(10)
-        .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(PapagaioTema.Espaco.curto)
+        .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 }
 
@@ -807,7 +642,7 @@ private struct SeletorDeContextoDaConta: View {
     let aoUsarEquipe: () -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: PapagaioTema.Espaco.minimo) {
             BotaoDeContextoDaConta(
                 titulo: "Perfil pessoal",
                 subtitulo: "Conta pessoal",
@@ -836,13 +671,13 @@ private struct BotaoDeContextoDaConta: View {
 
     var body: some View {
         Button(action: acao) {
-            HStack(spacing: 10) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
                 Image(systemName: simbolo)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                     .frame(width: 28, height: 28)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text(titulo)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
@@ -860,10 +695,10 @@ private struct BotaoDeContextoDaConta: View {
                         .foregroundStyle(PapagaioTema.destaqueEscuro)
                 }
             }
-            .padding(10)
+            .padding(PapagaioTema.Espaco.curto)
             .background(
                 selecionado ? PapagaioTema.destaqueSuave.opacity(0.7) : Color.clear,
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
             )
         }
         .buttonStyle(.plain)
@@ -887,13 +722,13 @@ struct CabecalhoDePagina<Acoes: View>: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .bottom, spacing: 20) {
+            HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
                 texto
                 Spacer(minLength: 16)
                 acoes()
             }
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
                 texto
                 acoes()
             }
@@ -901,9 +736,9 @@ struct CabecalhoDePagina<Acoes: View>: View {
     }
 
     private var texto: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             Text(titulo)
-                .font(.system(size: 32, weight: .bold, design: .default))
+                .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
                 .lineLimit(2)
                 .minimumScaleFactor(0.82)
@@ -923,7 +758,7 @@ struct CartaoDeEstadoVazio: View {
     let mensagem: String
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: PapagaioTema.Espaco.medio) {
             Image(systemName: simbolo)
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -937,7 +772,7 @@ struct CartaoDeEstadoVazio: View {
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .frame(maxWidth: 420)
         }
-        .padding(32)
+        .padding(PapagaioTema.Espaco.pagina)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
     }

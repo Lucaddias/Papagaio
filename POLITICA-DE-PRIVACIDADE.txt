@@ -1,0 +1,244 @@
+POLÍTICA DE PRIVACIDADE — PAPAGAIO
+
+Última atualização: 5 de agosto de 2026
+
+IMPORTANTE
+
+Este documento é um modelo adaptado ao funcionamento conhecido do aplicativo
+Papagaio. Antes da publicação, o responsável legal deve revisar o texto,
+preencher os dados de identificação que ainda não foram informados e, se
+necessário, submetê-lo à análise de um profissional especializado em proteção
+de dados.
+
+1. INFORMAÇÕES GERAIS
+
+Esta Política de Privacidade explica como o aplicativo Papagaio coleta, usa,
+armazena e protege informações durante sua utilização.
+
+O Papagaio é um aplicativo para macOS que grava reuniões, captura áudio do
+microfone e do sistema, gera transcrições e produz resumos. Nesta versão, o
+processamento principal é realizado localmente no Mac do usuário. As gravações,
+transcrições, resumos, anotações e demais arquivos de trabalho permanecem no
+dispositivo, salvo quando o próprio usuário decide exportá-los ou compartilhá-
+los.
+
+O responsável pelo aplicativo deve preencher os dados abaixo antes da
+publicação:
+
+Nome ou razão social: [PREENCHER]
+CNPJ ou CPF: [PREENCHER, SE APLICÁVEL]
+Endereço: [PREENCHER, SE APLICÁVEL]
+E-mail de contato e privacidade: omusuporte@gmail.com
+
+Esta Política aplica-se aos usuários do Papagaio e deve ser lida em conjunto
+com eventuais Termos de Uso do aplicativo. Ela poderá ser atualizada para
+refletir mudanças no aplicativo, na legislação ou nas práticas de tratamento
+de dados.
+
+2. QUAIS DADOS PODEM SER TRATADOS
+
+Dependendo das funções utilizadas, o Papagaio pode tratar as seguintes
+categorias de dados:
+
+a) Dados de áudio: gravações capturadas pelo microfone e pelo áudio do sistema,
+   além de arquivos de áudio importados pelo usuário.
+
+b) Conteúdo produzido pelo usuário: transcrições, trechos de fala, resumos,
+   títulos, notas, marcadores e arquivos exportados.
+
+c) Dados de perfil: informações fornecidas pelo usuário ao utilizar o recurso
+   opcional de perfil ou autenticação, como nome e e-mail associados ao Sign in
+   with Apple, quando essa função for utilizada.
+
+d) Dados técnicos mínimos: informações necessárias ao funcionamento do
+   aplicativo, como versão do macOS, versão do Papagaio, estado de permissões,
+   disponibilidade de memória e espaço em disco. Esses dados podem ser
+   apresentados ao usuário para diagnóstico local.
+
+O Papagaio não solicita, para seu funcionamento normal, dados como número de
+cartão, dados bancários, localização precisa, contatos, fotos ou acesso ao
+conteúdo de outros aplicativos além do áudio do sistema autorizado pelo
+usuário.
+
+O áudio de uma reunião e seu conteúdo transcrito podem conter dados pessoais
+ou dados pessoais sensíveis de terceiros. O usuário é responsável por obter as
+autorizações necessárias antes de realizar uma gravação e por utilizar o
+aplicativo de acordo com a legislação aplicável.
+
+3. COMO OS DADOS SÃO COLETADOS
+
+Os dados podem ser obtidos das seguintes formas:
+
+a) Quando o usuário inicia uma gravação e concede ao Papagaio acesso ao
+   microfone.
+
+b) Quando o usuário autoriza a captura do áudio do sistema para registrar uma
+   reunião online ou outra atividade sonora.
+
+c) Quando o usuário importa voluntariamente um arquivo de áudio.
+
+d) Quando o usuário cria ou utiliza um perfil opcional com o Sign in with Apple.
+
+e) Quando o usuário cria notas, marcadores, títulos, exportações ou outras
+   informações dentro do aplicativo.
+
+O Papagaio não coleta o conteúdo do áudio sem que o usuário inicie uma ação de
+gravação ou importação e conceda as permissões correspondentes.
+
+4. FINALIDADES DO TRATAMENTO
+
+Os dados são tratados para:
+
+a) permitir a gravação e o armazenamento local de reuniões e outros áudios;
+
+b) converter o áudio em transcrições e trechos navegáveis;
+
+c) gerar resumos, decisões, temas e próximos passos a partir da transcrição;
+
+d) permitir reprodução, busca, revisão, anotação e exportação do conteúdo;
+
+e) manter a biblioteca local do usuário;
+
+f) autenticar o usuário quando o recurso opcional de perfil for utilizado;
+
+g) diagnosticar falhas de permissão, memória, espaço, áudio ou processamento;
+
+h) cumprir obrigações legais, proteger direitos e prevenir uso indevido do
+   aplicativo.
+
+O Papagaio não utiliza o conteúdo das reuniões para publicidade personalizada,
+venda de dados ou treinamento de modelos externos. O processamento de
+transcrição e resumo é executado localmente no dispositivo nesta versão.
+
+5. ARMAZENAMENTO E RETENÇÃO
+
+As gravações, transcrições, resumos e anotações são armazenados localmente no
+espaço de armazenamento do aplicativo no Mac do usuário. O Papagaio não
+mantém uma cópia em nuvem desses conteúdos nesta versão.
+
+Os dados permanecem armazenados enquanto forem necessários para que o usuário
+utilize a biblioteca e as funções do aplicativo, ou até que o próprio usuário
+os exclua. O usuário deve exportar os arquivos que deseja preservar antes de
+excluir uma gravação ou desinstalar o aplicativo.
+
+O usuário pode solicitar orientação pelo e-mail omusuporte@gmail.com caso não
+consiga localizar ou excluir dados associados a um perfil. A retenção de
+registros mínimos poderá ocorrer quando necessária ao cumprimento de obrigação
+legal, exercício regular de direitos ou prevenção de fraude, sempre pelo prazo
+aplicável.
+
+6. COMPARTILHAMENTO E TRANSFERÊNCIA
+
+O Papagaio não compartilha automaticamente gravações, transcrições, resumos ou
+anotações com terceiros.
+
+O conteúdo somente deixa o dispositivo quando o usuário decide exportá-lo,
+enviá-lo por outro aplicativo, anexá-lo a uma mensagem ou compartilhá-lo por
+qualquer outro meio sob seu controle. A partir desse momento, o tratamento
+passa a seguir as políticas e condições do serviço escolhido pelo usuário.
+
+Se o usuário utilizar o Sign in with Apple, alguns dados necessários à
+autenticação poderão ser tratados pela Apple de acordo com os termos e a
+política de privacidade da Apple. O Papagaio não recebe mais dados do que os
+autorizados pelo usuário e disponibilizados pela Apple para esse recurso.
+
+O Papagaio não utiliza, nesta versão, CloudKit, sincronização entre dispositivos
+ou colaboração em nuvem para os arquivos da biblioteca.
+
+7. COOKIES E TECNOLOGIAS DE RASTREAMENTO
+
+O aplicativo macOS não utiliza cookies de navegador para funcionar.
+
+Não são utilizados, nesta versão, pixels de publicidade, rastreadores de
+navegação ou tecnologias destinadas a criar um perfil publicitário do usuário.
+
+Caso uma futura versão inclua um site, ferramentas de análise, publicidade,
+telemetria ou outros serviços que utilizem cookies ou identificadores, esta
+Política será atualizada antes da implementação correspondente.
+
+8. SEGURANÇA
+
+O Papagaio utiliza o armazenamento privado do aplicativo e os mecanismos de
+segurança do macOS para proteger os arquivos locais contra acesso não
+autorizado. O aplicativo também solicita permissões do sistema para acessar o
+microfone e capturar áudio do sistema.
+
+Nenhum método de armazenamento ou transmissão é completamente invulnerável.
+O usuário deve manter o macOS atualizado, proteger sua conta de usuário,
+evitar compartilhar o acesso ao Mac e exportar dados apenas para destinos de
+confiança.
+
+Em caso de incidente que possa representar risco relevante aos titulares, o
+responsável avaliará as medidas cabíveis e as comunicações exigidas pela
+legislação aplicável.
+
+9. DIREITOS DO TITULAR
+
+Nos termos da legislação aplicável, especialmente da Lei Geral de Proteção de
+Dados Pessoais — Lei nº 13.709/2018 —, o titular pode solicitar, conforme o
+caso:
+
+a) confirmação da existência de tratamento;
+b) acesso aos dados pessoais;
+c) correção de dados incompletos, inexatos ou desatualizados;
+d) eliminação de dados tratados com consentimento, quando cabível;
+e) informação sobre compartilhamentos;
+f) revogação do consentimento, quando essa for a base legal aplicável;
+g) portabilidade, observados os segredos comercial e industrial e a
+   regulamentação aplicável; e
+h) revisão de decisões automatizadas, quando aplicável.
+
+Para exercer direitos ou esclarecer dúvidas sobre privacidade, envie uma
+solicitação para omusuporte@gmail.com. Para proteger o titular, poderemos
+solicitar informações razoáveis para confirmar a identidade e compreender o
+pedido.
+
+Como os arquivos principais são armazenados localmente, muitas solicitações
+podem ser atendidas diretamente pelo usuário usando as funções de revisão,
+exportação ou exclusão disponíveis no próprio aplicativo.
+
+10. RESPONSABILIDADES DO USUÁRIO
+
+O usuário deve:
+
+a) gravar somente quando tiver autorização ou outra base legal adequada;
+b) informar os participantes quando a legislação exigir;
+c) não utilizar o Papagaio para violar direitos de terceiros;
+d) proteger o acesso ao seu Mac e aos arquivos exportados;
+e) revisar transcrições e resumos antes de utilizá-los para decisões
+   profissionais, jurídicas, financeiras, médicas ou similares.
+
+Transcrições e resumos são recursos de apoio e podem conter omissões ou
+imprecisões. Eles não substituem a conferência do áudio original nem a análise
+de um profissional qualificado.
+
+11. ALTERAÇÕES DESTA POLÍTICA
+
+Esta Política poderá ser atualizada para refletir mudanças no Papagaio, nas
+práticas de tratamento ou na legislação. A versão vigente será disponibilizada
+no endereço em que esta Política for publicada, com indicação da data de sua
+última atualização.
+
+O uso continuado do aplicativo após a publicação de uma alteração representa
+ciência da nova versão, sem prejuízo dos direitos previstos na legislação.
+
+12. LEGISLAÇÃO E FORO
+
+Esta Política será interpretada de acordo com as leis brasileiras, inclusive a
+Lei Geral de Proteção de Dados Pessoais — Lei nº 13.709/2018 — e o Marco Civil
+da Internet — Lei nº 12.965/2014, quando aplicáveis.
+
+Eventuais conflitos deverão ser tratados preferencialmente por contato pelo
+e-mail omusuporte@gmail.com e, não sendo possível a solução, perante o foro
+competente conforme a legislação aplicável e os direitos do consumidor.
+
+13. CONTATO
+
+Para dúvidas, solicitações relacionadas a dados pessoais ou suporte ao
+aplicativo:
+
+E-mail: omusuporte@gmail.com
+
+Este documento é informativo e não substitui revisão jurídica específica para o
+responsável pelo aplicativo, sua estrutura societária e suas práticas reais de
+tratamento de dados.

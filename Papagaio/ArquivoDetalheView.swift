@@ -15,7 +15,7 @@ struct ArquivoDetalheView: View {
     let audioSecundario: URL?
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
-    let estado: String
+    let estado: EstadoDoArquivo
     let processando: Bool
     let naFila: Bool
     let responsaveisDisponiveis: [ResponsavelDaTarefa]
@@ -53,13 +53,13 @@ struct ArquivoDetalheView: View {
     private var metadados: MetadadosVisuaisDoArquivo {
         PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
     }
+    /// Vazio quando não foi preenchido — o cabeçalho simplesmente omite a
+    /// linha, em vez de imprimir "Não informado" como se fosse um dado.
     private var entrevistado: String {
-        let valor = listaDePessoas(metadados.entrevistado)
-        return valor.isEmpty ? "Não informado" : valor
+        listaDePessoas(metadados.entrevistado)
     }
     private var entrevistadores: String {
-        let valor = listaDePessoas(metadados.entrevistadores)
-        return valor.isEmpty ? "Não informado" : valor
+        listaDePessoas(metadados.entrevistadores)
     }
     private var participantes: Int {
         max(1, metadados.participantes ?? participantesDetectados)
@@ -99,27 +99,10 @@ struct ArquivoDetalheView: View {
     private var pastaDaConversa: URL {
         audio.deletingLastPathComponent()
     }
-    private var estiloDoEstado: EstiloDoStatus {
-        let texto = estado.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-
-        if texto.contains("falhou") || texto.contains("erro") {
-            return .erro
-        }
-        if texto.contains("transcrito e resumido") {
-            return .sucesso
-        }
-        if texto.contains("aguardando") || texto.contains("fila") {
-            return .aviso
-        }
-        if texto.contains("transcrevendo") || texto.contains("resumindo") || texto.contains("processando") {
-            return .destaque
-        }
-        return .neutro
-    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 cabecalho
 
                 seletorDeSecao
@@ -152,8 +135,11 @@ struct ArquivoDetalheView: View {
             }
         }
         .background(PapagaioTema.fundo)
-        .frame(minWidth: 390, minHeight: 420, alignment: .topLeading)
-        .navigationTitle(titulo)
+        .frame(minWidth: 460, minHeight: 420, alignment: .topLeading)
+        // Sem título na barra de navegação: o mesmo texto já aparece logo
+        // abaixo como H1, e ver a frase duas vezes em 40pt de distância não
+        // acrescenta nada. A janela continua identificada pelo H1 da página.
+        .navigationTitle("")
         .toolbar {
             ToolbarItem {
                 Button("Exportar Markdown…", systemImage: "square.and.arrow.up") {
@@ -246,13 +232,13 @@ struct ArquivoDetalheView: View {
 
     private var cabecalho: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .bottom, spacing: 20) {
+            HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
                 textoDoCabecalho
                 Spacer(minLength: 16)
                 seloDoCabecalho
             }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                 textoDoCabecalho
                 seloDoCabecalho
             }
@@ -260,51 +246,59 @@ struct ArquivoDetalheView: View {
     }
 
     private var textoDoCabecalho: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             Text(titulo)
-                .font(.system(size: 30, weight: .bold, design: .default))
+                .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             if !metadados.descricao.isEmpty {
                 Text(metadados.descricao)
-                    .font(.callout)
+                    .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 180), spacing: 10, alignment: .leading)],
-                alignment: .leading,
-                spacing: 8
-            ) {
-                metadadoDoCabecalho("Entrevistado: \(entrevistado)", simbolo: "person")
-                metadadoDoCabecalho("Entrevistadores: \(entrevistadores)", simbolo: "person.crop.circle.badge.checkmark")
+            // Grade adaptativa vira fluxo: a grade dava a cada metadado uma
+            // célula de 180pt, então "31:21" ocupava o mesmo que uma lista de
+            // entrevistadores e as linhas ficavam com alturas desiguais.
+            // Campo não preenchido some, como no cartão.
+            LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.largo, espacoVertical: PapagaioTema.Espaco.curto) {
+                if !entrevistado.isEmpty {
+                    metadadoDoCabecalho("Entrevistado: \(entrevistado)", simbolo: "person")
+                }
+                if !entrevistadores.isEmpty {
+                    metadadoDoCabecalho("Entrevistadores: \(entrevistadores)", simbolo: "person.crop.circle.badge.checkmark")
+                }
                 if !metadados.formato.isEmpty {
                     metadadoDoCabecalho(metadados.formato, simbolo: metadados.formato == "Presencial" ? "mappin.and.ellipse" : "video")
                 }
-                metadadoDoCabecalho("\(participantes) participantes", simbolo: "person.2")
+                if participantes > 1 {
+                    metadadoDoCabecalho("\(participantes) participantes", simbolo: "person.2")
+                }
                 metadadoDoCabecalho(arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()), simbolo: "calendar")
-                metadadoDoCabecalho(tempoCurto(arquivo.duracao), simbolo: "clock")
+                metadadoDoCabecalho(arquivo.duracao.comoRelogio, simbolo: "clock")
             }
         }
     }
 
     private var seloDoCabecalho: some View {
         SeloDeStatus(
-            texto: estado,
-            simbolo: "waveform",
-            estilo: estiloDoEstado
+            texto: estado.descricao,
+            simbolo: estado.simbolo,
+            estilo: estado.estilo
         )
     }
 
     private func metadadoDoCabecalho(_ texto: String, simbolo: String) -> some View {
         Label(texto, systemImage: simbolo)
-            .font(.callout.weight(.medium))
+            .font(PapagaioTema.Tipo.apoio)
             .foregroundStyle(PapagaioTema.textoSecundario)
-            .lineLimit(2)
-            .fixedSize(horizontal: false, vertical: true)
+            .lineLimit(1)
+            // `LayoutDeFluxo` mede cada item pelo tamanho natural; sem isto o
+            // rótulo comprido tentaria ocupar a linha toda.
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var seletorDeSecao: some View {
@@ -336,23 +330,26 @@ struct ArquivoDetalheView: View {
     @ViewBuilder
     private var resumo: some View {
         if let resumo = arquivo.resumo {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
                 Text(resumo.visaoGeral)
-                    .font(.body)
+                    .font(PapagaioTema.Tipo.corpo)
                     .foregroundStyle(PapagaioTema.texto)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if !resumo.temas.isEmpty {
                     secao("Temas") {
                         ForEach(Array(resumo.temas.enumerated()), id: \.offset) { _, tema in
-                            VStack(alignment: .leading, spacing: 1) {
+                            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                                 Text(tema.titulo)
-                                    .font(.callout.weight(.semibold))
+                                    .font(PapagaioTema.Tipo.apoio.weight(.semibold))
                                     .foregroundStyle(PapagaioTema.texto)
                                 Text(tema.detalhe)
-                                    .font(.callout)
+                                    .font(PapagaioTema.Tipo.apoio)
                                     .foregroundStyle(PapagaioTema.textoSecundario)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            .padding(.vertical, 4)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, PapagaioTema.Espaco.minimo)
                         }
                     }
                 }
@@ -366,7 +363,10 @@ struct ArquivoDetalheView: View {
                 }
 
             }
-            .padding(24)
+            // Texto corrido em 720pt. Em tela cheia o parágrafo ia até ~1250pt,
+            // o equivalente a 180 caracteres por linha — o olho perde a volta.
+            .larguraDeLeituraPapagaio()
+            .padding(PapagaioTema.Espaco.secao)
             .cartaoPapagaio()
         } else {
             CartaoDeEstadoVazio(
@@ -391,13 +391,14 @@ struct ArquivoDetalheView: View {
     private func secao<Conteudo: View>(
         _ titulo: String, @ViewBuilder _ conteudo: () -> Conteudo
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             Text(titulo)
-                .font(.headline)
+                .font(PapagaioTema.Tipo.tituloDeSecao)
                 .foregroundStyle(PapagaioTema.texto)
             conteudo()
         }
-        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, PapagaioTema.Espaco.curto)
     }
 
     /// A citação tem âncora de tempo — clicar leva o áudio até a origem dela.
@@ -408,26 +409,33 @@ struct ArquivoDetalheView: View {
         let ancora = citacao.start.flatMap { inicio in
             trechos.contains { inicio >= $0.start && inicio <= $0.end } ? inicio : nil
         }
-        HStack(alignment: .top, spacing: 8) {
+        // `maxWidth: .infinity` no bloco inteiro: antes cada citação encolhia
+        // até o tamanho do seu próprio texto, e a coluna ficava com a borda
+        // direita serrilhada — quatro caixas de larguras diferentes empilhadas.
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
             Rectangle()
                 .frame(width: 3)
                 .foregroundStyle(PapagaioTema.destaque)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 Text(citacao.texto)
-                    .font(.callout)
+                    .font(PapagaioTema.Tipo.apoio)
                     .italic()
                     .foregroundStyle(PapagaioTema.texto)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let ancora {
-                    Button(tempoCurto(ancora)) {
+                    Button(ancora.comoRelogio) {
                         Task { await reprodutor?.saltar(paraSegundo: ancora) }
                     }
                     .buttonStyle(.link)
-                    .font(.caption)
+                    .font(PapagaioTema.Tipo.legenda)
                     .tint(PapagaioTema.destaqueEscuro)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(PapagaioTema.Espaco.medio)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
@@ -682,7 +690,7 @@ struct ArquivoDetalheView: View {
     @ViewBuilder
     private var notasDaConversa: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 EditorDeNotasDaConversa(
                     texto: $textoDasNotas,
                     notaCritica: $notaLivreCritica,
@@ -696,7 +704,7 @@ struct ArquivoDetalheView: View {
                 }
 
                 if !marcadoresDaConversa.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         Text("Marcadores da conversa")
                             .font(.headline)
                             .foregroundStyle(PapagaioTema.texto)
@@ -756,7 +764,7 @@ struct ArquivoDetalheView: View {
     }
 
     private func linhaDeNotaGravada(_ nota: NotaDaConversa) -> String {
-        "[\(tempoCurto(nota.start))] \(nota.texto)"
+        "[\(nota.start.comoRelogio)] \(nota.texto)"
     }
 
     private func agendarSalvamentoDasNotas() {
@@ -807,7 +815,7 @@ struct ArquivoDetalheView: View {
     private func inserirMarcadorNasNotas() {
         let instante = min(max(0, reprodutor?.tempo ?? 0), max(arquivo.duracao, 0))
         let marcador = NotaDaConversa(
-            texto: "Marcador em \(tempoCurto(instante))",
+            texto: "Marcador em \(instante.comoRelogio)",
             start: instante,
             critica: notaLivreCritica,
             tipo: .marcador
@@ -871,7 +879,7 @@ struct ArquivoDetalheView: View {
             }
         } else if let reprodutor {
             ScrollViewReader { rolagem in
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     ForEach(Array(trechos.enumerated()), id: \.element.id) { indice, trecho in
                         let ativo = indice == reprodutor.indiceAtivo
                         LinhaDeTranscricao(
@@ -901,7 +909,7 @@ struct ArquivoDetalheView: View {
     }
 
     private var transcricaoPendente: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: PapagaioTema.Espaco.medio) {
             Image(systemName: "text.quote")
                 .font(.system(size: 34, weight: .medium))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -922,7 +930,7 @@ struct ArquivoDetalheView: View {
                 .buttonStyle(BotaoPrincipalPapagaio())
                 .accessibilityHint("Adiciona esta conversa à fila. O resumo será feito após a transcrição.")
         }
-        .padding(32)
+        .padding(PapagaioTema.Espaco.pagina)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
     }
@@ -969,12 +977,6 @@ struct ArquivoDetalheView: View {
     }
 
     // MARK: - Formatação
-
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        guard segundos.isFinite, segundos >= 0 else { return "0:00" }
-        let inteiros = Int(segundos)
-        return String(format: "%d:%02d", inteiros / 60, inteiros % 60)
-    }
 
     private func tempoLongo(_ segundos: TimeInterval) -> String {
         let inteiros = Int(max(0, segundos))

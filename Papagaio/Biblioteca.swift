@@ -585,15 +585,21 @@ final class Biblioteca {
         return mixagem
     }
 
-    func estado(de arquivo: Arquivo) -> String {
+    /// Estado do arquivo no pipeline.
+    ///
+    /// Devolvia `String`, e cada tela reclassificava esse texto por conta
+    /// própria: o cartão por lista de literais, o detalhe por `contains("erro")`.
+    /// O mesmo arquivo aparecia vermelho numa tela e neutro na outra, e trocar
+    /// uma palavra em `Fase.descricao` quebrava a cor sem quebrar o build.
+    func estado(de arquivo: Arquivo) -> EstadoDoArquivo {
         let chave = arquivo.id.rawValue
-        if let fase = fases[chave] { return fase.descricao }
+        if let fase = fases[chave] { return .processando(fase) }
         if let posicao = filaDeProcessamento.firstIndex(of: arquivo.id) {
-            return "na fila (posição \(posicao + 1))"
+            return .naFila(posicao: posicao + 1)
         }
-        if let erro = erros[chave] { return erro }
-        if arquivo.resumo != nil { return "transcrito e resumido" }
-        if !arquivo.trechos.isEmpty { return "transcrito" }
-        return "pronto para transcrever"
+        if let erro = erros[chave] { return .falhou(erro) }
+        if arquivo.resumo != nil { return .transcritoEResumido }
+        if !arquivo.trechos.isEmpty { return .transcrito }
+        return .prontoParaTranscrever
     }
 }

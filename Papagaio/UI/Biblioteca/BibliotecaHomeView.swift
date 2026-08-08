@@ -55,7 +55,7 @@ struct BibliotecaHomeView: View {
             let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
             return titulo.localizedCaseInsensitiveContains(termo)
                 || (secaoSelecionada == .todos
-                    && biblioteca.estado(de: arquivo).localizedCaseInsensitiveContains(termo))
+                    && biblioteca.estado(de: arquivo).descricao.localizedCaseInsensitiveContains(termo))
         }
     }
 
@@ -158,12 +158,12 @@ struct BibliotecaHomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 CabecalhoDePagina(
                     titulo: tituloDaPagina,
                     subtitulo: subtitulo
                 ) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: PapagaioTema.Espaco.largo) {
                         if secaoSelecionada == .todos {
                             AtalhosDaBiblioteca(
                                 selecionado: $atalhoVisualSelecionado,
@@ -335,12 +335,12 @@ struct BibliotecaHomeView: View {
 
     @ViewBuilder
     private var gradeDeConversas: some View {
-        let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: 20, alignment: .top)]
-        let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: 22, alignment: .top)]
+        let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)]
+        let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: PapagaioTema.Espaco.secao, alignment: .top)]
 
         switch secaoSelecionada {
         case .todos:
-            LazyVGrid(columns: colunas, spacing: 20) {
+            LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.largo) {
                 if !gravador.gravando && (filtroSelecionado != .pastas || pastaSelecionada != nil) {
                     CartaoNovaConversa(
                         gravando: gravador.gravando,
@@ -405,7 +405,7 @@ struct BibliotecaHomeView: View {
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 2)
+                    .padding(.top, PapagaioTema.Espaco.minimo)
             }
 
         case .lixeira:
@@ -426,7 +426,7 @@ struct BibliotecaHomeView: View {
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
-                LazyVGrid(columns: colunasDaLixeira, spacing: 22) {
+                LazyVGrid(columns: colunasDaLixeira, spacing: PapagaioTema.Espaco.secao) {
                     ForEach(arquivosFiltrados) { arquivo in
                         if let biblioteca {
                             CartaoDaLixeira(
@@ -526,7 +526,7 @@ private struct FiltroDeConversas: View {
     let aoLimparAtalhoVisual: () -> Void
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
             ForEach(FiltroDaBiblioteca.allCases) { filtro in
                 Button {
                     withAnimation(.snappy(duration: 0.18)) {
@@ -561,7 +561,7 @@ private struct AtalhosDaBiblioteca: View {
     let aoSelecionarFavoritos: () -> Void
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
             Button(action: aoSelecionarRecentes) {
                 BotaoTextualDeAtalhoDaBiblioteca(
                     titulo: "Recentes",
@@ -596,8 +596,8 @@ private struct BotaoTextualDeAtalhoDaBiblioteca: View {
         Label(titulo, systemImage: simbolo)
             .font(.callout.weight(.semibold))
             .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-            .padding(.horizontal, 16)
-            .frame(height: 38)
+            .padding(.horizontal, PapagaioTema.Espaco.largo)
+            .frame(height: PapagaioTema.Altura.padrao)
             .background(fundo, in: Capsule())
             .overlay {
                 Capsule()
@@ -631,7 +631,7 @@ private struct GradeDePastas: View {
     let aoCriarPasta: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack {
                 Text("Pastas")
                     .font(.headline)
@@ -652,9 +652,9 @@ private struct GradeDePastas: View {
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
-                let colunas = [GridItem(.adaptive(minimum: 250, maximum: 360), spacing: 16, alignment: .top)]
+                let colunas = [GridItem(.adaptive(minimum: 250, maximum: 360), spacing: PapagaioTema.Espaco.largo, alignment: .top)]
 
-                LazyVGrid(columns: colunas, spacing: 16) {
+                LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.largo) {
                     ForEach(pastas) { pasta in
                         CartaoDePasta(
                             pasta: pasta,
@@ -679,18 +679,18 @@ private struct CartaoDePasta: View {
 
     var body: some View {
         Button(action: acao) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                     Image(systemName: "folder")
                         .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                         .frame(width: 58, height: 58)
                         .background(
                             selecionado ? PapagaioTema.destaqueSuave : PapagaioTema.superficieSuave,
-                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                         )
 
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                         Text(pasta.nome)
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(PapagaioTema.texto)
@@ -705,9 +705,9 @@ private struct CartaoDePasta: View {
                     Spacer(minLength: 0)
                 }
 
-                HStack(spacing: 12) {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
                     Label(textoDaQuantidade, systemImage: "doc.text")
-                    Label(tempoDescritivo(pasta.duracaoTotal), systemImage: "clock")
+                    Label(pasta.duracaoTotal.comoDuracaoPorExtenso, systemImage: "clock")
 
                     if let ultimoArquivo = pasta.ultimoArquivo {
                         Label(ultimoArquivo.formatted(.dateTime.day().month(.abbreviated)), systemImage: "calendar")
@@ -717,7 +717,7 @@ private struct CartaoDePasta: View {
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .lineLimit(1)
             }
-            .padding(20)
+            .padding(PapagaioTema.Espaco.largo)
             .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
             .background(
                 selecionado ? PapagaioTema.destaqueSuave.opacity(0.58) : PapagaioTema.superficie,
@@ -736,45 +736,6 @@ private struct CartaoDePasta: View {
         pasta.quantidade == 1 ? "1 conversa" : "\(pasta.quantidade) conversas"
     }
 
-    private func tempoDescritivo(_ segundos: TimeInterval) -> String {
-        let total = Int(max(0, segundos.rounded()))
-        if total < 60 { return "\(total) s" }
-        let minutos = total / 60
-        if minutos < 60 { return "\(minutos) min" }
-        let horas = minutos / 60
-        let resto = minutos % 60
-        return resto == 0 ? "\(horas) h" : "\(horas) h \(resto) min"
-    }
-
-    private func segundosDaDuracao(_ texto: String) -> TimeInterval? {
-        let limpo = texto
-            .lowercased()
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpo.isEmpty else { return nil }
-
-        let padroes: [(String, Double)] = [
-            (#"([0-9]+(?:\.[0-9]+)?)\s*h"#, 3600),
-            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:min|m)"#, 60),
-            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:seg|s)"#, 1)
-        ]
-
-        var total: Double = 0
-        for (padrao, multiplicador) in padroes {
-            guard let regex = try? NSRegularExpression(pattern: padrao) else { continue }
-            let intervalo = NSRange(limpo.startIndex..<limpo.endIndex, in: limpo)
-            regex.enumerateMatches(in: limpo, range: intervalo) { match, _, _ in
-                guard let match,
-                      let range = Range(match.range(at: 1), in: limpo),
-                      let valor = Double(limpo[range])
-                else { return }
-                total += valor * multiplicador
-            }
-        }
-
-        if total > 0 { return total }
-        return Double(limpo).map { $0 * 60 }
-    }
 }
 private struct CartaoNovaConversa: View {
     let gravando: Bool
@@ -784,14 +745,14 @@ private struct CartaoNovaConversa: View {
     let aoImportar: () -> Void
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: PapagaioTema.Espaco.largo) {
             Image(systemName: "plus")
                 .font(.system(size: 25, weight: .medium))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 64, height: 64)
                 .background(PapagaioTema.destaqueSuave, in: Circle())
 
-            VStack(spacing: 5) {
+            VStack(spacing: PapagaioTema.Espaco.minimo) {
                 Text("Gerar nova conversa")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
@@ -818,22 +779,21 @@ private struct CartaoNovaConversa: View {
                 )
             }
 
-            HStack(spacing: 10) {
-                Button("Gravar", systemImage: "mic.fill") {
-                    Task { await aoAlternarGravacao() }
+            // Em coluna estreita os dois botões lado a lado eram espremidos até
+            // o rótulo hifenizar ("Impor-tar"). Empilhar é melhor que quebrar
+            // a palavra.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    botoes
                 }
-                .buttonStyle(BotaoPrincipalPapagaio())
-                .disabled(bloqueado || !prontoParaEntrada)
 
-                Button("Importar", systemImage: "arrow.down.doc") {
-                    aoImportar()
+                VStack(spacing: PapagaioTema.Espaco.curto) {
+                    botoes
                 }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .disabled(bloqueado || !prontoParaEntrada)
             }
         }
-        .padding(28)
-        .frame(maxWidth: .infinity, minHeight: 390)
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, minHeight: 260)
         .background(PapagaioTema.superficie.opacity(0.55), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
@@ -844,11 +804,27 @@ private struct CartaoNovaConversa: View {
         }
         .accessibilityElement(children: .contain)
     }
+
+    private var botoes: some View {
+        Group {
+            Button("Gravar", systemImage: "mic.fill") {
+                Task { await aoAlternarGravacao() }
+            }
+            .buttonStyle(BotaoPrincipalPapagaio())
+            .disabled(bloqueado || !prontoParaEntrada)
+
+            Button("Importar", systemImage: "arrow.down.doc") {
+                aoImportar()
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+            .disabled(bloqueado || !prontoParaEntrada)
+        }
+    }
 }
 
 private struct CartaoDeConversa: View {
     let arquivo: Arquivo
-    let estado: String
+    let estado: EstadoDoArquivo
     let processando: Bool
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
@@ -884,7 +860,7 @@ private struct CartaoDeConversa: View {
 
     init(
         arquivo: Arquivo,
-        estado: String,
+        estado: EstadoDoArquivo,
         processando: Bool,
         naFila: Bool,
         emOperacaoDeLixeira: Bool,
@@ -921,14 +897,23 @@ private struct CartaoDeConversa: View {
     }
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
-    private var entrevistado: String {
-        let valor = listaDePessoas(metadados.entrevistado)
-        return valor.isEmpty ? "Não informado" : valor
-    }
 
-    private var entrevistadores: String {
-        let valor = listaDePessoas(metadados.entrevistadores)
-        return valor.isEmpty ? "Não informado" : valor
+    /// Só as pessoas que foram realmente preenchidas.
+    ///
+    /// Antes o cartão imprimia "Não informado" três vezes e dedicava a maior
+    /// área da sua superfície a dados ausentes. Campo vazio agora simplesmente
+    /// não ocupa espaço — quem preencheu vê a informação em destaque.
+    private var pessoasDoCard: [(simbolo: String, rotulo: String, valor: String)] {
+        var itens: [(String, String, String)] = []
+        let entrevistado = listaDePessoas(metadados.entrevistado)
+        if !entrevistado.isEmpty {
+            itens.append(("person", "Entrevistado", entrevistado))
+        }
+        let entrevistadores = listaDePessoas(metadados.entrevistadores)
+        if !entrevistadores.isEmpty {
+            itens.append(("person.crop.circle.badge.checkmark", "Entrevistadores", entrevistadores))
+        }
+        return itens
     }
 
     private var participantes: Int {
@@ -940,100 +925,94 @@ private struct CartaoDeConversa: View {
         return max(1, speakers.count)
     }
 
-    private var estiloDoStatus: EstiloDoStatus {
-        if processando { return .destaque }
-        if naFila { return .aviso }
-        if estado != "transcrito" && estado != "transcrito e resumido" && estado != "pronto para transcrever" {
-            return .erro
-        }
-        if arquivo.resumo != nil { return .sucesso }
-        return .neutro
-    }
-
-    private var simboloDoStatus: String {
-        if processando { return "waveform" }
-        if naFila { return "clock" }
-        if estiloDoStatus == .erro { return "exclamationmark.triangle" }
-        if arquivo.resumo != nil { return "checkmark.circle" }
-        return "text.badge.plus"
-    }
 
     var body: some View {
         NavigationLink(value: arquivo.id.rawValue) {
             VStack(alignment: .leading, spacing: 0) {
-                CapaDeConversa(arquivo: arquivo, capaURL: capaURL, favorito: favorito)
+                CapaDeConversa(arquivo: arquivo, capaURL: capaURL)
 
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(titulo)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.texto)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer(minLength: 8)
-                    }
-                    .padding(.trailing, 28)
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                    Text(titulo)
+                        .font(PapagaioTema.Tipo.tituloDeCard)
+                        .foregroundStyle(PapagaioTema.texto)
+                        // Reservar as duas linhas mantém os selos e o rodapé na
+                        // mesma altura em todos os cartões da fileira. Sem isso
+                        // um título de uma linha desalinhava o cartão inteiro em
+                        // relação ao vizinho.
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.trailing, PapagaioTema.Espaco.secao)
 
                     if !metadados.descricao.isEmpty {
                         Text(metadados.descricao)
-                            .font(.callout)
+                            .font(PapagaioTema.Tipo.apoio)
                             .foregroundStyle(PapagaioTema.textoSecundario)
                             .lineLimit(2)
                     }
 
-                    HStack(spacing: 8) {
+                    // O selo "Áudio local" saiu: era verdadeiro em 100% dos
+                    // cartões, então não distinguia nada — só competia por
+                    // espaço com o estado, que é a informação que muda.
+                    LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.curto, espacoVertical: PapagaioTema.Espaco.curto) {
                         SeloDeStatus(
-                            texto: estado,
-                            simbolo: simboloDoStatus,
-                            estilo: estiloDoStatus
+                            texto: estado.descricao,
+                            simbolo: estado.simbolo,
+                            estilo: estado.estilo
                         )
 
-                        SeloDeStatus(
-                            texto: "Áudio local",
-                            simbolo: "lock.fill",
-                            estilo: .neutro
-                        )
+                        if let pasta {
+                            SeloDeStatus(texto: pasta, simbolo: "folder", estilo: .neutro)
+                        }
                     }
 
-                    if let pasta {
-                        SeloDeStatus(
-                            texto: pasta,
-                            simbolo: "folder",
-                            estilo: .neutro
-                        )
+                    if !pessoasDoCard.isEmpty {
+                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                            ForEach(pessoasDoCard, id: \.rotulo) { pessoa in
+                                MetadadoDoCard(
+                                    simbolo: pessoa.simbolo,
+                                    rotulo: pessoa.rotulo,
+                                    valor: pessoa.valor
+                                )
+                            }
+                        }
                     }
 
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 135), spacing: 8, alignment: .leading)],
-                        alignment: .leading,
-                        spacing: 7
-                    ) {
-                        MetadadoDoCard(simbolo: "person", rotulo: "Entrevistado", valor: entrevistado)
-                        MetadadoDoCard(simbolo: "person.crop.circle.badge.checkmark", rotulo: "Entrevistadores", valor: entrevistadores)
-                        MetadadoDoCard(
-                            simbolo: metadados.formato == "Presencial" ? "mappin.and.ellipse" : "video",
-                            rotulo: "Formato",
-                            valor: metadados.formato.isEmpty ? "Não informado" : metadados.formato
+                    // Data, duração e participantes existem sempre — viram uma
+                    // linha de rodapé em vez de três células de grade com
+                    // rótulo em maiúscula competindo com o título.
+                    LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.medio, espacoVertical: PapagaioTema.Espaco.minimo) {
+                        Label(
+                            arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
+                            systemImage: "calendar"
                         )
-                        MetadadoDoCard(simbolo: "person.2", rotulo: "Participantes", valor: "\(participantes)")
-                        MetadadoDoCard(
-                            simbolo: "calendar",
-                            rotulo: "Data",
-                            valor: arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year())
-                        )
-                        MetadadoDoCard(simbolo: "clock", rotulo: "Duração", valor: tempoDescritivo(arquivo.duracao))
+                        Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
+                        // Conversa de uma pessoa é o caso comum; dizer "1" em
+                        // todo cartão só empurrava o rodapé para uma segunda
+                        // linha e desalinhava a fileira.
+                        if participantes > 1 {
+                            Label("\(participantes)", systemImage: "person.2")
+                        }
+                        if !metadados.formato.isEmpty {
+                            Label(
+                                metadados.formato,
+                                systemImage: metadados.formato == "Presencial" ? "mappin.and.ellipse" : "video"
+                            )
+                        }
                     }
-                    .font(.caption.weight(.medium))
+                    .font(PapagaioTema.Tipo.legenda)
                     .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
                 }
-                .padding(18)
+                .padding(PapagaioTema.Espaco.largo)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Conversa \(titulo). \(estado)")
-        .frame(maxWidth: .infinity, minHeight: 390, alignment: .top)
+        .accessibilityLabel("Conversa \(titulo). \(estado.descricao)")
+        // Sem `minHeight` fixo: os 390pt anteriores deixavam ~80pt de área
+        // morta no fim de todo cartão, e mais ainda nos de título curto.
+        .frame(maxWidth: .infinity, alignment: .top)
         .cartaoPapagaio()
         .overlay(alignment: .topLeading) {
             botaoDeFavoritoDoCard
@@ -1102,7 +1081,7 @@ private struct CartaoDeConversa: View {
             if emOperacaoDeLixeira {
                 ProgressView("Movendo para a lixeira…")
                     .font(.callout.weight(.medium))
-                    .padding(16)
+                    .padding(PapagaioTema.Espaco.largo)
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             }
         }
@@ -1129,7 +1108,7 @@ private struct CartaoDeConversa: View {
                     }
             }
             .buttonStyle(.plain)
-            .padding(10)
+            .padding(PapagaioTema.Espaco.curto)
             .accessibilityLabel("Ações de \(titulo)")
 
             if menuAberto {
@@ -1145,8 +1124,8 @@ private struct CartaoDeConversa: View {
                     aoFavoritar: executarMenu(alternarFavorito),
                     aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
                 )
-                .padding(.top, 48)
-                .padding(.trailing, 8)
+                .padding(.top, PapagaioTema.Espaco.pagina)
+                .padding(.trailing, PapagaioTema.Espaco.curto)
                 .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
                 .zIndex(2)
             }
@@ -1165,7 +1144,7 @@ private struct CartaoDeConversa: View {
                 }
         }
         .buttonStyle(.plain)
-        .padding(10)
+        .padding(PapagaioTema.Espaco.curto)
         .help(favorito ? "Desfavoritar" : "Favoritar")
         .accessibilityLabel(favorito ? "Desfavoritar conversa" : "Favoritar conversa")
     }
@@ -1187,7 +1166,7 @@ private struct CartaoDeConversa: View {
         formatoEditado = metadados.formato
         participantesEditados = "\(participantes)"
         dataEditada = arquivo.criadoEm
-        duracaoEditada = tempoDescritivo(arquivo.duracao)
+        duracaoEditada = arquivo.duracao.comoDuracaoPorExtenso
         editandoInformacoes = true
     }
 
@@ -1209,7 +1188,7 @@ private struct CartaoDeConversa: View {
 
         metadados = novosMetadados
         PreferenciasVisuaisDoArquivo.definirMetadados(novosMetadados, para: arquivo.id)
-        aoAtualizarMetadados(tituloLimpo, dataEditada, segundosDaDuracao(duracaoEditada) ?? arquivo.duracao)
+        aoAtualizarMetadados(tituloLimpo, dataEditada, TimeInterval.lendo(duracaoEditada) ?? arquivo.duracao)
         aoAlterarPreferenciasVisuais()
         editandoInformacoes = false
     }
@@ -1286,51 +1265,6 @@ private struct CartaoDeConversa: View {
         #endif
     }
 
-    private func tempoDescritivo(_ segundos: TimeInterval) -> String {
-        let total = Int(max(0, segundos).rounded())
-        let horas = total / 3600
-        let minutos = (total % 3600) / 60
-        let segundosRestantes = total % 60
-
-        if horas > 0 {
-            return minutos > 0 ? "\(horas) h \(minutos) min" : "\(horas) h"
-        }
-        if minutos > 0 {
-            return segundosRestantes > 0 ? "\(minutos) min \(segundosRestantes) s" : "\(minutos) min"
-        }
-        return "\(segundosRestantes) segundos"
-    }
-
-    private func segundosDaDuracao(_ texto: String) -> TimeInterval? {
-        let limpo = texto
-            .lowercased()
-            .replacingOccurrences(of: ",", with: ".")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !limpo.isEmpty else { return nil }
-
-        let padroes: [(String, Double)] = [
-            (#"([0-9]+(?:\.[0-9]+)?)\s*h"#, 3600),
-            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:min|m)"#, 60),
-            (#"([0-9]+(?:\.[0-9]+)?)\s*(?:seg|s)"#, 1)
-        ]
-
-        var total: Double = 0
-        for (padrao, multiplicador) in padroes {
-            guard let regex = try? NSRegularExpression(pattern: padrao) else { continue }
-            let intervalo = NSRange(limpo.startIndex..<limpo.endIndex, in: limpo)
-            regex.enumerateMatches(in: limpo, range: intervalo) { match, _, _ in
-                guard let match,
-                      let range = Range(match.range(at: 1), in: limpo),
-                      let valor = Double(limpo[range])
-                else { return }
-                total += valor * multiplicador
-            }
-        }
-
-        if total > 0 { return total }
-        return Double(limpo).map { $0 * 60 }
-    }
-
     private func listaDePessoas(_ texto: String) -> String {
         texto
             .split(whereSeparator: \.isNewline)
@@ -1362,8 +1296,8 @@ private struct MenuDeArquivoAberto: View {
             ItemDoMenuDeArquivo(simbolo: favorito ? "star.fill" : "star", titulo: favorito ? "Desfavoritar" : "Favoritar", acao: aoFavoritar)
 
             SeparadorPapagaio()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
 
             ItemDoMenuDeArquivo(
                 simbolo: "trash",
@@ -1374,13 +1308,13 @@ private struct MenuDeArquivoAberto: View {
             )
         }
         .frame(width: 214)
-        .padding(.vertical, 6)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.vertical, PapagaioTema.Espaco.minimo)
+        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(red: 0.72, green: 0.45, blue: 0.38).opacity(0.38), lineWidth: 1)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1)
         }
-        .shadow(color: Color(red: 0.34, green: 0.18, blue: 0.14).opacity(0.16), radius: 12, y: 6)
+        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
         .shadow(color: PapagaioTema.destaque.opacity(0.12), radius: 4, y: 1)
     }
 }
@@ -1394,7 +1328,7 @@ private struct ItemDoMenuDeArquivo: View {
 
     var body: some View {
         Button(action: acao) {
-            HStack(spacing: 14) {
+            HStack(spacing: PapagaioTema.Espaco.medio) {
                 Image(systemName: simbolo)
                     .font(.system(size: 15, weight: .regular))
                     .symbolRenderingMode(.monochrome)
@@ -1407,8 +1341,8 @@ private struct ItemDoMenuDeArquivo: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(cor.opacity(desabilitado ? 0.42 : 1))
-            .padding(.horizontal, 14)
-            .frame(height: 34)
+            .padding(.horizontal, PapagaioTema.Espaco.medio)
+            .frame(height: PapagaioTema.Altura.padrao)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1416,7 +1350,7 @@ private struct ItemDoMenuDeArquivo: View {
     }
 
     private var cor: Color {
-        destrutivo ? Color(red: 0.78, green: 0.08, blue: 0.08) : PapagaioTema.textoSecundario
+        destrutivo ? PapagaioTema.perigo : PapagaioTema.textoSecundario
     }
 }
 
@@ -1425,18 +1359,21 @@ private struct MetadadoDoCard: View {
     let rotulo: String
     let valor: String
 
+    /// O rótulo era `caption2.bold` em MAIÚSCULA e o valor `caption` normal —
+    /// ou seja, "ENTREVISTADO" pesava mais na página do que o nome da pessoa.
+    /// Aqui o valor é que tem cor e peso de texto; o rótulo só orienta.
     var body: some View {
         Label {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(rotulo)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                    .textCase(.uppercase)
+            HStack(spacing: PapagaioTema.Espaco.minimo) {
+                Text("\(rotulo):")
+                    .font(PapagaioTema.Tipo.legenda)
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.8))
+
                 Text(valor)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .font(PapagaioTema.Tipo.legenda.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .truncationMode(.tail)
             }
         } icon: {
             Image(systemName: simbolo)
@@ -1493,8 +1430,8 @@ struct EditorDeInformacoesDoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text(modo.titulo)
                         .font(.title2.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
@@ -1513,11 +1450,11 @@ struct EditorDeInformacoesDoCard: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(26)
+            .padding(PapagaioTema.Espaco.secao)
 
             SeparadorPapagaio()
 
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 campo("Título da entrevista") {
                     TextField("Ex.: Entrevista com Stakeholders - UX Research", text: $titulo)
                         .textFieldStyle(.plain)
@@ -1541,42 +1478,42 @@ struct EditorDeInformacoesDoCard: View {
                 )
 
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 14) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                         participantesEDuracao
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         participantesEDuracao
                     }
                 }
 
                 campo("Formato") {
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: PapagaioTema.Espaco.curto) {
                             botoesDeFormato
                         }
 
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                             botoesDeFormato
                         }
                     }
                 }
 
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 14) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                         dataEDescricao
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         dataEDescricao
                     }
                 }
             }
-            .padding(26)
+            .padding(PapagaioTema.Espaco.secao)
 
             SeparadorPapagaio()
 
-            HStack(spacing: 12) {
+            HStack(spacing: PapagaioTema.Espaco.medio) {
                 Spacer()
 
                 Button("Cancelar", systemImage: "xmark", action: aoCancelar)
@@ -1588,11 +1525,11 @@ struct EditorDeInformacoesDoCard: View {
 
                 Spacer()
             }
-            .padding(22)
+            .padding(PapagaioTema.Espaco.secao)
             .background(PapagaioTema.superficieSuave.opacity(0.45))
         }
         .frame(minWidth: 360, idealWidth: 720, maxWidth: 780, alignment: .leading)
-        .background(PapagaioTema.fundo, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(PapagaioTema.fundo, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     private var participantesEDuracao: some View {
@@ -1637,7 +1574,7 @@ struct EditorDeInformacoesDoCard: View {
                 DatePicker("Data", selection: $data, displayedComponents: [.date])
                     .datePickerStyle(.compact)
                     .labelsHidden()
-                    .frame(height: 42)
+                    .frame(height: PapagaioTema.Altura.padrao)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -1650,7 +1587,7 @@ struct EditorDeInformacoesDoCard: View {
     }
 
     private func campo<Conteudo: View>(_ titulo: String, @ViewBuilder conteudo: () -> Conteudo) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             Text(titulo)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1672,7 +1609,7 @@ private struct PessoasDaFichaDaEntrevista: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             Text(titulo)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -1680,11 +1617,11 @@ private struct PessoasDaFichaDaEntrevista: View {
 
             ForEach(0..<quantidade, id: \.self) { indice in
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 14) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                         camposDaPessoa(indice)
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                         camposDaPessoa(indice)
                     }
                 }
@@ -1732,7 +1669,7 @@ private struct PessoasDaFichaDaEntrevista: View {
     }
 
     private func campo<Conteudo: View>(_ titulo: String, @ViewBuilder conteudo: () -> Conteudo) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             Text(titulo)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
@@ -1799,15 +1736,15 @@ private struct BotaoDeFormatoDaEntrevista: View {
         Button(action: acao) {
             Label(titulo, systemImage: simbolo)
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(selecionado ? .white : PapagaioTema.textoSecundario)
+                .foregroundStyle(selecionado ? PapagaioTema.textoSobrePrimario : PapagaioTema.textoSecundario)
                 .frame(maxWidth: .infinity)
-                .frame(height: 38)
+                .frame(height: PapagaioTema.Altura.padrao)
                 .background(
-                    selecionado ? PapagaioTema.destaque : PapagaioTema.superficie,
-                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    selecionado ? PapagaioTema.preenchimentoPrimario : PapagaioTema.superficie,
+                    in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                         .stroke(selecionado ? Color.clear : PapagaioTema.borda, lineWidth: 1)
                 }
         }
@@ -1819,11 +1756,11 @@ private extension View {
     func campoPapagaio() -> some View {
         self
             .font(.body)
-            .padding(.horizontal, 12)
-            .frame(height: 42)
-            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, PapagaioTema.Espaco.medio)
+            .frame(height: PapagaioTema.Altura.padrao)
+            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .stroke(PapagaioTema.borda, lineWidth: 1)
             }
     }
@@ -1950,7 +1887,6 @@ enum PreferenciasVisuaisDoArquivo {
 private struct CapaDeConversa: View {
     let arquivo: Arquivo
     let capaURL: URL?
-    let favorito: Bool
 
     private var matiz: Double {
         let soma = arquivo.id.rawValue.uuidString.unicodeScalars.reduce(0) { $0 + Int($1.value) }
@@ -1987,21 +1923,13 @@ private struct CapaDeConversa: View {
                 )
 
                 Image(systemName: "waveform")
-                    .font(.system(size: 42, weight: .light))
+                    .font(.system(size: 28, weight: .light))
                     .foregroundStyle(PapagaioTema.destaqueEscuro.opacity(0.62))
             }
-
-            if favorito {
-                Image(systemName: "star.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .padding(8)
-                    .background(.white.opacity(0.76), in: Circle())
-                    .padding(14)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            }
         }
-        .frame(height: 116)
+        // 88 em vez de 116: a capa é decorativa e idêntica em todos os cartões
+        // sem imagem própria, então não merece um terço da altura útil.
+        .frame(height: 88)
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .accessibilityHidden(true)
     }
@@ -2017,14 +1945,14 @@ private struct PainelDeGravacao: View {
     let aoCancelar: () async -> Void
 
     var body: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
             Image(systemName: pausado ? "pause.fill" : "mic.fill")
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 56, height: 56)
                 .background(PapagaioTema.destaqueSuave, in: Circle())
 
-            Text(tempoCurto(tempoDeGravacao))
+            Text(tempoDeGravacao.comoCronometro)
                 .font(.system(.title3, design: .monospaced).weight(.semibold))
                 .foregroundStyle(PapagaioTema.texto)
                 .monospacedDigit()
@@ -2033,7 +1961,7 @@ private struct PainelDeGravacao: View {
             Waveform(amostras: waveform, ativo: !pausado)
                 .frame(minWidth: 160, maxWidth: .infinity, minHeight: 48, maxHeight: 48)
 
-            HStack(spacing: 10) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
                 Button(pausado ? "Continuar" : "Pausar", systemImage: pausado ? "play.fill" : "pause.fill") {
                     Task {
                         if pausado {
@@ -2057,29 +1985,25 @@ private struct PainelDeGravacao: View {
                 .foregroundStyle(PapagaioTema.perigo)
             }
         }
-        .padding(18)
+        .padding(PapagaioTema.Espaco.largo)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
     }
 
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let total = max(0, Int(segundos))
-        return String(format: "%02d:%02d", total / 60, total % 60)
-    }
 }
 
 private struct AvisosDaGravacao: View {
     let avisos: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             ForEach(avisos, id: \.self) { aviso in
                 Label(aviso, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.aviso)
             }
         }
-        .padding(16)
+        .padding(PapagaioTema.Espaco.largo)
         .background(PapagaioTema.aviso.opacity(0.09), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
@@ -2098,7 +2022,7 @@ private struct FalhaDaGravacao: View {
         Label(mensagem, systemImage: "xmark.octagon.fill")
             .font(.callout)
             .foregroundStyle(PapagaioTema.perigo)
-            .padding(16)
+            .padding(PapagaioTema.Espaco.largo)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 PapagaioTema.perigo.opacity(0.09),
@@ -2121,12 +2045,12 @@ private struct CartaoDeModelos: View {
     @State private var escolhendoPasta = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 Image(systemName: modelos.resultado?.bloqueia == true ? "exclamationmark.triangle.fill" : "arrow.down.circle.fill")
                     .font(.title2)
                     .foregroundStyle(modelos.resultado?.bloqueia == true ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text("Modelos locais")
                         .font(.headline)
                         .foregroundStyle(PapagaioTema.texto)
@@ -2154,7 +2078,7 @@ private struct CartaoDeModelos: View {
             }
 
             if modelos.resultado?.bloqueia == false, !modelos.faltando.isEmpty {
-                HStack(spacing: 10) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
                     if modelos.baixando {
                         Button("Cancelar", action: modelos.cancelar)
                             .buttonStyle(BotaoDeContornoPapagaio())
@@ -2182,7 +2106,7 @@ private struct CartaoDeModelos: View {
                     .truncationMode(.middle)
             }
         }
-        .padding(20)
+        .padding(PapagaioTema.Espaco.largo)
         .cartaoPapagaio()
         .fileImporter(
             isPresented: $escolhendoPasta,
@@ -2225,7 +2149,7 @@ struct Waveform: View {
             let passo = amostras.isEmpty ? 0 : largura / CGFloat(amostras.count)
 
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .fill(PapagaioTema.superficieSuave)
 
                 Path { caminho in

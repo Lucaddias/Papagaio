@@ -70,18 +70,18 @@ struct CartaoDaLixeira: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 Label(tipoDoItem.titulo, systemImage: tipoDoItem.simbolo)
                     .font(.callout.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .foregroundStyle(PapagaioTema.textoSobrePrimario)
+                    .padding(.horizontal, PapagaioTema.Espaco.medio)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 16) {
+                HStack(spacing: PapagaioTema.Espaco.largo) {
                     if emOperacao {
                         ProgressView()
                             .controlSize(.small)
@@ -108,7 +108,7 @@ struct CartaoDaLixeira: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                 Text(titulo)
                     .font(.title.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
@@ -128,7 +128,7 @@ struct CartaoDaLixeira: View {
 
             SeparadorPapagaio()
 
-            HStack(spacing: 18) {
+            HStack(spacing: PapagaioTema.Espaco.largo) {
                 Label(dataCurta, systemImage: "calendar")
                 Label(duracaoCurta, systemImage: "clock")
 
@@ -141,7 +141,7 @@ struct CartaoDaLixeira: View {
             .font(.callout.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
         }
-        .padding(28)
+        .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
         .cartaoPapagaio()
         .opacity(emOperacao ? 0.72 : 1)
@@ -239,18 +239,18 @@ struct CartaoDaTarefaNaLixeira: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 Label("TAREFA", systemImage: "checklist")
                     .font(.callout.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .frame(height: 30)
-                    .background(PapagaioTema.destaque, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .foregroundStyle(PapagaioTema.textoSobrePrimario)
+                    .padding(.horizontal, PapagaioTema.Espaco.medio)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 16) {
+                HStack(spacing: PapagaioTema.Espaco.largo) {
                     Button(action: aoRestaurar) {
                         Image(systemName: "arrow.uturn.backward.circle")
                             .font(.system(size: 18, weight: .bold))
@@ -269,7 +269,7 @@ struct CartaoDaTarefaNaLixeira: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                 Text(item.tarefa.titulo)
                     .font(.title.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
@@ -287,7 +287,7 @@ struct CartaoDaTarefaNaLixeira: View {
 
             SeparadorPapagaio()
 
-            HStack(spacing: 18) {
+            HStack(spacing: PapagaioTema.Espaco.largo) {
                 Label(dataCurta, systemImage: "calendar")
                 Label(item.tarefa.responsavel?.isEmpty == false ? item.tarefa.responsavel! : "SEM RESPONSÁVEL", systemImage: "person")
 
@@ -300,7 +300,7 @@ struct CartaoDaTarefaNaLixeira: View {
             .font(.callout.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
         }
-        .padding(28)
+        .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
@@ -313,7 +313,7 @@ struct AcoesDaLixeira: View {
     let aoEsvaziar: () -> Void
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
             Button("Restaurar Tudo", systemImage: "arrow.counterclockwise", action: aoRestaurarTudo)
                 .buttonStyle(BotaoDeContornoPapagaio())
                 .disabled(!temArquivos)
@@ -321,10 +321,10 @@ struct AcoesDaLixeira: View {
 
             Button("Esvaziar Lixeira", systemImage: "trash.square", role: .destructive, action: aoEsvaziar)
                 .font(.body.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .frame(minHeight: 44)
-                .background(PapagaioTema.destaque, in: Capsule())
+                .foregroundStyle(PapagaioTema.textoSobrePrimario)
+                .padding(.horizontal, PapagaioTema.Espaco.largo)
+                .frame(minHeight: PapagaioTema.Altura.destaque)
+                .background(PapagaioTema.preenchimentoPrimario, in: Capsule())
                 .buttonStyle(.plain)
                 .disabled(!temArquivos)
                 .opacity(temArquivos ? 1 : 0.45)

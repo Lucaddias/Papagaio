@@ -21,11 +21,11 @@ struct EditorDeNotasDaConversa: View {
     @FocusState private var editorEmFoco: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 34) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
             cabecalho
 
-            HStack(alignment: .center, spacing: 16) {
-                HStack(spacing: 14) {
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.largo) {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
                     Button {
                         aoInserirMarcador()
                     } label: {
@@ -53,7 +53,7 @@ struct EditorDeNotasDaConversa: View {
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
 
-            VStack(spacing: 18) {
+            VStack(spacing: PapagaioTema.Espaco.largo) {
                 editor
                 barraDeFormatacao
             }
@@ -62,10 +62,10 @@ struct EditorDeNotasDaConversa: View {
     }
 
     private var cabecalho: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             HStack(alignment: .firstTextBaseline) {
                 Text("Notas da Conversa")
-                    .font(.system(size: 30, weight: .bold))
+                    .font(PapagaioTema.Tipo.tituloDePagina)
                     .foregroundStyle(PapagaioTema.texto)
 
                 Spacer()
@@ -90,8 +90,8 @@ struct EditorDeNotasDaConversa: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .scrollContentBackground(.hidden)
                 .textEditorStyle(.plain)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
+                .padding(.horizontal, PapagaioTema.Espaco.largo)
+                .padding(.vertical, PapagaioTema.Espaco.largo)
                 .focused($editorEmFoco)
                 .accessibilityLabel("Notas da conversa")
 
@@ -99,8 +99,8 @@ struct EditorDeNotasDaConversa: View {
                 Text("Escreva suas observações aqui...")
                     .font(.system(size: 17))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 18)
+                    .padding(.horizontal, PapagaioTema.Espaco.largo)
+                    .padding(.vertical, PapagaioTema.Espaco.largo)
                     .allowsHitTesting(false)
             }
         }
@@ -111,15 +111,15 @@ struct EditorDeNotasDaConversa: View {
                 .fill(PapagaioTema.destaque)
                 .frame(width: 4)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(editorEmFoco ? PapagaioTema.destaque : PapagaioTema.borda, lineWidth: editorEmFoco ? 1.4 : 1)
         }
     }
 
     private var barraDeFormatacao: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
             BotaoDeFormatoDaNota(rotulo: "B", simbolo: nil, formato: .negrito, aoAplicar: aoAplicarFormato)
                 .font(.headline.weight(.bold))
                 .help("Negrito")
@@ -132,7 +132,7 @@ struct EditorDeNotasDaConversa: View {
             Rectangle()
                 .fill(PapagaioTema.borda)
                 .frame(width: 1, height: 26)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, PapagaioTema.Espaco.minimo)
 
             BotaoDeFormatoDaNota(rotulo: nil, simbolo: "photo", formato: .imagem, aoAplicar: aoAplicarFormato)
                 .help("Imagem")
@@ -141,8 +141,8 @@ struct EditorDeNotasDaConversa: View {
             BotaoDeFormatoDaNota(rotulo: nil, simbolo: "link", formato: .link, aoAplicar: aoAplicarFormato)
                 .help("Link")
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 14)
+        .padding(.horizontal, PapagaioTema.Espaco.secao)
+        .padding(.vertical, PapagaioTema.Espaco.medio)
         .background(PapagaioTema.superficieSuave, in: Capsule())
         .overlay {
             Capsule()
@@ -182,8 +182,8 @@ private struct BotaoDeAcaoDasNotas: ButtonStyle {
         configuration.label
             .font(.callout.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSecundario)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
+            .padding(.horizontal, PapagaioTema.Espaco.largo)
+            .padding(.vertical, PapagaioTema.Espaco.curto)
             .background(PapagaioTema.superficie, in: Capsule())
             .overlay {
                 Capsule()
@@ -200,7 +200,7 @@ struct ListaDeNotasDaConversa: View {
     let aoSelecionar: (NotaDaConversa) -> Void
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
             ForEach(notas) { nota in
                 Button {
                     aoSelecionar(nota)
@@ -229,8 +229,8 @@ private struct LinhaDaNotaDaConversa: View {
     private var ehMarcador: Bool { nota.tipo == .marcador }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Text(tempoCurto(nota.start))
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+            Text(nota.start.comoRelogio)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
@@ -241,8 +241,8 @@ private struct LinhaDaNotaDaConversa: View {
                 .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
                 .frame(width: 18)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
                     Text(ehMarcador ? "Marcador" : "Nota")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PapagaioTema.textoSecundario)
@@ -267,15 +267,15 @@ private struct LinhaDaNotaDaConversa: View {
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 16)
+        .padding(.vertical, PapagaioTema.Espaco.medio)
+        .padding(.horizontal, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay(alignment: .leading) {
             Capsule()
                 .fill(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaque)
                 .frame(width: 4)
-                .padding(.vertical, 11)
+                .padding(.vertical, PapagaioTema.Espaco.medio)
         }
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
@@ -283,11 +283,6 @@ private struct LinhaDaNotaDaConversa: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(tempoLongo(nota.start)). \(ehMarcador ? "Marcador" : "Nota"). \(nota.texto)\(nota.critica ? ". Crítica." : "")")
-    }
-
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let total = max(0, Int(segundos))
-        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private func tempoLongo(_ segundos: TimeInterval) -> String {

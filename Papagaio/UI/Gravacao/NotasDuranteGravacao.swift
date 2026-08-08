@@ -18,15 +18,15 @@ struct PainelDeNotasDuranteGravacao: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 14) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                 Image(systemName: "note.text")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
                     .frame(width: 44, height: 44)
                     .background(PapagaioTema.destaqueSuave, in: Circle())
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text("Notas da conversa")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
@@ -48,7 +48,7 @@ struct PainelDeNotasDuranteGravacao: View {
                 )
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
                 Button("Inserir marcador", systemImage: "bookmark.badge.plus") {
                     gravador.inserirMarcador()
                 }
@@ -70,7 +70,7 @@ struct PainelDeNotasDuranteGravacao: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(tempoCurto(gravador.tempoDeGravacao))")
+                Text("\(gravador.tempoDeGravacao.comoCronometro)")
                     .font(.system(.callout, design: .monospaced).weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .monospacedDigit()
@@ -90,8 +90,8 @@ struct PainelDeNotasDuranteGravacao: View {
                     Text("Escreva uma observação, sentimento ou ponto importante…")
                         .font(.body)
                         .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                        .padding(.leading, 18)
-                        .padding(.top, 14)
+                        .padding(.leading, PapagaioTema.Espaco.largo)
+                        .padding(.top, PapagaioTema.Espaco.medio)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
@@ -117,7 +117,7 @@ struct PainelDeNotasDuranteGravacao: View {
                 .foregroundStyle(PapagaioTema.textoSecundario)
 
             if !gravador.notasDaGravacao.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     Text("Notas registradas")
                         .font(.headline)
                         .foregroundStyle(PapagaioTema.texto)
@@ -126,17 +126,12 @@ struct PainelDeNotasDuranteGravacao: View {
                         LinhaDaNotaEmGravacao(nota: nota)
                     }
                 }
-                .padding(.top, 2)
+                .padding(.top, PapagaioTema.Espaco.minimo)
             }
         }
-        .padding(22)
+        .padding(PapagaioTema.Espaco.secao)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
-    }
-
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let total = max(0, Int(segundos))
-        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 
     private func tempoLongo(_ segundos: TimeInterval) -> String {
@@ -206,12 +201,12 @@ private struct LinhaDaNotaEmGravacao: View {
     let nota: NotaDaConversa
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
             Image(systemName: nota.tipo == .marcador ? "bookmark.fill" : "text.quote")
                 .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
                 .frame(width: 18)
 
-            Text(tempoCurto(nota.start))
+            Text(nota.start.comoCronometro)
                 .font(.system(.caption, design: .monospaced).weight(.semibold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .monospacedDigit()
@@ -227,13 +222,9 @@ private struct LinhaDaNotaEmGravacao: View {
                 SeloDeStatus(texto: "Crítica", simbolo: "exclamationmark.triangle", estilo: .erro)
             }
         }
-        .padding(12)
-        .background(PapagaioTema.superficieSuave.opacity(0.68), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(PapagaioTema.Espaco.medio)
+        .background(PapagaioTema.superficieSuave.opacity(0.68), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 
-    private func tempoCurto(_ segundos: TimeInterval) -> String {
-        let total = max(0, Int(segundos))
-        return String(format: "%02d:%02d", total / 60, total % 60)
-    }
 }

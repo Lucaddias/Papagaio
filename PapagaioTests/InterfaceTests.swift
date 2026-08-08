@@ -1,0 +1,133 @@
+import AppKit
+import Foundation
+import PapagaioCore
+import SwiftUI
+import Testing
+@testable import Papagaio
+
+// MARK: - Estado tipado
+
+// `EstadoDoArquivo` nasceu para acabar com duas classificações incompatíveis da
+// mesma string: o cartão decidia a cor por lista negativa de literais, e o
+// detalhe por `contains("erro")`. O mesmo arquivo aparecia vermelho num lugar e
+// neutro no outro.
+
+@Test("Cada estado tem exatamente um estilo, sem depender do texto")
+func estiloPorEstado() {
+    #expect(EstadoDoArquivo.prontoParaTranscrever.estilo == .neutro)
+    #expect(EstadoDoArquivo.transcrito.estilo == .neutro)
+    #expect(EstadoDoArquivo.transcritoEResumido.estilo == .sucesso)
+    #expect(EstadoDoArquivo.naFila(posicao: 1).estilo == .aviso)
+    #expect(EstadoDoArquivo.processando(.transcrevendo).estilo == .destaque)
+    #expect(EstadoDoArquivo.falhou("qualquer coisa").estilo == .erro)
+}
+
+@Test("Uma falha sem a palavra erro continua sendo tratada como falha")
+func falhaSemAPalavraErro() {
+    // Este era o caso que quebrava: "Nenhuma fala reconhecida neste áudio."
+    // não contém "erro" nem "falhou", então o detalhe pintava de neutro
+    // enquanto o cartão pintava de vermelho.
+    let estado = EstadoDoArquivo.falhou("Nenhuma fala reconhecida neste áudio.")
+
+    #expect(estado.estilo == .erro)
+    #expect(estado.simbolo == "exclamationmark.triangle")
+    #expect(estado.descricao == "Nenhuma fala reconhecida neste áudio.")
+}
+
+@Test("Só fila e processamento bloqueiam ações destrutivas")
+func estadosOcupados() {
+    #expect(EstadoDoArquivo.processando(.resumindo).ocupado)
+    #expect(EstadoDoArquivo.naFila(posicao: 3).ocupado)
+    #expect(!EstadoDoArquivo.prontoParaTranscrever.ocupado)
+    #expect(!EstadoDoArquivo.transcritoEResumido.ocupado)
+    #expect(!EstadoDoArquivo.falhou("x").ocupado)
+}
+
+@Test("A posição na fila aparece na descrição")
+func descricaoDaFila() {
+    #expect(EstadoDoArquivo.naFila(posicao: 2).descricao == "na fila (posição 2)")
+}
+
+// MARK: - Formatação de tempo
+
+// Existiam catorze cópias disto em seis arquivos, metade com `%d:%02d` e metade
+// com `%02d:%02d` — inconsistência visível na tela, não só duplicação.
+
+@Test("Relógio e cronômetro formatam o mesmo instante de formas previsíveis")
+func formatosDeTempo() {
+    #expect(TimeInterval(187).comoRelogio == "3:07")
+    #expect(TimeInterval(187).comoCronometro == "03:07")
+    #expect(TimeInterval(59).comoRelogio == "0:59")
+    #expect(TimeInterval(3_600).comoRelogio == "60:00")
+}
+
+@Test("Valores inválidos viram zero em vez de derrubar o processo")
+func tempoInvalido() {
+    // `AVPlayer` devolve NaN antes de carregar a duração, e `Int(NaN)` crasha.
+    #expect(TimeInterval.nan.comoRelogio == "0:00")
+    #expect(TimeInterval.infinity.comoRelogio == "0:00")
+    #expect(TimeInterval(-30).comoRelogio == "0:00")
+    #expect(TimeInterval.nan.faladoPorExtenso == "0 s")
+}
+
+@Test("VoiceOver recebe tempo por extenso, não 3:07")
+func tempoPorExtenso() {
+    #expect(TimeInterval(187).faladoPorExtenso == "3 min 7 s")
+    #expect(TimeInterval(42).faladoPorExtenso == "42 s")
+}
+
+// MARK: - Tema
+
+@Test("Os tokens de cor mudam entre claro e escuro")
+func temaTemDuasAparencias() throws {
+    // Antes eram cores fixas claras e a `ContentView` forçava
+    // `.preferredColorScheme(.light)`: quem usa o Mac no escuro recebia uma
+    // janela branca no meio do sistema.
+    let claro = NSAppearance(named: .aqua)
+    let escuro = NSAppearance(named: .darkAqua)
+
+    func componentes(_ cor: Color, _ aparencia: NSAppearance?) throws -> [CGFloat] {
+        var resultado: [CGFloat] = []
+        try (aparencia ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            let convertida = try? #require(
+                NSColor(cor).usingColorSpace(.sRGB)
+            )
+            if let convertida {
+                resultado = [convertida.redComponent, convertida.greenComponent, convertida.blueComponent]
+            }
+        }
+        return resultado
+    }
+
+    for (nome, cor) in [
+        ("fundo", PapagaioTema.fundo),
+        ("superficie", PapagaioTema.superficie),
+        ("texto", PapagaioTema.texto),
+        ("destaqueEscuro", PapagaioTema.destaqueEscuro),
+    ] {
+        let noClaro = try componentes(cor, claro)
+        let noEscuro = try componentes(cor, escuro)
+        #expect(noClaro != noEscuro, "\(nome) não muda entre as aparências")
+    }
+}
+
+@Test("O texto principal inverte de claridade entre as aparências")
+func contrasteInverte() throws {
+    func luminancia(_ cor: Color, _ aparencia: NSAppearance?) -> CGFloat {
+        var valor: CGFloat = 0
+        (aparencia ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            guard let srgb = NSColor(cor).usingColorSpace(.sRGB) else { return }
+            valor = 0.2126 * srgb.redComponent
+                + 0.7152 * srgb.greenComponent
+                + 0.0722 * srgb.blueComponent
+        }
+        return valor
+    }
+
+    let claro = NSAppearance(named: .aqua)
+    let escuro = NSAppearance(named: .darkAqua)
+
+    // No claro: texto escuro sobre fundo claro. No escuro: o inverso.
+    #expect(luminancia(PapagaioTema.texto, claro) < luminancia(PapagaioTema.fundo, claro))
+    #expect(luminancia(PapagaioTema.texto, escuro) > luminancia(PapagaioTema.fundo, escuro))
+}

@@ -15,6 +15,10 @@ struct PapagaioApp: App {
         WindowGroup("") {
             ContentView()
         }
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 1_000, height: 700)
+        // Sem isto o `minWidth` da `ContentView` é só uma sugestão: a janela
+        // continua arrastável abaixo dele e o conteúdo transborda em vez de
+        // parar de encolher.
+        .windowResizability(.contentMinSize)
     }
 }

@@ -223,12 +223,7 @@ final class GravadorViewModel {
     }
 
     private static func linhaDeNotaSalva(_ nota: NotaDaConversa) -> String {
-        "[\(tempoCurto(nota.start))] \(nota.texto)"
-    }
-
-    private static func tempoCurto(_ segundos: TimeInterval) -> String {
-        let total = max(0, Int(segundos))
-        return String(format: "%d:%02d", total / 60, total % 60)
+        "[\(nota.start.comoRelogio)] \(nota.texto)"
     }
 
     private func acrescentarAoWaveform(_ valor: Float) {
