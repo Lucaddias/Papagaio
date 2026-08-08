@@ -9,7 +9,14 @@ import UniformTypeIdentifiers
 /// importação e Sign in with Apple). A composição visual vive em componentes
 /// menores para que o redesign não altere o ciclo de vida do áudio.
 struct ContentView: View {
-    @State private var modelo = GravadorViewModel()
+    /// A gravação é criada no `App` e passada para cá: o item da barra de menus
+    /// precisa observar exatamente o mesmo objeto que a janela.
+    let modelo: GravadorViewModel
+
+    init(gravador: GravadorViewModel) {
+        modelo = gravador
+    }
+
     @State private var biblioteca: Biblioteca?
     @State private var modelos: ModelosViewModel?
     @State private var perfil = PerfilViewModel()
@@ -33,6 +40,11 @@ struct ContentView: View {
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var secaoDaBiblioteca: SecaoDaBiblioteca = .todos
     @State private var telaSelecionada: TelaPrincipal = .biblioteca
+    /// Foco na tela de captura. Sair dela não interrompe a gravação — some o
+    /// painel e aparece o selo "Gravando", que traz de volta.
+    @State private var focoNaGravacao = false
+    /// Pilha de conversas abertas, para a barra saber que há uma na frente.
+    @State private var conversaAberta: [UUID] = []
     @State private var pastaDaBibliotecaSelecionada: String?
     @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
     @AppStorage("contextoDaConta") private var contextoDaContaRaw = ContextoDaConta.perfil.rawValue
@@ -64,12 +76,12 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $conversaAberta) {
             VStack(spacing: 0) {
                 BarraSuperiorPapagaioView(
                     consulta: $consulta,
                     legendaAtiva: $legendaDaBarra,
-                    exibindoBotaoVoltar: telaSelecionada != .biblioteca || secaoDaBiblioteca == .lixeira,
+                    exibindoBotaoVoltar: !naTelaInicial,
                     bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
                     tarefasSelecionada: telaSelecionada == .tarefas,
                     configuracoesSelecionada: telaSelecionada == .configuracoes,
@@ -79,7 +91,7 @@ struct ContentView: View {
                     avatarURL: perfil.avatarURL,
                     contextoDaConta: contextoDaConta,
                     equipeAtiva: equipeAtiva,
-                    gravando: modelo.gravando,
+                    gravando: modelo.gravando && focoNaGravacao,
                     processandoBiblioteca: biblioteca?.processando ?? false,
                     quantidadeDeAvisos: notificacoes.naoLidas,
                     notificacoes: notificacoes.itens,
@@ -118,12 +130,21 @@ struct ContentView: View {
                         pastaSelecionada: $pastaDaBibliotecaSelecionada,
                         mostrandoImportador: $mostrandoImportador,
                         processamentoAutomatico: processamentoAutomatico,
-                        aoAlternarGravacao: { await modelo.alternarGravacao() },
+                        aoAlternarGravacao: {
+                            await modelo.alternarGravacao()
+                            withAnimation(.snappy(duration: 0.18)) {
+                                focoNaGravacao = modelo.gravando
+                            }
+                        },
                         aoPausarGravacao: { await modelo.pausar() },
                         aoContinuarGravacao: { await modelo.continuar() },
-                        aoCancelarGravacao: { await modelo.cancelar() },
+                        aoCancelarGravacao: {
+                            await modelo.cancelar()
+                            focoNaGravacao = false
+                        },
                         aoEscolherPastaDeModelos: escolherPastaDeModelos,
-                        aoUsarPastaDoApp: usarPastaDoApp
+                        aoUsarPastaDoApp: usarPastaDoApp,
+                        focoNaGravacao: $focoNaGravacao
                     )
                 case .tarefas:
                     TarefasView(
@@ -159,6 +180,9 @@ struct ContentView: View {
                 // então a folga vive dentro de LegendaGlobalDaBarra.
                 LegendaGlobalDaBarra(texto: legendaDaBarra)
             }
+            .overlay(alignment: .bottomTrailing) {
+                seloDeGravacaoEmAndamento
+            }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
                     ArquivoDetalheView(
@@ -175,7 +199,14 @@ struct ContentView: View {
                         },
                         aoNotificarTarefa: { titulo, mensagem in
                             notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: .aviso)
-                        }
+                        },
+                        aoAtualizarMetadados: { titulo, data, duracao in
+                            Task { await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao) }
+                        },
+                        aoAtualizarTranscricao: { trechos in
+                            await biblioteca.atualizarTrechos(trechos, de: arquivo)
+                        },
+                        aoDitar: { url in try await biblioteca.transcreverDitado(url) }
                     )
                 }
             }
@@ -404,11 +435,65 @@ struct ContentView: View {
         voltarParaBiblioteca()
     }
 
+    /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da
+    /// captura. Em qualquer outro lugar o chevron aparece.
+    private var naTelaInicial: Bool {
+        conversaAberta.isEmpty
+            && !focoNaGravacao
+            && telaSelecionada == .biblioteca
+            && secaoDaBiblioteca == .todos
+    }
+
+    /// Um passo por vez, e sempre em direção à tela inicial: fecha a conversa,
+    /// sai da captura, volta para a biblioteca. Antes, de Equipe o botão ia
+    /// para Perfil — hierarquia que fazia o mesmo botão significar coisas
+    /// diferentes conforme a tela.
     private func voltar() {
-        if telaSelecionada == .equipe {
-            abrirPerfil()
-        } else {
-            voltarParaBiblioteca()
+        if !conversaAberta.isEmpty {
+            conversaAberta.removeLast()
+            return
+        }
+        if focoNaGravacao {
+            withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = false }
+            return
+        }
+        voltarParaBiblioteca()
+    }
+
+    /// Selo que segue a pessoa por todas as telas enquanto a gravação continua
+    /// rodando fora da tela de captura. Sem ele, sair da captura escondia a
+    /// gravação inteira e o microfone seguia ligado sem sinal na janela.
+    @ViewBuilder
+    private var seloDeGravacaoEmAndamento: some View {
+        if modelo.gravando && !focoNaGravacao {
+            Button {
+                telaSelecionada = .biblioteca
+                secaoDaBiblioteca = .todos
+                withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = true }
+            } label: {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Circle()
+                        .fill(modelo.pausado ? PapagaioTema.aviso : PapagaioTema.perigo)
+                        .frame(width: 9, height: 9)
+
+                    Text(modelo.pausado ? "Pausado" : "Gravando")
+                        .font(.callout.weight(.semibold))
+
+                    Text(modelo.tempoDeGravacao.comoCronometro)
+                        .font(.system(.callout, design: .monospaced))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(PapagaioTema.texto)
+                .padding(.horizontal, PapagaioTema.Espaco.largo)
+                .frame(height: PapagaioTema.Altura.padrao)
+                .background(PapagaioTema.superficie, in: Capsule())
+                .overlay { Capsule().stroke(PapagaioTema.borda, lineWidth: 1) }
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
+            .help("Voltar para a gravação em andamento")
+            .padding(PapagaioTema.Espaco.secao)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -436,5 +521,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(gravador: GravadorViewModel())
 }

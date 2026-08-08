@@ -63,7 +63,7 @@ struct NovaTarefaDaConversaSheet: View {
                         .font(.title2.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
 
-                    Text("Defina título, responsável, prioridade, status e deadline antes de salvar.")
+                    Text("Defina título, responsável, prioridade e deadline antes de salvar.")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .fixedSize(horizontal: false, vertical: true)
@@ -156,26 +156,11 @@ struct NovaTarefaDaConversaSheet: View {
             }
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                Text("Status")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-
-                ControleSegmentadoPapagaio(
-                    opcoes: StatusDaTarefa.allCases,
-                    selecionado: $status,
-                    titulo: { $0.titulo },
-                    simbolo: { $0 == .concluida ? "checkmark" : "clock" }
-                )
-            }
-
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 Text("Deadline")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
 
-                DatePicker("Data de entrega", selection: $prazo, displayedComponents: [.date])
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
+                CampoDeDataPapagaio(data: $prazo, rotuloAcessivel: "Data de entrega")
 
                 if prazoEstaPerto && status != .concluida {
                     Label("Deadline perto: a tarefa será marcada como prioridade alta.", systemImage: "bell.badge")

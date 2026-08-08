@@ -330,6 +330,25 @@ final class Biblioteca {
         }
     }
 
+    /// Salva a transcrição corrigida à mão.
+    ///
+    /// O resumo **não** é refeito: ele já foi gerado e regerar sozinho gastaria
+    /// minutos de modelo sem a pessoa ter pedido. Quem quiser o resumo alinhado
+    /// à correção reprocessa pelo menu.
+    func atualizarTrechos(_ trechos: [Trecho], de arquivo: Arquivo) async {
+        guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+
+        var editado = arquivo
+        editado.trechos = trechos
+
+        do {
+            try await repositorio.salvar(editado)
+            substituir(editado)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
+        }
+    }
+
     @discardableResult
     func duplicar(_ arquivo: Arquivo) async -> Arquivo? {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return nil }
@@ -435,6 +454,35 @@ final class Biblioteca {
                 await self?.executarProcessamento(arquivo, execucao: execucao)
             }
             return
+        }
+    }
+
+    /// Transcreve um trecho ditado e devolve o texto corrido.
+    ///
+    /// Mesmo Whisper das conversas, e descarrega no fim: uma nota ditada não
+    /// justifica deixar 13,7 GB residentes.
+    func transcreverDitado(_ audio: URL) async throws -> String {
+        let preflight = Preflight(pastaDeModelos: pastaDeModelos).avaliar()
+        if preflight != .pronto, preflight != .termicoCritico {
+            throw ErroDeDitado.modelosIndisponiveis(preflight.mensagem)
+        }
+
+        let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
+        defer { Task { await motores.descarregarTudo() } }
+
+        return try await motores.transcrever(audio, speaker: nil, initialPrompt: nil)
+            .map(\.texto)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    enum ErroDeDitado: LocalizedError {
+        case modelosIndisponiveis(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .modelosIndisponiveis(motivo): motivo
+            }
         }
     }
 

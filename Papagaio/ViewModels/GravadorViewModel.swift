@@ -1,4 +1,6 @@
+import AVFoundation
 import Foundation
+import Speech
 import Observation
 import PapagaioCore
 
@@ -16,7 +18,9 @@ final class GravadorViewModel {
     }
 
     private(set) var estado: Estado = .ocioso
-    private(set) var avisos: [String] = []
+    private(set) var avisos: [String] = [] {
+        didSet { agendarSumicoDosAvisos() }
+    }
 
     /// Entrega o áudio pronto para quem persiste e processa (`Biblioteca`).
     /// A gravação em si não sabe o que é um `Arquivo` — só produz bytes.
@@ -38,6 +42,11 @@ final class GravadorViewModel {
 
     private var sessao: SessaoGravacao?
     private var tarefaNivel: Task<Void, Never>?
+    private var tarefaDeSumicoDosAvisos: Task<Void, Never>?
+    /// Quanto tempo um aviso de "cancelada", "importada" ou "concluída" fica na
+    /// tela. Eles descrevem algo que já terminou; passado esse tempo viram
+    /// ruído fixo num lugar onde a pessoa já está fazendo outra coisa.
+    private let duracaoDosAvisos: Duration = .seconds(30)
     private var identificadorDaGravacao: UUID?
     private let armazenamento: Armazenamento?
 
@@ -93,6 +102,22 @@ final class GravadorViewModel {
         waveform = []
         limparDepoisDeGravar()
         estado = .ocioso
+    }
+
+    /// Erros não somem sozinhos: um `.falhou` pede ação da pessoa e sumir
+    /// sozinho esconderia o motivo de a gravação não ter acontecido.
+    private func agendarSumicoDosAvisos() {
+        tarefaDeSumicoDosAvisos?.cancel()
+        tarefaDeSumicoDosAvisos = nil
+        guard !avisos.isEmpty else { return }
+
+        tarefaDeSumicoDosAvisos = Task { [duracaoDosAvisos] in
+            try? await Task.sleep(for: duracaoDosAvisos)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.avisos = []
+            }
+        }
     }
 
     private func iniciar() async {
@@ -304,5 +329,208 @@ final class GravadorViewModel {
             return "Não consegui acessar esse áudio. Se ele estiver no iPhone, desbloqueie o aparelho e tente importar de novo."
         }
         return "\(error)"
+    }
+}
+
+/// Captura do ditado — **fora do `MainActor` de propósito**.
+///
+/// O `installTap` entrega buffers na thread de áudio em tempo real. Tocar em
+/// estado isolado no `MainActor` a partir dali derruba o processo com
+/// `_dispatch_assert_queue_fail` ("Block was not expected to execute on
+/// queue") — não é exceção, é o libdispatch abortando. Foi exatamente o que
+/// acontecia na primeira versão deste ditado.
+///
+/// Por isso tudo que o bloco toca vive aqui, sem isolação: o arquivo de saída e
+/// o pedido do Speech. O texto reconhecido sai por um callback que quem recebe
+/// leva para a main.
+final class CapturaDeDitado: @unchecked Sendable {
+    let arquivoDeAudio: URL
+
+    private let motor = AVAudioEngine()
+    private let pedido = SFSpeechAudioBufferRecognitionRequest()
+    private var tarefa: SFSpeechRecognitionTask?
+    private var saida: AVAudioFile?
+
+    init(arquivoDeAudio: URL) {
+        self.arquivoDeAudio = arquivoDeAudio
+    }
+
+    func iniciar(
+        reconhecedor: SFSpeechRecognizer,
+        aoReconhecer: @escaping @Sendable (String) -> Void
+    ) throws {
+        let entrada = motor.inputNode
+        let formato = entrada.outputFormat(forBus: 0)
+
+        // Sem microfone o formato vem com 0 Hz, e o `installTap` com formato
+        // inválido aborta o processo em vez de lançar erro.
+        guard formato.sampleRate > 0, formato.channelCount > 0 else {
+            throw ErroDeDitado.semEntradaDeAudio
+        }
+
+        let arquivo = try AVAudioFile(forWriting: arquivoDeAudio, settings: formato.settings)
+        saida = arquivo
+
+        pedido.shouldReportPartialResults = true
+        // No dispositivo quando dá: o ditado não sai da máquina.
+        pedido.requiresOnDeviceRecognition = reconhecedor.supportsOnDeviceRecognition
+
+        tarefa = reconhecedor.recognitionTask(with: pedido) { resultado, _ in
+            guard let texto = resultado?.bestTranscription.formattedString else { return }
+            aoReconhecer(texto)
+        }
+
+        let pedidoDoTap = pedido
+        entrada.installTap(onBus: 0, bufferSize: 2_048, format: formato) { buffer, _ in
+            pedidoDoTap.append(buffer)
+            try? arquivo.write(from: buffer)
+        }
+
+        motor.prepare()
+        try motor.start()
+    }
+
+    func encerrar() {
+        if motor.isRunning { motor.stop() }
+        motor.inputNode.removeTap(onBus: 0)
+        pedido.endAudio()
+        tarefa?.cancel()
+        tarefa = nil
+        saida = nil
+    }
+
+    enum ErroDeDitado: LocalizedError {
+        case semEntradaDeAudio
+        case reconhecimentoIndisponivel
+
+        var errorDescription: String? {
+            switch self {
+            case .semEntradaDeAudio: "Nenhum microfone disponível."
+            case .reconhecimentoIndisponivel: "O reconhecimento de fala não está disponível agora."
+            }
+        }
+    }
+}
+
+/// Ditado de uma nota: texto ao vivo enquanto a pessoa fala, refinado pelo
+/// Whisper ao terminar.
+///
+/// Os dois reconhecedores fazem o que cada um faz melhor. O `Speech` da Apple
+/// devolve parciais em tempo real; o Whisper do app acerta mais mas precisa do
+/// arquivo inteiro. Se o Whisper falhar, o que a Apple entendeu continua
+/// valendo — nunca se perde o ditado.
+@MainActor
+@Observable
+final class DitadoDeNota {
+    enum Estado: Equatable {
+        case ocioso
+        case gravando
+        case transcrevendo
+        case falhou(String)
+    }
+
+    private(set) var estado: Estado = .ocioso
+    private(set) var textoParcial = ""
+
+    var gravando: Bool { estado == .gravando }
+    var ocupado: Bool { estado == .gravando || estado == .transcrevendo }
+
+    @ObservationIgnored private var captura: CapturaDeDitado?
+
+    func iniciar() async {
+        guard !ocupado else { return }
+        estado = .ocioso
+        textoParcial = ""
+
+        // Microfone primeiro: tocar no `inputNode` antes da permissão devolve
+        // formato inválido, e formato inválido no tap aborta o processo.
+        guard await autorizarMicrofone() else {
+            estado = .falhou("Autorize o microfone em Ajustes do Sistema › Privacidade › Microfone.")
+            return
+        }
+        guard await autorizarFala() else {
+            estado = .falhou("Autorize o reconhecimento de fala em Ajustes do Sistema › Privacidade.")
+            return
+        }
+
+        guard let reconhecedor = SFSpeechRecognizer(locale: Locale(identifier: "pt_BR")) ?? SFSpeechRecognizer(),
+              reconhecedor.isAvailable
+        else {
+            estado = .falhou(CapturaDeDitado.ErroDeDitado.reconhecimentoIndisponivel.localizedDescription)
+            return
+        }
+
+        let destino = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ditado-\(UUID().uuidString).caf")
+        let nova = CapturaDeDitado(arquivoDeAudio: destino)
+
+        do {
+            try nova.iniciar(reconhecedor: reconhecedor) { texto in
+                Task { @MainActor [weak self] in
+                    self?.textoParcial = texto
+                }
+            }
+            captura = nova
+            estado = .gravando
+        } catch {
+            nova.encerrar()
+            try? FileManager.default.removeItem(at: destino)
+            estado = .falhou(error.localizedDescription)
+        }
+    }
+
+    func concluir(transcrever: (URL) async throws -> String) async -> String? {
+        guard estado == .gravando, let captura else { return nil }
+
+        captura.encerrar()
+        self.captura = nil
+        let gravado = captura.arquivoDeAudio
+        let parcial = textoParcial.trimmingCharacters(in: .whitespacesAndNewlines)
+        defer { try? FileManager.default.removeItem(at: gravado) }
+
+        estado = .transcrevendo
+        do {
+            let refinado = try await transcrever(gravado).trimmingCharacters(in: .whitespacesAndNewlines)
+            estado = .ocioso
+            return refinado.isEmpty ? (parcial.isEmpty ? nil : parcial) : refinado
+        } catch {
+            estado = .ocioso
+            return parcial.isEmpty ? nil : parcial
+        }
+    }
+
+    func cancelar() {
+        if let captura {
+            captura.encerrar()
+            try? FileManager.default.removeItem(at: captura.arquivoDeAudio)
+        }
+        captura = nil
+        textoParcial = ""
+        estado = .ocioso
+    }
+
+    func limparFalha() {
+        if case .falhou = estado { estado = .ocioso }
+    }
+
+    private func autorizarMicrofone() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: return true
+        case .notDetermined: return await AVCaptureDevice.requestAccess(for: .audio)
+        default: return false
+        }
+    }
+
+    private func autorizarFala() async -> Bool {
+        switch SFSpeechRecognizer.authorizationStatus() {
+        case .authorized: return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuacao in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    continuacao.resume(returning: status == .authorized)
+                }
+            }
+        default: return false
+        }
     }
 }

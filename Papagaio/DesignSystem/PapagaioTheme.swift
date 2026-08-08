@@ -171,12 +171,12 @@ extension View {
 
     /// Dá às páginas largura legível em janelas grandes, sem prejudicar
     /// redimensionamento ou Split View.
+    ///
+    /// O bloco é centralizado na janela: quando o limite de largura entra em
+    /// ação, a sobra se divide igual dos dois lados. Ancorado à esquerda, toda
+    /// a folga ia parar na direita e a página ficava visivelmente torta.
     func larguraDeConteudoPapagaio(alinhamento: Alignment = .leading) -> some View {
         frame(maxWidth: PapagaioTema.larguraMaximaDeConteudo, alignment: alinhamento)
-            // A sobra da janela acima do limite se divide igual dos dois lados.
-            // Alinhar esta moldura ao mesmo `alinhamento` da de dentro jogava
-            // toda a folga para a direita, e em tela cheia a página ficava
-            // visivelmente encostada na esquerda.
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -198,6 +198,170 @@ extension View {
                 RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .stroke(PapagaioTema.borda, lineWidth: 1)
             }
+    }
+}
+
+/// Leitura de data digitada, compartilhada por todo campo que aceita texto.
+///
+/// Aceita o que a pessoa costuma escrever: 15/08/2026, 15-08-2026, 15082026,
+/// 15/08/26 e 15/08 (assume o ano corrente).
+enum DataDigitada {
+    private static let formatos = ["dd/MM/yyyy", "dd-MM-yyyy", "ddMMyyyy", "dd/MM/yy", "dd/MM"]
+
+    static func lendo(_ texto: String) -> Date? {
+        let limpo = texto.trimmingCharacters(in: .whitespaces)
+        guard !limpo.isEmpty else { return nil }
+
+        let formatador = DateFormatter()
+        formatador.locale = Locale(identifier: "pt_BR")
+        formatador.calendar = Calendar.current
+
+        for formato in formatos {
+            formatador.dateFormat = formato
+            guard let lida = formatador.date(from: limpo) else { continue }
+
+            // "dd/MM" cai no ano de referência do formatador; joga para o ano
+            // corrente, que é o que a pessoa quis dizer ao omitir o ano.
+            if formato == "dd/MM" {
+                let anoAtual = Calendar.current.component(.year, from: Date())
+                var partes = Calendar.current.dateComponents([.day, .month], from: lida)
+                partes.year = anoAtual
+                return Calendar.current.date(from: partes)
+            }
+
+            return lida
+        }
+
+        return nil
+    }
+
+    static func texto(de data: Date) -> String {
+        data.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year())
+    }
+}
+
+/// Botão redondo de cromo — voltar, fechar, dispensar.
+///
+/// Existia copiado em quatro lugares com tamanhos e molduras diferentes: uns
+/// com círculo e borda, outros só com o glifo solto, que não parecia clicável.
+struct BotaoCircularPapagaio: View {
+    let simbolo: String
+    let ajuda: String
+    var destaque: Bool = false
+    let acao: () -> Void
+
+    var body: some View {
+        Button(action: acao) {
+            Image(systemName: simbolo)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(destaque ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
+                .background(PapagaioTema.superficie, in: Circle())
+                .overlay {
+                    Circle().stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help(ajuda)
+        .accessibilityLabel(ajuda)
+    }
+}
+
+/// Campo de data na identidade visual do app: mesma moldura dos menus e campos
+/// de texto, com calendário em popover e entrada por digitação.
+///
+/// O `DatePicker` nativo do macOS traz stepper e moldura próprios, que destoam
+/// de tudo em volta — por isso o controle é montado aqui.
+struct CampoDeDataPapagaio: View {
+    @Binding var data: Date
+    var rotuloAcessivel: String = "Data"
+
+    @State private var mostrandoCalendario = false
+    @State private var textoDigitado = ""
+    @State private var textoInvalido = false
+
+    private var dataPorExtenso: String {
+        data.formatted(.dateTime.day(.twoDigits).month(.wide).year())
+    }
+
+    var body: some View {
+        Button {
+            mostrandoCalendario.toggle()
+        } label: {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Image(systemName: "calendar")
+                Text(dataPorExtenso)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(PapagaioTema.texto)
+            .molduraDeControlePapagaio()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(rotuloAcessivel)
+        .accessibilityValue(dataPorExtenso)
+        .popover(isPresented: $mostrandoCalendario, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                Text("Digite a data")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    TextField("dd/mm/aaaa", text: $textoDigitado)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .padding(.horizontal, PapagaioTema.Espaco.medio)
+                        .frame(height: PapagaioTema.Altura.padrao)
+                        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                                .stroke(textoInvalido ? PapagaioTema.perigo : PapagaioTema.borda, lineWidth: 1)
+                        }
+                        .onSubmit(aplicarTextoDigitado)
+                        .onChange(of: textoDigitado) { _, _ in textoInvalido = false }
+
+                    Button("Usar", action: aplicarTextoDigitado)
+                        .buttonStyle(BotaoDeContornoPapagaio())
+                }
+
+                if textoInvalido {
+                    Text("Data não reconhecida. Use dd/mm/aaaa.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.perigo)
+                }
+
+                Divider()
+                    .padding(.vertical, PapagaioTema.Espaco.minimo)
+
+                DatePicker(rotuloAcessivel, selection: $data, displayedComponents: [.date])
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+            }
+            .padding(PapagaioTema.Espaco.medio)
+            .frame(minWidth: 300)
+            .onAppear {
+                textoDigitado = DataDigitada.texto(de: data)
+                textoInvalido = false
+            }
+        }
+    }
+
+    private func aplicarTextoDigitado() {
+        guard let lida = dataLendo(textoDigitado) else {
+            textoInvalido = true
+            return
+        }
+
+        textoInvalido = false
+        data = lida
+        mostrandoCalendario = false
+    }
+
+    private func dataLendo(_ texto: String) -> Date? {
+        DataDigitada.lendo(texto)
     }
 }
 

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MenuDeArquivoAberto: View {
-    let favorito: Bool
     let bloqueioDeEdicao: Bool
     let bloqueioDeLixeira: Bool
     let aoEditarImagem: () -> Void
@@ -9,7 +8,6 @@ struct MenuDeArquivoAberto: View {
     let aoMoverParaPasta: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
-    let aoFavoritar: () -> Void
     let aoMoverParaLixeira: () -> Void
 
     var body: some View {
@@ -19,7 +17,8 @@ struct MenuDeArquivoAberto: View {
             ItemDoMenuDeArquivo(simbolo: "folder", titulo: "Mover para pasta", acao: aoMoverParaPasta)
             ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
             ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
-            ItemDoMenuDeArquivo(simbolo: favorito ? "star.fill" : "star", titulo: favorito ? "Desfavoritar" : "Favoritar", acao: aoFavoritar)
+            // Favoritar sai daqui: a estrela no canto do card já faz isso, e
+            // repetir a ação no menu só alongava a lista.
 
             SeparadorPapagaio()
                 .padding(.horizontal, PapagaioTema.Espaco.medio)

@@ -40,15 +40,10 @@ public enum ExportacaoMarkdown {
                 }
             }
 
-            if !resumo.proximosPassos.isEmpty {
-                linhas += ["", "## Próximos passos", ""]
-                linhas += resumo.proximosPassos.map { passo in
-                    if let responsavel = passo.responsavel, !responsavel.isEmpty {
-                        return "- [ ] \(passo.descricao) — \(responsavel)"
-                    }
-                    return "- [ ] \(passo.descricao)"
-                }
-            }
+            // Próximos passos não vira seção própria: no app eles já entram
+            // como tarefas da conversa, e o documento espelha as seções da
+            // tela (resumo, transcrição, notas, mídia, tarefas). Ter as duas
+            // listas era o mesmo conteúdo escrito duas vezes.
         }
 
         if !arquivo.notas.isEmpty {

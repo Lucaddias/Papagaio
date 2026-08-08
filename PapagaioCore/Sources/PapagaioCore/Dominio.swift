@@ -81,6 +81,24 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
     }
 
     public var duracao: TimeInterval { end - start }
+
+    /// Cópia com o texto corrigido à mão.
+    ///
+    /// `palavras` é zerado de propósito: os timestamps por palavra vêm do
+    /// Whisper e deixam de corresponder ao texto assim que alguém edita. Sem
+    /// palavras, a interface volta ao destaque por trecho inteiro — que é o
+    /// mesmo caminho das transcrições legadas. Manter timestamps velhos
+    /// destacaria a palavra errada, e errado é pior que grosso.
+    public func comTextoEditado(_ novoTexto: String) -> Trecho {
+        Trecho(
+            id: id,
+            start: start,
+            end: end,
+            texto: novoTexto,
+            speaker: speaker,
+            palavras: []
+        )
+    }
 }
 
 /// Os dois únicos valores válidos de `Trecho.speaker`.
