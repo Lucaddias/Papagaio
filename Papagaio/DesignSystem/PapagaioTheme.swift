@@ -173,7 +173,11 @@ extension View {
     /// redimensionamento ou Split View.
     func larguraDeConteudoPapagaio(alinhamento: Alignment = .leading) -> some View {
         frame(maxWidth: PapagaioTema.larguraMaximaDeConteudo, alignment: alinhamento)
-            .frame(maxWidth: .infinity, alignment: alinhamento)
+            // A sobra da janela acima do limite se divide igual dos dois lados.
+            // Alinhar esta moldura ao mesmo `alinhamento` da de dentro jogava
+            // toda a folga para a direita, e em tela cheia a página ficava
+            // visivelmente encostada na esquerda.
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     /// Limita a largura de texto corrido à faixa confortável de leitura.
