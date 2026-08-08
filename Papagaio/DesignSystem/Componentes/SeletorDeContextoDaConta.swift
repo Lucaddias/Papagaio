@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SeletorDeContextoDaConta: View {
     let contexto: ContextoDaConta
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let aoUsarPerfil: () -> Void
     let aoUsarEquipe: () -> Void
 
@@ -18,7 +18,7 @@ struct SeletorDeContextoDaConta: View {
 
             BotaoDeContextoDaConta(
                 titulo: "Equipe",
-                subtitulo: equipeAtiva.nome,
+                subtitulo: equipeAtiva?.nome ?? "Nenhuma equipe ainda",
                 simbolo: "person.3",
                 selecionado: contexto == .equipe,
                 acao: aoUsarEquipe

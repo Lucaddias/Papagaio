@@ -20,8 +20,9 @@ final class PerfilViewModel: NSObject {
     }
 
     private(set) var identificador: String?
-    var nome = "Alexandre Silva"
-    var email = "alexandre.silva@creativeflow.com"
+    // Vazio até a pessoa preencher ou entrar com a Apple. A UI já trata ausência.
+    var nome = ""
+    var email = ""
     var avatarURL: URL?
     private(set) var verificando = false
     private(set) var erro: String?

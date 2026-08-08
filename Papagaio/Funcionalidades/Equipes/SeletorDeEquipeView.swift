@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SeletorDeEquipeView: View {
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoCancelar: () -> Void
     let aoSelecionar: (EquipeDisponivel) -> Void
@@ -22,7 +22,9 @@ struct SeletorDeEquipeView: View {
                 .help("Fechar")
             }
 
-            Text("Escolha em qual equipe você quer trabalhar agora.")
+            Text(equipes.isEmpty
+                 ? "Você ainda não faz parte de nenhuma equipe."
+                 : "Escolha em qual equipe você quer trabalhar agora.")
                 .font(.callout)
                 .foregroundStyle(PapagaioTema.textoSecundario)
 
@@ -49,7 +51,7 @@ struct SeletorDeEquipeView: View {
 
                             Spacer()
 
-                            if equipe.id == equipeAtiva.id {
+                            if equipe.id == equipeAtiva?.id {
                                 Image(systemName: "checkmark")
                                     .font(.callout.weight(.bold))
                                     .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -57,12 +59,12 @@ struct SeletorDeEquipeView: View {
                         }
                         .padding(PapagaioTema.Espaco.medio)
                         .background(
-                            equipe.id == equipeAtiva.id ? PapagaioTema.destaqueSuave.opacity(0.62) : PapagaioTema.superficie,
+                            equipe.id == equipeAtiva?.id ? PapagaioTema.destaqueSuave.opacity(0.62) : PapagaioTema.superficie,
                             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                         )
                         .overlay {
                             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                                .stroke(equipe.id == equipeAtiva.id ? PapagaioTema.destaque.opacity(0.45) : PapagaioTema.borda, lineWidth: 1)
+                                .stroke(equipe.id == equipeAtiva?.id ? PapagaioTema.destaque.opacity(0.45) : PapagaioTema.borda, lineWidth: 1)
                         }
                     }
                     .buttonStyle(.plain)

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GestaoDeEquipeView: View {
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
@@ -13,34 +13,45 @@ struct GestaoDeEquipeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
-                        cabecalho
-                    }
-
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-                        cabecalho
-                    }
-                }
-
-                TabelaDaEquipe(
-                    membros: membros,
-                    pagina: pagina,
-                    aoEditar: { membroEditando = $0 },
-                    aoRemover: remover,
-                    aoAlternarPagina: alternarPagina
+            // Sem equipe não há membro para listar nem nome para exibir: a tela
+            // inteira vira o convite para criar a primeira, no perfil.
+            if equipeAtiva == nil {
+                CartaoDeEstadoVazio(
+                    simbolo: "person.3",
+                    titulo: "Nenhuma equipe ainda",
+                    mensagem: "Crie uma equipe no seu perfil para convidar pessoas e distribuir as tarefas das conversas."
                 )
+                .padding(.vertical, PapagaioTema.espacamentoDePagina)
+            } else {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
+                            cabecalho
+                        }
+
+                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                            cabecalho
+                        }
+                    }
+
+                    TabelaDaEquipe(
+                        membros: membros,
+                        pagina: pagina,
+                        aoEditar: { membroEditando = $0 },
+                        aoRemover: remover,
+                        aoAlternarPagina: alternarPagina
+                    )
+                }
+                .larguraDeConteudoPapagaio()
+                .padding(.horizontal, PapagaioTema.espacamentoDePagina)
+                .padding(.vertical, PapagaioTema.espacamentoDePagina)
             }
-            .larguraDeConteudoPapagaio()
-            .padding(.horizontal, PapagaioTema.espacamentoDePagina)
-            .padding(.vertical, PapagaioTema.espacamentoDePagina)
         }
         .background(PapagaioTema.fundo)
         .onAppear {
             carregarMembrosDaEquipe()
         }
-        .onChange(of: equipeAtiva.id) { _, _ in
+        .onChange(of: equipeAtiva?.id) { _, _ in
             carregarMembrosDaEquipe()
         }
         .sheet(isPresented: $mostrandoAdicionar) {
@@ -89,7 +100,7 @@ struct GestaoDeEquipeView: View {
                             .font(PapagaioTema.Tipo.tituloDePagina)
                             .foregroundStyle(PapagaioTema.texto)
 
-                        Text("Gerencie os membros de \(equipeAtiva.nome) e níveis de acesso\nem um ambiente centralizado e colaborativo.")
+                        Text("Gerencie os membros de \(nomeDaEquipe) e níveis de acesso\nem um ambiente centralizado e colaborativo.")
                             .font(.title3)
                             .lineSpacing(6)
                             .foregroundStyle(PapagaioTema.textoSecundario)
@@ -97,7 +108,7 @@ struct GestaoDeEquipeView: View {
 
                     Spacer()
 
-                    Button("Mudar Equipe: \(equipeAtiva.nome)", systemImage: "arrow.triangle.2.circlepath") {
+                    Button("Mudar Equipe: \(nomeDaEquipe)", systemImage: "arrow.triangle.2.circlepath") {
                         mostrandoTrocarEquipe = true
                     }
                     .buttonStyle(BotaoDeContornoPapagaio())
@@ -120,13 +131,23 @@ struct GestaoDeEquipeView: View {
         pagina = min(max(0, pagina + delta), ultima)
     }
 
+    private var nomeDaEquipe: String {
+        equipeAtiva?.nome ?? ""
+    }
+
     private func carregarMembrosDaEquipe() {
+        guard let equipeAtiva else {
+            membros = []
+            pagina = 0
+            return
+        }
         membros = MembrosDasEquipes.carregar(equipeID: equipeAtiva.id)
         pagina = 0
         aoAtualizarQuantidadeDeMembros(equipeAtiva.id, membros.count)
     }
 
     private func salvarMembrosDaEquipe() {
+        guard let equipeAtiva else { return }
         MembrosDasEquipes.salvar(membros, equipeID: equipeAtiva.id)
         let ultima = max(0, (membros.count - 1) / TabelaDaEquipe.itensPorPagina)
         pagina = min(pagina, ultima)

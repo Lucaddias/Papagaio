@@ -36,7 +36,7 @@ struct ContentView: View {
     @State private var pastaDaBibliotecaSelecionada: String?
     @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
     @AppStorage("contextoDaConta") private var contextoDaContaRaw = ContextoDaConta.perfil.rawValue
-    @AppStorage("equipeAtiva") private var equipeAtivaID = EquipeDisponivel.padrao.id
+    @AppStorage("equipeAtiva") private var equipeAtivaID = ""
     @AppStorage("aparenciaDoApp") private var aparenciaRaw = AparenciaDoApp.sistema.rawValue
 
     private var aparencia: Binding<AparenciaDoApp> {
@@ -51,12 +51,14 @@ struct ContentView: View {
         nonmutating set { contextoDaContaRaw = newValue.rawValue }
     }
 
-    private var equipeAtiva: EquipeDisponivel {
-        equipes.first { $0.id == equipeAtivaID } ?? equipes.first ?? .padrao
+    /// `nil` enquanto a pessoa não tiver criado nenhuma equipe.
+    private var equipeAtiva: EquipeDisponivel? {
+        equipes.first { $0.id == equipeAtivaID } ?? equipes.first
     }
 
     private var responsaveisDaEquipeAtiva: [ResponsavelDaTarefa] {
-        MembrosDasEquipes.carregar(equipeID: equipeAtiva.id).map {
+        guard let equipeAtiva else { return [] }
+        return MembrosDasEquipes.carregar(equipeID: equipeAtiva.id).map {
             ResponsavelDaTarefa(nome: $0.nome, email: $0.email)
         }
     }
@@ -153,8 +155,9 @@ struct ContentView: View {
             }
             .background(PapagaioTema.fundo)
             .overlay(alignment: .top) {
+                // Sem padding: a legenda se ancora na base do próprio ícone,
+                // então a folga vive dentro de LegendaGlobalDaBarra.
                 LegendaGlobalDaBarra(texto: legendaDaBarra)
-                    .padding(.top, PapagaioTema.Espaco.curto)
             }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
@@ -357,8 +360,11 @@ struct ContentView: View {
         contextoDaConta = .perfil
     }
 
+    /// Entra no contexto de equipe mesmo sem equipe alguma — é lá que mora o
+    /// estado vazio que convida a criar a primeira.
     private func selecionarEquipe() {
-        usarEquipe(equipeAtiva)
+        contextoDaConta = .equipe
+        if let equipeAtiva { equipeAtivaID = equipeAtiva.id }
     }
 
     private func usarEquipe(_ equipe: EquipeDisponivel) {

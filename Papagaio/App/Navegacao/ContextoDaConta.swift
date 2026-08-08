@@ -4,19 +4,9 @@ enum ContextoDaConta: String {
     case perfil
     case equipe
 
-    var titulo: String {
-        switch self {
-        case .perfil: "Perfil pessoal"
-        case .equipe: "Creative Flow Studio"
-        }
-    }
-
-    var subtitulo: String {
-        switch self {
-        case .perfil: "Conta pessoal"
-        case .equipe: "Equipe selecionada"
-        }
-    }
+    // Os rótulos de conta vêm de quem conhece a equipe ativa —
+    // `BarraSuperiorPapagaioView.tituloDaContaAtiva` e `SeletorDeContextoDaConta`.
+    // O `titulo` que existia aqui era morto e trazia um nome de equipe fixo.
 
     var simbolo: String {
         switch self {

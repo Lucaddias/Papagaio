@@ -70,7 +70,8 @@ struct BotaoDeIconeDaBarra: View {
             .onHover { ativo in
                 pairando = ativo
                 if ativo {
-                    legendaAtiva = LegendaDaBarra(texto: legenda, x: geometria.frame(in: .global).midX)
+                    let area = geometria.frame(in: .global)
+                    legendaAtiva = LegendaDaBarra(texto: legenda, x: area.midX, baseDoIcone: area.maxY)
                 } else if legendaAtiva?.texto == legenda {
                     legendaAtiva = nil
                 }
@@ -107,7 +108,8 @@ struct BotaoDeAtalhoDaBarra: View {
                 .onHover { ativo in
                     pairando = ativo
                     if ativo {
-                        legendaAtiva = LegendaDaBarra(texto: legenda, x: geometria.frame(in: .global).midX)
+                        let area = geometria.frame(in: .global)
+                        legendaAtiva = LegendaDaBarra(texto: legenda, x: area.midX, baseDoIcone: area.maxY)
                     } else if legendaAtiva?.texto == legenda {
                         legendaAtiva = nil
                     }

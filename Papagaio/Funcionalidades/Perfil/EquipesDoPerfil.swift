@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EquipesDoPerfil: View {
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionar: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void
@@ -32,15 +32,23 @@ struct EquipesDoPerfil: View {
 
             SeparadorPapagaio()
 
+            if equipes.isEmpty {
+                Text("Você ainda não tem equipes. Use o + para criar a primeira e convidar pessoas.")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 ForEach(equipes) { equipe in
                     Button {
                         aoSelecionar(equipe)
                     } label: {
                         HStack(spacing: PapagaioTema.Espaco.medio) {
-                            Image(systemName: equipe.id == equipeAtiva.id ? "checkmark.circle.fill" : "person.3")
+                            Image(systemName: equipe.id == equipeAtiva?.id ? "checkmark.circle.fill" : "person.3")
                                 .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(equipe.id == equipeAtiva.id ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                                .foregroundStyle(equipe.id == equipeAtiva?.id ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                                 .frame(width: 28, height: 28)
 
                             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
@@ -61,7 +69,7 @@ struct EquipesDoPerfil: View {
                     .buttonStyle(.plain)
                     .padding(PapagaioTema.Espaco.curto)
                     .background(
-                        equipe.id == equipeAtiva.id ? PapagaioTema.destaqueSuave.opacity(0.58) : Color.clear,
+                        equipe.id == equipeAtiva?.id ? PapagaioTema.destaqueSuave.opacity(0.58) : Color.clear,
                         in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     )
                 }

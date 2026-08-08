@@ -3,7 +3,7 @@ import SwiftUI
 
 struct PerfilPessoalView: View {
     @Bindable var perfil: PerfilViewModel
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void

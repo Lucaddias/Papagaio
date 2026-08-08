@@ -14,7 +14,7 @@ struct BarraSuperiorPapagaioView: View {
     let perfilVerificando: Bool
     let avatarURL: URL?
     let contextoDaConta: ContextoDaConta
-    let equipeAtiva: EquipeDisponivel
+    let equipeAtiva: EquipeDisponivel?
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -362,6 +362,6 @@ struct BarraSuperiorPapagaioView: View {
     }
 
     private var tituloDaContaAtiva: String {
-        contextoDaConta == .perfil ? "Perfil pessoal" : equipeAtiva.nome
+        contextoDaConta == .perfil ? "Perfil pessoal" : (equipeAtiva?.nome ?? "Nenhuma equipe ainda")
     }
 }
