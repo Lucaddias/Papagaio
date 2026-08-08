@@ -21,6 +21,8 @@ struct CartaoDeConversa: View {
 
     @State private var editandoInformacoes = false
     @State private var escolhendoPastaDestino = false
+    /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
+    @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
     @State private var criandoPastaParaMover = false
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
@@ -84,16 +86,37 @@ struct CartaoDeConversa: View {
     /// área da sua superfície a dados ausentes. Campo vazio agora simplesmente
     /// não ocupa espaço — quem preencheu vê a informação em destaque.
     private var pessoasDoCard: [(simbolo: String, rotulo: String, valor: String)] {
-        var itens: [(String, String, String)] = []
         let entrevistado = listaDePessoas(metadados.entrevistado)
-        if !entrevistado.isEmpty {
-            itens.append(("person", "Entrevistado", entrevistado))
-        }
         let entrevistadores = listaDePessoas(metadados.entrevistadores)
-        if !entrevistadores.isEmpty {
-            itens.append(("person.crop.circle.badge.checkmark", "Entrevistadores", entrevistadores))
+
+        return [
+            (
+                "person",
+                quantidadeDePessoas(entrevistado) > 1 ? "Entrevistados" : "Entrevistado",
+                entrevistado.isEmpty ? "Não informado" : entrevistado
+            ),
+            (
+                "person.crop.circle.badge.checkmark",
+                quantidadeDePessoas(entrevistadores) > 1 ? "Entrevistadores" : "Entrevistador",
+                entrevistadores.isEmpty ? "Não informado" : entrevistadores
+            ),
+        ]
+    }
+
+    private func quantidadeDePessoas(_ lista: String) -> Int {
+        lista
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .count
+    }
+
+    private func simboloDaModalidade(_ formato: String) -> String {
+        switch formato {
+        case "Presencial": "mappin.and.ellipse"
+        case "Online": "video"
+        default: "questionmark.circle"
         }
-        return itens
     }
 
     private var participantes: Int {
@@ -118,7 +141,12 @@ struct CartaoDeConversa: View {
                         // mesma altura em todos os cartões da fileira. Sem isso
                         // um título de uma linha desalinhava o cartão inteiro em
                         // relação ao vizinho.
-                        .lineLimit(2, reservesSpace: true)
+                        // Uma linha só, sem reticências: em vez de cortar, o
+                        // título encolhe até caber. O alinhamento da fileira
+                        // vem do `maxHeight`, não da altura do texto.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .help(titulo)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.trailing, PapagaioTema.Espaco.secao)
@@ -169,15 +197,14 @@ struct CartaoDeConversa: View {
                         // Conversa de uma pessoa é o caso comum; dizer "1" em
                         // todo cartão só empurrava o rodapé para uma segunda
                         // linha e desalinhava a fileira.
-                        if participantes > 1 {
-                            Label("\(participantes)", systemImage: "person.2")
-                        }
-                        if !metadados.formato.isEmpty {
-                            Label(
-                                metadados.formato,
-                                systemImage: metadados.formato == "Presencial" ? "mappin.and.ellipse" : "video"
-                            )
-                        }
+                        Label(
+                            participantes == 1 ? "1 participante" : "\(participantes) participantes",
+                            systemImage: participantes == 1 ? "person" : "person.2"
+                        )
+                        Label(
+                            metadados.formato.isEmpty ? "Modalidade não informada" : metadados.formato,
+                            systemImage: simboloDaModalidade(metadados.formato)
+                        )
                     }
                     .font(PapagaioTema.Tipo.legenda)
                     .foregroundStyle(PapagaioTema.textoSecundario)
@@ -186,12 +213,16 @@ struct CartaoDeConversa: View {
                 .padding(PapagaioTema.Espaco.largo)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // O fundo é desenhado fora do link, então só o texto e a capa
+            // recebiam clique — o vazio entre eles não abria nada.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Conversa \(titulo). \(estado.descricao)")
         // Sem `minHeight` fixo: os 390pt anteriores deixavam ~80pt de área
         // morta no fim de todo cartão, e mais ainda nos de título curto.
-        .frame(maxWidth: .infinity, alignment: .top)
+        // `maxHeight: .infinity` iguala a altura de todos na mesma fileira.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .cartaoPapagaio()
         .overlay(alignment: .topLeading) {
             botaoDeFavoritoDoCard
@@ -292,7 +323,6 @@ struct CartaoDeConversa: View {
 
             if menuAberto {
                 MenuDeArquivoAberto(
-                    favorito: favorito,
                     bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
                     bloqueioDeLixeira: emOperacaoDeLixeira,
                     aoEditarImagem: executarMenu(editarImagem),
@@ -300,7 +330,6 @@ struct CartaoDeConversa: View {
                     aoMoverParaPasta: executarMenu(abrirMoverParaPasta),
                     aoCompartilhar: executarMenu(compartilhar),
                     aoDuplicar: executarMenu(aoDuplicar),
-                    aoFavoritar: executarMenu(alternarFavorito),
                     aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
                 )
                 .padding(.top, PapagaioTema.Espaco.pagina)
@@ -434,10 +463,26 @@ struct CartaoDeConversa: View {
 
     private func compartilhar() {
         #if os(macOS)
-        let itens: [Any] = FileManager.default.fileExists(atPath: urlDeAudio.path)
-            ? [urlDeAudio]
-            : [titulo]
+        // Uma ação só: documento e áudio juntos, e no mesmo painel a opção de
+        // salvar em pasta. O áudio cru sozinho não dizia nada a quem recebe.
+        let itens: [Any]
+        do {
+            itens = [try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: urlDeAudio)]
+        } catch {
+            let destino = FileManager.default.temporaryDirectory
+                .appendingPathComponent(DossieDaConversa.nomeDeArquivo(para: arquivo))
+            if (try? DossieDaConversa.gerar(arquivo: arquivo)
+                .write(to: destino, atomically: true, encoding: .utf8)) != nil {
+                itens = [destino]
+            } else {
+                itens = [DossieDaConversa.gerar(arquivo: arquivo)]
+            }
+        }
+
         let picker = NSSharingServicePicker(items: itens)
+        let opcoes = OpcoesDeCompartilhamento(arquivos: itens.compactMap { $0 as? URL })
+        delegadoDeCompartilhamento = opcoes
+        picker.delegate = opcoes
         if let view = NSApp.keyWindow?.contentView {
             picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
         }

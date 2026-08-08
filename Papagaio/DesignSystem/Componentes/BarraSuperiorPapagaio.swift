@@ -42,23 +42,21 @@ struct BarraSuperiorPapagaioView: View {
     /// menu "⋯". Nenhuma ação fica inalcançável em nenhuma largura.
     var body: some View {
         HStack(spacing: PapagaioTema.Espaco.medio) {
-            if exibindoBotaoVoltar {
-                Button(action: aoVoltar) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                        .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
-                        .background(PapagaioTema.superficie, in: Circle())
-                        .overlay {
-                            Circle().stroke(PapagaioTema.borda, lineWidth: 1)
-                        }
-                }
-                .buttonStyle(.plain)
-                .help("Voltar")
-                .accessibilityLabel("Voltar")
+            if exibindoBotaoVoltar || gravando {
+                BotaoCircularPapagaio(simbolo: "chevron.backward", ajuda: "Voltar", acao: aoVoltar)
             }
 
-            campoDeBusca
+            // Gravando, a barra some inteira e sobra só o botão de voltar:
+            // buscar conversas, trocar de seção ou mexer na conta no meio de
+            // uma captura só tira a pessoa da tela em que ela está trabalhando.
+            //
+            // Fora da gravação, busca e atalhos de seção andam juntos à
+            // esquerda — são o "onde estou / o que procuro". Conta e ações do
+            // app ficam na quina oposta, longe do fluxo de leitura.
+            if !gravando {
+                campoDeBusca
+                atalhos
+            }
 
             Spacer(minLength: PapagaioTema.Espaco.curto)
 
@@ -67,22 +65,22 @@ struct BarraSuperiorPapagaioView: View {
             // o `minWidth` através do `NavigationStack`, e a janela continuava
             // encolhendo até a barra transbordar pelos dois lados. Aqui a barra
             // se resolve sozinha em qualquer largura.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: PapagaioTema.Espaco.medio) {
-                    atalhos
-                    grupoDeAcoes
-                    botaoDePerfil(comRotulo: true)
-                }
+            if !gravando {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: PapagaioTema.Espaco.medio) {
+                        grupoDeAcoes
+                        botaoDePerfil(comRotulo: true)
+                    }
 
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    atalhos
-                    grupoDeAcoes
-                    botaoDePerfil(comRotulo: false)
-                }
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
+                        grupoDeAcoes
+                        botaoDePerfil(comRotulo: false)
+                    }
 
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    menuDeAcoesCompacto
-                    botaoDePerfil(comRotulo: false)
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
+                        menuDeAcoesCompacto
+                        botaoDePerfil(comRotulo: false)
+                    }
                 }
             }
         }
@@ -92,10 +90,14 @@ struct BarraSuperiorPapagaioView: View {
         .padding(.vertical, PapagaioTema.Espaco.curto)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(PapagaioTema.fundo)
+        // Gravando não existe barra: sem a linha divisória, o que sobra é o
+        // botão de voltar solto sobre o fundo da página.
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(PapagaioTema.borda.opacity(0.75))
-                .frame(height: 1)
+            if !gravando {
+                Rectangle()
+                    .fill(PapagaioTema.borda.opacity(0.75))
+                    .frame(height: 1)
+            }
         }
     }
 
@@ -315,10 +317,10 @@ struct BarraSuperiorPapagaioView: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .accessibilityLabel("Buscar conversas")
         }
-        // Único elemento elástico da barra: cresce até 420 e cede até 100.
+        // Único elemento elástico da barra: cresce até 620 e cede até 100.
         // Sem `layoutPriority` — ele deve ser servido depois dos grupos de
         // ícones, que são `fixedSize` e não têm como encolher em troca.
-        .frame(minWidth: 100, idealWidth: 360, maxWidth: 420)
+        .frame(minWidth: 100, idealWidth: 520, maxWidth: 620)
         .molduraDeControlePapagaio()
     }
 

@@ -37,11 +37,14 @@ public final class ReprodutorDeArquivo {
             secundario?.volume = nivel
         }
     }
+    /// - Important: o `didSet` **não pode** atribuir a `velocidade`.
+    ///   Numa classe `@Observable` a propriedade vira computada, e escrever nela
+    ///   de dentro do próprio observador reentra no setter: recursão infinita e
+    ///   estouro de pilha assim que o valor muda. O limite passou para
+    ///   `aplicarVelocidade()` e `definirVelocidade(_:)`, que é onde ele
+    ///   precisa valer de fato — nada fora da faixa chega ao `AVAudioPlayer`.
     public var velocidade: Float = 1 {
-        didSet {
-            velocidade = Self.velocidadeNormalizada(velocidade)
-            aplicarVelocidade()
-        }
+        didSet { aplicarVelocidade() }
     }
 
 /// Mutável de propósito: a transcrição chega **depois** de a tela abrir
@@ -152,7 +155,7 @@ public final class ReprodutorDeArquivo {
     }
 
     public func definirVelocidade(_ novaVelocidade: Float) {
-        velocidade = novaVelocidade
+        velocidade = Self.velocidadeNormalizada(novaVelocidade)
     }
 
     public func voltar(_ segundos: TimeInterval = 10) async {
@@ -275,8 +278,9 @@ public final class ReprodutorDeArquivo {
     }
 
     private func aplicarVelocidade() {
-        primario?.rate = velocidade
-        secundario?.rate = velocidade
+        let taxa = Self.velocidadeNormalizada(velocidade)
+        primario?.rate = taxa
+        secundario?.rate = taxa
     }
 
     private let intervaloDeObservacao: TimeInterval

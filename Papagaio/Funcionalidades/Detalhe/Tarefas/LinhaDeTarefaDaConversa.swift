@@ -30,25 +30,25 @@ struct LinhaDeTarefaDaConversa: View {
             botaoConclusao
 
             tituloDaTarefa
-                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
 
             SeparadorDaLinhaDeTarefa()
             ColunaDaTarefa(rotulo: "Prioridade") {
                 SeloDePrioridade(prioridade: tarefa.prioridade)
             }
-            .frame(width: 128, alignment: .leading)
+            .frame(minWidth: 96, idealWidth: 128, maxWidth: 150, alignment: .leading)
 
             SeparadorDaLinhaDeTarefa()
             ColunaDaTarefa(rotulo: "Responsável") {
                 responsavelDaTarefa
             }
-            .frame(width: 190, alignment: .leading)
+            .frame(minWidth: 130, idealWidth: 190, maxWidth: 220, alignment: .leading)
 
             SeparadorDaLinhaDeTarefa()
             ColunaDaTarefa(rotulo: "Status") {
                 SeloDeStatusDaTarefa(status: tarefa.status)
             }
-            .frame(width: 124, alignment: .leading)
+            .frame(minWidth: 96, idealWidth: 124, maxWidth: 150, alignment: .leading)
 
             SeparadorDaLinhaDeTarefa()
             ColunaDaTarefa(rotulo: "Data") {
@@ -58,7 +58,7 @@ struct LinhaDeTarefaDaConversa: View {
                     .monospacedDigit()
                     .lineLimit(1)
             }
-            .frame(width: 136, alignment: .leading)
+            .frame(minWidth: 104, idealWidth: 136, maxWidth: 160, alignment: .leading)
 
             botaoEditar
         }

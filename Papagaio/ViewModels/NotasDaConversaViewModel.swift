@@ -10,6 +10,20 @@ import PapagaioCore
 /// instante; na tela de detalhe elas viram um bloco de texto único. A migração
 /// de um para o outro precisa ser idempotente, senão cada abertura da tela
 /// duplicaria as linhas.
+/// Formatação aplicada ao texto livre da nota.
+///
+/// Vive aqui porque só este view model a usa: a aba Notas passou a ser uma
+/// linha do tempo de itens carimbados, e a barra de formatação que escrevia
+/// markdown cru na tela saiu junto.
+enum FormatoDeNota {
+    case negrito
+    case italico
+    case lista
+    case imagem
+    case anexo
+    case link
+}
+
 @MainActor
 @Observable
 final class NotasDaConversaViewModel {

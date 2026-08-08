@@ -40,7 +40,7 @@ struct EditorDeTarefaGeralSheet: View {
                     Text(modo == .criacao ? "Nova tarefa" : "Editar tarefa")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
-                    Text("Escolha a conversa, prioridade, responsável, status e data limite.")
+                    Text("Escolha a conversa, prioridade, responsável e data limite.")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                 }
@@ -113,19 +113,8 @@ struct EditorDeTarefaGeralSheet: View {
                 )
             }
 
-            campo("Status") {
-                ControleSegmentadoPapagaio(
-                    opcoes: StatusDaTarefa.allCases,
-                    selecionado: $status,
-                    titulo: { $0.titulo },
-                    simbolo: { $0 == .concluida ? "checkmark" : "clock" }
-                )
-            }
-
             campo("Data limite") {
-                DatePicker("Data limite", selection: $prazo, displayedComponents: [.date])
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
+                CampoDeDataPapagaio(data: $prazo, rotuloAcessivel: "Data limite")
             }
 
             HStack(spacing: PapagaioTema.Espaco.medio) {

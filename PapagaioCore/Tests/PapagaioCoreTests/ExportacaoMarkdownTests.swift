@@ -36,12 +36,12 @@ func exportacaoMarkdownCompleta() {
     #expect(markdown.contains("## Visão geral"))
     #expect(markdown.contains("## Temas"))
     #expect(markdown.contains("## Citações"))
-    #expect(markdown.contains("## Próximos passos"))
+    #expect(!markdown.contains("## Próximos passos"))
     #expect(markdown.contains("## Notas"))
     #expect(markdown.contains("## Transcrição"))
     #expect(markdown.contains("**[0:35 · Marcador · Crítica]** Validar o risco jurídico."))
     #expect(markdown.contains("**[0:12 · Eu]** Vamos fechar o orçamento."))
-    #expect(markdown.contains("- [ ] Enviar contrato — Luca"))
+    #expect(!markdown.contains("Enviar contrato"))
 }
 
 @Test("Nome de exportação é seguro para o sistema de arquivos")

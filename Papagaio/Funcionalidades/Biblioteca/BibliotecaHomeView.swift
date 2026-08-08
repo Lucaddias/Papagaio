@@ -19,9 +19,14 @@ struct BibliotecaHomeView: View {
     let aoCancelarGravacao: () async -> Void
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
+    /// Enquanto a gravação roda a pessoa pode sair da tela de captura e voltar
+    /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
+    /// da gravação.
+    @Binding var focoNaGravacao: Bool
 
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
+    @State private var erroDaLixeiraDeMidia: String?
     @State private var menuAberto: ArquivoID?
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
@@ -29,6 +34,11 @@ struct BibliotecaHomeView: View {
     @State private var versaoDasPreferenciasVisuais = 0
     @State private var criandoPasta = false
     @State private var novaPasta = ""
+
+    /// Tela de captura: gravando **e** com o foco nela.
+    private var emCaptura: Bool {
+        gravador.gravando && focoNaGravacao
+    }
 
     private var arquivosFiltrados: [Arquivo] {
         guard let biblioteca else { return [] }
@@ -62,7 +72,9 @@ struct BibliotecaHomeView: View {
     private var subtitulo: String {
         switch secaoSelecionada {
         case .todos:
-            "Gerencie suas transcrições e insights de entrevistas."
+            emCaptura
+                ? "Grave, transcreva e revise suas conversas."
+                : "Gerencie suas transcrições e insights de entrevistas."
         case .lixeira:
             "Gerencie conversas excluídas. Itens na lixeira serão removidos permanentemente após 30 dias."
         }
@@ -71,7 +83,7 @@ struct BibliotecaHomeView: View {
     private var tituloDaPagina: String {
         switch secaoSelecionada {
         case .todos:
-            "Biblioteca de Conversas"
+            emCaptura ? "Gravações" : "Biblioteca de Conversas"
         case .lixeira:
             "Lixeira"
         }
@@ -100,6 +112,17 @@ struct BibliotecaHomeView: View {
                 duracaoTotal: arquivos.reduce(0) { $0 + $1.duracao },
                 ultimoArquivo: arquivos.map(\.criadoEm).max()
             )
+        }
+    }
+
+    private var midiasNaLixeira: [MidiaNaLixeira] {
+        _ = versaoDasPreferenciasVisuais
+        let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itens = LixeiraDeMidia.itens()
+        guard !termo.isEmpty else { return itens }
+        return itens.filter {
+            $0.nome.localizedCaseInsensitiveContains(termo)
+                || $0.conversaTitulo.localizedCaseInsensitiveContains(termo)
         }
     }
 
@@ -186,10 +209,11 @@ struct BibliotecaHomeView: View {
                             )
                         } else if let biblioteca {
                             AcoesDaLixeira(
-                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty,
+                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty,
                                 aoRestaurarTudo: {
                                     Task { await biblioteca.restaurarTudoDaLixeira() }
                                     LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                                    LixeiraDeMidia.restaurarTudo()
                                     atualizarPreferenciasVisuais()
                                 },
                                 aoEsvaziar: {
@@ -234,7 +258,7 @@ struct BibliotecaHomeView: View {
                     )
                 }
 
-                if gravador.gravando {
+                if emCaptura {
                     PainelDeGravacao(
                         waveform: gravador.waveform,
                         tempoDeGravacao: gravador.tempoDeGravacao,
@@ -256,7 +280,7 @@ struct BibliotecaHomeView: View {
                     FalhaDaGravacao(mensagem: falhaDaGravacao)
                 }
 
-                if !gravador.gravando {
+                if !emCaptura {
                     gradeDeConversas
                         .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
                 }
@@ -291,6 +315,14 @@ struct BibliotecaHomeView: View {
         } message: {
             Text("Essa ação remove o áudio, a transcrição e o resumo do Mac e não pode ser desfeita.")
         }
+        .alert("Não foi possível restaurar", isPresented: Binding(
+            get: { erroDaLixeiraDeMidia != nil },
+            set: { if !$0 { erroDaLixeiraDeMidia = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDaLixeiraDeMidia = nil }
+        } message: {
+            Text(erroDaLixeiraDeMidia ?? "")
+        }
         .confirmationDialog(
             "Esvaziar lixeira?",
             isPresented: $confirmandoEsvaziarLixeira,
@@ -300,6 +332,7 @@ struct BibliotecaHomeView: View {
                 Button("Esvaziar lixeira", role: .destructive) {
                     Task { await biblioteca.esvaziarLixeira() }
                     LixeiraDeTarefas.esvaziar()
+                    LixeiraDeMidia.esvaziar()
                     atualizarPreferenciasVisuais()
                 }
             }
@@ -335,13 +368,13 @@ struct BibliotecaHomeView: View {
 
     @ViewBuilder
     private var gradeDeConversas: some View {
-        let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)]
+        let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .center)]
         let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: PapagaioTema.Espaco.secao, alignment: .top)]
 
         switch secaoSelecionada {
         case .todos:
             LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.largo) {
-                if !gravador.gravando && (filtroSelecionado != .pastas || pastaSelecionada != nil) {
+                if !emCaptura && (filtroSelecionado != .pastas || pastaSelecionada != nil) {
                     CartaoNovaConversa(
                         gravando: gravador.gravando,
                         bloqueado: gravador.estado == .processando,
@@ -385,7 +418,7 @@ struct BibliotecaHomeView: View {
                 }
             }
 
-            if !gravador.gravando,
+            if !emCaptura,
                filtroSelecionado != .pastas || pastaSelecionada != nil,
                biblioteca?.arquivos.isEmpty == false,
                arquivosFiltrados.isEmpty {
@@ -398,7 +431,7 @@ struct BibliotecaHomeView: View {
                 .cartaoPapagaio()
             }
 
-            if !gravador.gravando,
+            if !emCaptura,
                (filtroSelecionado != .pastas || pastaSelecionada != nil),
                biblioteca?.arquivos.isEmpty ?? true {
                 Text("A primeira conversa aparecerá aqui depois de gravar ou importar um áudio.")
@@ -409,7 +442,7 @@ struct BibliotecaHomeView: View {
             }
 
         case .lixeira:
-            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty {
+            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
                     titulo: "A lixeira está vazia",
@@ -417,7 +450,7 @@ struct BibliotecaHomeView: View {
                 )
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
-            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty {
+            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "magnifyingglass",
                     titulo: "Nenhum arquivo encontrado",
@@ -438,6 +471,25 @@ struct BibliotecaHomeView: View {
                                 }
                             )
                         }
+                    }
+
+                    ForEach(midiasNaLixeira) { item in
+                        CartaoDeMidiaNaLixeira(
+                            item: item,
+                            aoRestaurar: {
+                                // Falha silenciosa aqui foi o que fez o player
+                                // ficar mudo sem ninguém entender o motivo.
+                                if !LixeiraDeMidia.restaurar(item) {
+                                    erroDaLixeiraDeMidia = "Não foi possível devolver “\(item.nome)” para a conversa. O arquivo pode ter sido movido ou apagado por fora do app."
+                                }
+                                atualizarPreferenciasVisuais()
+                            },
+                            aoApagarDefinitivamente: {
+                                LixeiraDeMidia.remover(item)
+                                atualizarPreferenciasVisuais()
+                            },
+                            aoRevelarNoFinder: { LixeiraDeMidia.revelarNoFinder(item) }
+                        )
                     }
 
                     ForEach(tarefasNaLixeira) { item in

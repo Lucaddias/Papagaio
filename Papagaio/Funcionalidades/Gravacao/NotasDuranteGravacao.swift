@@ -68,6 +68,16 @@ struct PainelDeNotasDuranteGravacao: View {
                     gravador.proximaNotaSeraCritica ? "Ativado" : "Desativado"
                 )
 
+                // Salvar a nota no instante em que ela foi pensada é o ponto
+                // inteiro do recurso — antes tudo virava um bloco só no fim.
+                Button("Salvar nota", systemImage: "return") {
+                    gravador.adicionarNota()
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .keyboardShortcut(.return, modifiers: [.command])
+                .disabled(rascunhoVazio)
+                .help("Salva a nota no instante atual (⌘↩)")
+
                 Spacer(minLength: 8)
 
                 Text("\(gravador.tempoDeGravacao.comoCronometro)")
@@ -81,6 +91,12 @@ struct PainelDeNotasDuranteGravacao: View {
             ZStack(alignment: .topLeading) {
                 EditorDeNotaAlinhado(texto: $gravador.rascunhoDaNota)
                     .focused($editorEstaFocado)
+                    // Enter numa linha de tópico já abre o próximo item, como
+                    // em qualquer editor. Enter num tópico vazio sai da lista.
+                    .onChange(of: gravador.rascunhoDaNota) { anterior, novo in
+                        let ajustado = Self.continuandoTopico(de: anterior, para: novo)
+                        if ajustado != novo { gravador.rascunhoDaNota = ajustado }
+                    }
                     .accessibilityLabel("Nova nota da conversa")
                     .accessibilityHint(
                         "O texto será salvo automaticamente quando a gravação finalizar."
@@ -112,7 +128,7 @@ struct PainelDeNotasDuranteGravacao: View {
                     .stroke(PapagaioTema.borda, lineWidth: 1)
             }
 
-            Text("As notas são salvas automaticamente ao finalizar a gravação.")
+            Text("⌘↩ salva a nota no instante atual. O que sobrar escrito é salvo ao finalizar a gravação.")
                 .font(.caption)
                 .foregroundStyle(PapagaioTema.textoSecundario)
 
@@ -132,6 +148,25 @@ struct PainelDeNotasDuranteGravacao: View {
         .padding(PapagaioTema.Espaco.secao)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
+    }
+
+    /// Continua a lista de tópicos ao apertar Enter; tópico vazio encerra.
+    static func continuandoTopico(de anterior: String, para novo: String) -> String {
+        guard novo.count == anterior.count + 1, novo.hasSuffix("\n") else { return novo }
+
+        let linhas = novo.components(separatedBy: "\n")
+        guard linhas.count >= 2 else { return novo }
+        let ultima = linhas[linhas.count - 2]
+
+        guard let marca = ["- ", "* "].first(where: { ultima.hasPrefix($0) }) else { return novo }
+
+        if ultima.trimmingCharacters(in: .whitespaces) == marca.trimmingCharacters(in: .whitespaces) {
+            var semUltima = linhas
+            semUltima[semUltima.count - 2] = ""
+            return semUltima.joined(separator: "\n")
+        }
+
+        return novo + marca
     }
 
 }

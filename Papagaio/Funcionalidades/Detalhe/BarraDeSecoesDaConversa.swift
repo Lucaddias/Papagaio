@@ -29,15 +29,62 @@ enum SecaoDoDetalhe: String, CaseIterable, Identifiable {
 /// Navegação horizontal entre os conteúdos que já existem no domínio de uma
 /// conversa. A mudança de estado fica no container para preservar a regra de
 /// abrir o player ao entrar na aba de áudio.
-struct BarraDeSecoesDaConversa: View {
+struct BarraDeSecoesDaConversa<Acessorio: View>: View {
     let secaoSelecionada: SecaoDoDetalhe
     let aoSelecionar: (SecaoDoDetalhe) -> Void
+    /// Conteúdo encostado na ponta direita da mesma barra — a ficha da
+    /// conversa. Fica aqui dentro para dividir a linha de base e o filete
+    /// inferior com as abas, em vez de formar uma segunda faixa.
+    @ViewBuilder let acessorio: Acessorio
+
+    init(
+        secaoSelecionada: SecaoDoDetalhe,
+        aoSelecionar: @escaping (SecaoDoDetalhe) -> Void,
+        @ViewBuilder acessorio: () -> Acessorio = { EmptyView() }
+    ) {
+        self.secaoSelecionada = secaoSelecionada
+        self.aoSelecionar = aoSelecionar
+        self.acessorio = acessorio()
+    }
 
     /// As abas dividiam a largura inteira da janela: em tela cheia sobravam
     /// ~250pt entre "Resumo" e "Transcrição", e a barra deixava de ler como um
     /// grupo. Agora cada aba tem a largura do seu rótulo e o conjunto fica
     /// ancorado à esquerda, alinhado com o título da página.
+    // Numa janela estreita as abas não cabem lado a lado com a ficha. Em vez
+    // de transbordar para fora da tela, o conjunto desce e rola na horizontal.
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.medio) {
+                abas
+                Spacer(minLength: PapagaioTema.Espaco.medio)
+                acessorio
+                    .padding(.bottom, PapagaioTema.Espaco.curto)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    abas
+                }
+                .scrollBounceBehavior(.basedOnSize)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    acessorio
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .padding(.bottom, PapagaioTema.Espaco.curto)
+            }
+        }
+        .padding(.top, PapagaioTema.Espaco.minimo)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(PapagaioTema.borda.opacity(0.72))
+                .frame(height: 1)
+        }
+    }
+
+    private var abas: some View {
         HStack(spacing: PapagaioTema.Espaco.secao) {
             ForEach(SecaoDoDetalhe.allCases) { secao in
                 let estaSelecionada = secaoSelecionada == secao
@@ -73,11 +120,6 @@ struct BarraDeSecoesDaConversa: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.top, PapagaioTema.Espaco.minimo)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(PapagaioTema.borda.opacity(0.72))
-                .frame(height: 1)
-        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 }

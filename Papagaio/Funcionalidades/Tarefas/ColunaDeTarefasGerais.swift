@@ -63,10 +63,12 @@ struct ColunaDeTarefasGerais: View {
             .frame(maxWidth: .infinity, minHeight: 320, alignment: .top)
         }
         .frame(maxWidth: .infinity, minHeight: 390, alignment: .top)
-        .padding(recebendoDrop ? 10 : 0)
+        // Padding fixo: alternar 0/10 no `isTargeted` remedia a coluna inteira a
+        // cada entrada e saída do cursor, e era isso que travava o arrasto.
+        .padding(10)
         .contentShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .background(
-            recebendoDrop ? cor.opacity(0.08) : Color.clear,
+            recebendoDrop ? cor.opacity(0.10) : Color.clear,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .dropDestination(for: String.self) { ids, _ in
