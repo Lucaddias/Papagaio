@@ -80,6 +80,7 @@ final class Biblioteca {
 
     func preparar() async {
         await ciclo.iniciarMonitoramento()
+        await ciclo.encerrarNaSaidaDoApp()
         await carregar()
     }
 

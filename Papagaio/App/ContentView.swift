@@ -346,7 +346,13 @@ struct ContentView: View {
         let tituloLimpo = tituloDaFicha.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
-        let quantidade = Int(participantesDaFicha.trimmingCharacters(in: .whitespacesAndNewlines)).map { max(1, $0) }
+        // Participantes deixou de ser um campo digitável na ficha: sai da soma
+        // dos nomes que a pessoa acabou de preencher. Ler do estado antigo
+        // deixava sempre "1", independente de quantos nomes havia.
+        let quantidade = max(
+            1,
+            nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha)
+        )
         let metadados = MetadadosVisuaisDoArquivo(
             entrevistado: entrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
             emailDoEntrevistado: emailDoEntrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -358,13 +364,22 @@ struct ContentView: View {
         )
         PreferenciasVisuaisDoArquivo.definirMetadados(metadados, para: arquivo.id)
 
-        let duracao = TimeInterval.lendo(duracaoDaFicha) ?? arquivo.duracao
+        // A duração não é editável na ficha: continua sendo a do próprio áudio.
+        let duracao = arquivo.duracao
         Task {
             await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: dataDaFicha, duracao: duracao)
             await MainActor.run {
                 arquivoParaConfigurar = nil
             }
         }
+    }
+
+    private func nomesInformados(_ texto: String) -> Int {
+        texto
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .count
     }
 
     private func abrirLixeira() {
