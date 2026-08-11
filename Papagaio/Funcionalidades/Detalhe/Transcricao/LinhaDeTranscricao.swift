@@ -26,9 +26,28 @@ struct LinhaDeTranscricao: View {
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 if let speaker = trecho.speaker {
-                    Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.textoSecundario)
+                    HStack(spacing: PapagaioTema.Espaco.minimo) {
+                        Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+
+                        // Falante acústico (diarização): aparece só quando o
+                        // canal carrega mais de uma voz — canal de uma voz só
+                        // não precisa do chip. O rótulo do canal nunca muda
+                        // (ver a regra dos dois rótulos em SegmentoDeFalante).
+                        if trecho.temVozesDistintas,
+                           let acustico = trecho.falanteAcusticoDominante {
+                            Text(Self.rotuloDe(acustico))
+                                .font(.caption)
+                                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                                .padding(.horizontal, PapagaioTema.Espaco.minimo)
+                                .padding(.vertical, 1)
+                                .background(
+                                    PapagaioTema.destaqueSuave,
+                                    in: Capsule()
+                                )
+                        }
+                    }
                 }
 
                 corpoDaTranscricao
@@ -64,6 +83,16 @@ struct LinhaDeTranscricao: View {
         }
         .accessibilityHint("Inicia a reprodução a partir de \(trecho.start.faladoPorExtenso).")
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
+    }
+
+    /// Traduz o rótulo do FluidAudio ("S1") para o que um humano entende
+    /// ("Voz 1"). Rótulo acústico só serve para comparar vozes da mesma
+    /// gravação — nunca é um nome de pessoa.
+    private static func rotuloDe(_ falanteAcustico: String) -> String {
+        if falanteAcustico.hasPrefix("S"), let numero = Int(falanteAcustico.dropFirst()) {
+            return "Voz \(numero)"
+        }
+        return "Voz \(falanteAcustico)"
     }
 
     @ViewBuilder

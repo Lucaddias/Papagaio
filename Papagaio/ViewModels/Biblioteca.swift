@@ -511,6 +511,13 @@ final class Biblioteca {
         // 13,7 GB e não podem ficar residentes entre gravações num Mac de 18 GB.
         let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
 
+        // Diarização acústica: mini modelos embutidos no bundle (~40 MB
+        // compilados). Se o bootstrap não os estagiou, a primeira diarização
+        // falha — e o pipeline engole: é uma camada decorativa por cima da
+        // transcrição, nunca um bloqueio (ver PipelineDeArquivo).
+        let diarizacao = GerenciadorDeModelosDeDiarizacao.embutido()
+        await ciclo.registrar(diarizacao)
+
         let pipeline = PipelineDeArquivo(
             armazenamento: armazenamento,
             repositorio: repositorio,
@@ -525,6 +532,9 @@ final class Biblioteca {
             },
             resumir: { [motores] trechos in
                 try await motores.resumir(trechos)
+            },
+            diarizar: { [diarizacao] url in
+                try await diarizacao.diarizar(url)
             }
         )
 
@@ -565,6 +575,8 @@ final class Biblioteca {
 
         // 13,7 GB não podem ficar residentes depois que o trabalho acabou.
         await motores.descarregarTudo()
+        await diarizacao.descarregar()
+        await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
     }
 
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {

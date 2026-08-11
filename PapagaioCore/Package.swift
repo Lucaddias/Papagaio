@@ -8,6 +8,12 @@ let package = Package(
         .library(name: "PapagaioCore", targets: ["PapagaioCore"]),
         .executable(name: "papagaio-eval", targets: ["papagaio-eval"]),
     ],
+    dependencies: [
+        // Diarização acústica offline (pyannote community-1 em CoreML).
+        // Versão fixada: a API do OfflineDiarizerManager muda entre releases.
+        // Ver DECISIONS.md — primeira dependência remota do projeto.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5"),
+    ],
     targets: [
         // Runtimes locais, pré-compilados com backend Metal.
         // Baixados por Scripts/bootstrap-runtimes.sh (versão + SHA-256 fixados),
@@ -48,16 +54,33 @@ let package = Package(
             linkerSettings: [.linkedLibrary("c++")]
         ),
 
+        // Wrapper Sendable sobre o FluidAudio (diarização offline). O target é
+        // isolado por causa do CoreML: MLModel não é Sendable, e a fronteira do
+        // módulo impede que os tipos do FluidAudio vazem para o domínio.
+        // Ver DECISIONS.md — diarização.
+        .target(
+            name: "DiarizationRuntime",
+            dependencies: ["FluidAudio"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+
         // Biblioteca de domínio. NÃO importa SwiftUI — a CLI depende dela.
         // Também não importa `whisper`/`llama`/`onnxruntime` direto: só os
         // wrappers acima.
         .target(
             name: "PapagaioCore",
-            dependencies: ["WhisperRuntime", "LlamaRuntime", "OnnxApi"],
+            dependencies: ["WhisperRuntime", "LlamaRuntime", "OnnxApi", "DiarizationRuntime"],
             // O modelo do Silero VAD entra no bundle do alvo (2,3 MB). Veja
             // Scripts/bootstrap-runtimes.sh, que o baixa com versão e SHA-256
             // fixados dentro de Sources/PapagaioCore/Resources/.
-            resources: [.process("Resources")],
+            // Os modelos de diarização (ModelosDeDiarizacao/) entram como
+            // `.copy` — cópia opaca — por que o `.process` recursivo recusa
+            // arquivos com o mesmo nome em pastas diferentes (cada .mlmodelc
+            // tem seu próprio metadata.json/coremldata.bin/model.mil).
+            resources: [
+                .process("Resources"),
+                .copy("ModelosDeDiarizacao"),
+            ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(

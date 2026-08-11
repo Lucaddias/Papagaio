@@ -39,6 +39,19 @@ public protocol SummarizationEngine: Sendable {
     func summarize(_ trechos: [Trecho]) async throws -> Resumo
 }
 
+// MARK: - Diarização
+
+/// Contrato de diarização acústica: quem falou quando, em segmentos.
+///
+/// Uma engine só: pyannote community-1 em CoreML via FluidAudio (ver
+/// skill `papagaio-speaker-attribution`). O alinhamento palavra×segmento não
+/// é responsabilidade da engine — é do `AlinhamentoDeFalantes`, puro e
+/// testável.
+public protocol DiarizationEngine: Sendable {
+    var identifier: String { get }
+    func diarizar(_ audio: URL) async throws -> [SegmentoDeFalante]
+}
+
 // MARK: - Persistência
 
 /// Contrato de repositório da biblioteca local, implementado por

@@ -27,16 +27,48 @@ public struct Palavra: Sendable, Identifiable, Codable, Equatable {
     public let end: TimeInterval
     public let texto: String
 
+    /// Falante atribuído pela **diarização acústica** (ex.: `"S1"`, `"S2"`).
+    ///
+    /// Não confundir com `Trecho.speaker`, que vem do canal de origem — ver a
+    /// regra em `SegmentoDeFalante`. `nil` = sem diarização (transcrição
+    /// legada, falante desconhecido no empate técnico, ou modelos ausentes).
+    public let falanteAcustico: String?
+
     public init(
         id: UUID = UUID(),
         start: TimeInterval,
         end: TimeInterval,
-        texto: String
+        texto: String,
+        falanteAcustico: String? = nil
     ) {
         self.id = id
         self.start = start
         self.end = end
         self.texto = texto
+        self.falanteAcustico = falanteAcustico
+    }
+}
+
+// MARK: - Segmento de falante
+
+/// Um intervalo de fala atribuído a um falante pela diarização acústica.
+///
+/// `falanteId` usa a convenção do FluidAudio (`"S1"`, `"S2"`, …): serve para
+/// **comparar** falantes dentro da mesma gravação, não é um rótulo estável.
+///
+/// Regra dos dois rótulos (skill `papagaio-speaker-attribution`): `Trecho.speaker`
+/// continua sendo o canal de origem ("eu"/"interlocutor") e nunca é fundido com
+/// o falante acústico — um microfone pode conter duas vozes ("S1"/"S2"), e o
+/// mesmo "S1" pode aparecer no microfone e no tap do sistema.
+public struct SegmentoDeFalante: Sendable, Equatable {
+    public let falanteId: String
+    public let inicio: TimeInterval
+    public let fim: TimeInterval
+
+    public init(falanteId: String, inicio: TimeInterval, fim: TimeInterval) {
+        self.falanteId = falanteId
+        self.inicio = inicio
+        self.fim = fim
     }
 }
 
@@ -98,6 +130,40 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
             speaker: speaker,
             palavras: []
         )
+    }
+
+    /// Cópia com outras palavras — usada pela diarização para trocar as
+    /// palavras do trecho pelas versões com `falanteAcustico`.
+    public func comPalavras(_ novas: [Palavra]) -> Trecho {
+        Trecho(
+            id: id,
+            start: start,
+            end: end,
+            texto: texto,
+            speaker: speaker,
+            palavras: novas
+        )
+    }
+
+    /// O rótulo acústico predominante nas palavras do trecho, ou `nil` sem
+    /// diarização.
+    ///
+    /// Derivado, nunca persistido: o fonte da verdade são os
+    /// `Palavra.falanteAcustico`. A UI usa isto para nomear o trecho quando o
+    /// canal tem mais de um falante.
+    public var falanteAcusticoDominante: String? {
+        let contagens = palavras.reduce(into: [String: Int]()) { contagens, palavra in
+            if let falante = palavra.falanteAcustico {
+                contagens[falante, default: 0] += 1
+            }
+        }
+        return contagens.max { $0.value < $1.value }?.key
+    }
+
+    /// Se o trecho comprova mais de uma voz acústica — o caso em que a UI
+    /// mostra a voz predominante para distinguir os falantes do trecho.
+    public var temVozesDistintas: Bool {
+        Set(palavras.compactMap(\.falanteAcustico)).count > 1
     }
 }
 

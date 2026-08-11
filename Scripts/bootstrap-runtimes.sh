@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Baixa os XCFrameworks pré-compilados de whisper.cpp, llama.cpp e do
-# ONNX Runtime, e o modelo do Silero VAD.
+# ONNX Runtime, o modelo do Silero VAD e os modelos de diarização do
+# FluidAudio.
 #
 # Por que um script e não `binaryTarget(url:checksum:)` do SPM: os zips do
 # whisper/llama publicam o `.xcframework` dentro de `build-apple/`, e o SPM
@@ -212,6 +213,78 @@ baixar_arquivo "silero_vad.onnx" \
     "https://raw.githubusercontent.com/snakers4/silero-vad/76e3dc408eb2a5c655c34e230d2d5459b4439daa/src/silero_vad/data/silero_vad.onnx" \
     "$SILERO_SHA" "$RECURSOS/silero_vad.onnx"
 
+# Diarização acústica offline: os quatro .mlmodelc + plda-parameters.json do
+# repo FluidInference/speaker-diarization-coreml, na árvore exata que o
+# ModelHub do FluidAudio espera (cada modelo é um diretório com
+# coremldata.bin na raiz — os bundles já vêm compilados, o carregamento é
+# MLModel(contentsOf:)). Ficam embutidos no bundle, como o silero_vad.onnx,
+# por que o GerenciadorDeModelosDeDiarizacao os lê de lá. A pasta entra no
+# Package.swift como `.copy` (cópia opaca — o `.process` recursivo recusa
+# arquivos com o mesmo nome em pastas diferentes).
+#
+# Por que checksum por arquivo e não por pacote: o FluidAudio não valida o
+# conteúdo — só existência/layout. O SHA-256 por arquivo trava o conteúdo
+# baixado no commit de hoje do repo; se o repo mudar, o bootstrap falha alto
+# em vez de o app carregar um modelo trocado em silêncio.
+DIARIZACAO_BASE="https://huggingface.co/FluidInference/speaker-diarization-coreml/resolve/main"
+DIARIZACAO_DESTINO="$RAIZ/PapagaioCore/Sources/PapagaioCore/ModelosDeDiarizacao/diarizacao/speaker-diarization"
+
+# caminho|sha256 — gerados em 2026-08-11 a partir do HEAD do repo acima.
+DIARIZACAO_ARTEFATOS="
+Segmentation.mlmodelc/analytics/coremldata.bin|64265f8e7ad41a5f68d630c15288c2499cca5892ad49e20096819cdeac004cdb
+Segmentation.mlmodelc/coremldata.bin|ea51481b8bd3e496ad3cf16f066ddaa37f20e8772eaac76b3393c28de20e06bc
+Segmentation.mlmodelc/metadata.json|88dbf0b07208fe142e1729c2b4c974ad3599fcb2ae5d5f18fce782b225384124
+Segmentation.mlmodelc/model.mil|d37e4ce30b406a6b34f765f769b9baed3178cc0c2b2e299c641daa43a052dd3f
+Segmentation.mlmodelc/weights/weight.bin|c3189a64946c75bc24fcb98afe89ad78c52bdbadfdf65e857fb1b81e2cc9fbb2
+FBank.mlmodelc/analytics/coremldata.bin|0e8bd3a8b82ac123580989f490e4d9245127c535857630b543311268accc3f0a
+FBank.mlmodelc/coremldata.bin|57ac436bb0671cbb5527a339134d695f752eb77f7a18966b93c6835335595759
+FBank.mlmodelc/metadata.json|2623785f5d186893b82d01e84aa33a7704ef763c3309e02055f22dc9d871ce9a
+FBank.mlmodelc/model.mil|27aaeb21569e81bdbe2eef87789f50a37cfea800039bd134448a9417de2f30ed
+FBank.mlmodelc/weights/weight.bin|9e83fdd3ea78064b078069e4d9141603c61c47a27fd19e7e3142ff7476f8db36
+Embedding.mlmodelc/analytics/coremldata.bin|8d6706436639b53830b4dbe8aaf9c9a843f7f582d63e16f3cb8bb7c6ccd58682
+Embedding.mlmodelc/coremldata.bin|4a705bac27d151d9642f37609296042a15602a42253039e0921dc9e75da7e004
+Embedding.mlmodelc/metadata.json|1854371eb6b438fb8aeac96afb45c999af7902581c06afdfcd7ff3cb1ce66be5
+Embedding.mlmodelc/model.mil|22fa958aef72a561c21f874a07cbdcd30fdf40ee961c0bc2fb67c119273b46d3
+Embedding.mlmodelc/weights/weight.bin|99356b2985b8d43880a657024d941d450b38820451ccff903f76ed4e52d1868b
+PldaRho.mlmodelc/analytics/coremldata.bin|8940ea6044dbcbefa22da8cc41e0b485e1fb5ed89aecaf37c6e0c483a97ddcd7
+PldaRho.mlmodelc/coremldata.bin|4d9741477f721c79b09fcdfe455110c4b7d4272e2de3496bf1729d966d3ee418
+PldaRho.mlmodelc/metadata.json|b314cf25a93e46b4076883a6f5a2f8848b73c3851bd9d36074d067f35a1c7945
+PldaRho.mlmodelc/model.mil|83aee2e5310d19b5f202aea97d07a0e12102556d1b32ef3ed08b36f7f9725041
+PldaRho.mlmodelc/weights/weight.bin|80f7d229202636d372428c90596f11a91545f07da77259f07153aaf225914a36
+plda-parameters.json|38ee28d4269c076cef254ee760bbd811f0738a92e0f01f9699ad372828c5de8f
+"
+
+baixar_diarizacao() {
+    local baixou=0
+    for linha in $DIARIZACAO_ARTEFATOS; do
+        local caminho sha destino obtido
+        caminho="${linha%%|*}"
+        sha="${linha##*|}"
+        destino="$DIARIZACAO_DESTINO/$caminho"
+        if [ -f "$destino" ]; then
+            continue
+        fi
+        baixou=1
+        echo "==> baixando diarização: $caminho"
+        mkdir -p "$TEMP/$(dirname "$caminho")"
+        curl -sSL --fail -o "$TEMP/$caminho" "$DIARIZACAO_BASE/$caminho"
+        obtido="$(shasum -a 256 "$TEMP/$caminho" | awk '{print $1}')"
+        if [ "$obtido" != "$sha" ]; then
+            echo "ERRO: checksum de $caminho não confere" >&2
+            echo "  esperado: $sha" >&2
+            echo "  obtido:   $obtido" >&2
+            exit 1
+        fi
+        mkdir -p "$(dirname "$destino")"
+        cp "$TEMP/$caminho" "$destino"
+    done
+    if [ "$baixou" = "1" ]; then
+        echo "==> $DIARIZACAO_DESTINO pronto"
+    fi
+}
+
+baixar_diarizacao
+
 echo
 echo "Pronto. Slices de macOS:"
 for xcf in llama whisper onnxruntime; do
@@ -221,3 +294,8 @@ for xcf in llama whisper onnxruntime; do
         echo "  $xcf.xcframework  ✗ SEM slice de macOS"
     fi
 done
+if [ -d "$DIARIZACAO_DESTINO" ]; then
+    echo "  diarização         ✓ $(find "$DIARIZACAO_DESTINO" -type f | wc -l | tr -d ' ') arquivos"
+else
+    echo "  diarização         ✗ SEM modelos de diarização"
+fi
