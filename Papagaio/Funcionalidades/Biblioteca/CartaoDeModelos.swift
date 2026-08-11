@@ -30,8 +30,17 @@ struct CartaoDeModelos: View {
                     Text(progresso.peso.nomeArquivo)
                         .font(.caption.weight(.medium))
                 } currentValueLabel: {
-                    Text("\(gb(progresso.bytesRecebidos)) de \(gb(progresso.bytesTotais))")
-                        .font(.caption.monospacedDigit())
+                    HStack {
+                        Text("\(gb(progresso.bytesRecebidos)) de \(gb(progresso.bytesTotais))")
+
+                        if let restante = modelos.restanteDoDownload {
+                            Spacer()
+                            // Baixar 13,7 GB sem previsão nenhuma é o tipo de
+                            // espera que faz a pessoa achar que travou.
+                            Text(tempoRestante(restante))
+                        }
+                    }
+                    .font(.caption.monospacedDigit())
                 }
                 .tint(PapagaioTema.destaque)
             }
@@ -94,6 +103,16 @@ struct CartaoDeModelos: View {
             return "Pasta ativa: \(escolhida.path)"
         }
         return "Você também pode apontar uma pasta que já tenha os modelos GGUF."
+    }
+
+    /// Arredonda para a unidade que a pessoa consegue usar: ninguém planeja a
+    /// tarde com base em "faltam 2.847 segundos".
+    private func tempoRestante(_ segundos: TimeInterval) -> String {
+        if segundos < 60 { return "menos de 1 min" }
+        let minutos = Int((segundos / 60).rounded())
+        if minutos < 60 { return "cerca de \(minutos) min" }
+        let horas = segundos / 3600
+        return String(format: "cerca de %.1f h", horas)
     }
 
     private func gb(_ bytes: Int64) -> String {
