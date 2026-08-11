@@ -114,7 +114,12 @@ public struct PipelineDeArquivo: Sendable {
 
         if temMicrofone {
             let doMicrofone = try await transcrever(microfone, Speaker.eu)
-            let doSistema = temSistema ? try await transcrever(sistema, Speaker.interlocutor) : []
+            let doSistema: [Trecho]
+            if temSistema {
+                doSistema = try await transcrever(sistema, Speaker.interlocutor)
+            } else {
+                doSistema = []
+            }
             return Segmentacao.mesclarCanais(microfone: doMicrofone, sistema: doSistema)
         }
 

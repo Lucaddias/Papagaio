@@ -33,7 +33,12 @@ public enum GramaticaDoResumo {
     - "titulo": título curto da reunião
     - "visaoGeral": parágrafo único resumindo a reunião inteira
     - "temas": lista de {"titulo", "detalhe"}
-    - "citacoes": lista de {"texto", "speaker", "start"} — "start" em segundos
+    - "citacoes": no máximo 3 frases marcantes da conversa. Cada "texto" deve
+      ser uma sequência LITERAL de 8 a 32 palavras de UMA linha da transcrição,
+      sem paráfrase e sem muletas como "éé", "ah", "hum", "putz", "tipo" ou
+      "né". Escolha decisões, aprendizados, posicionamentos ou ideias memoráveis;
+      nunca frases genéricas. Copie o horário [mm:ss] dessa mesma linha em
+      "start" (em segundos). Se não houver frase realmente marcante, use [].
     - "proximosPassos": lista de {"descricao", "responsavel"}
     Use "null" quando não souber o falante ou o responsável.
     """

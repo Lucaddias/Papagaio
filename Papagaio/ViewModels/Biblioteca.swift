@@ -11,6 +11,7 @@ import PapagaioCore
 @MainActor
 @Observable
 final class Biblioteca {
+    private static let chaveSegundosPorSegundoDeAudio = "estimativaSegundosPorSegundoDeAudio"
     private(set) var arquivos: [Arquivo] = []
     /// Arquivos removidos da listagem principal, mas ainda recuperáveis. A
     /// mídia continua no container até a exclusão definitiva.
@@ -20,6 +21,10 @@ final class Biblioteca {
     /// tem em mãos na navegação.
     private(set) var fases: [UUID: PipelineDeArquivo.Fase] = [:]
     private(set) var erros: [UUID: String] = [:]
+    /// Início da fase atual, usado apenas para uma estimativa honesta no card.
+    /// O Whisper não informa percentual real, portanto não exibimos uma falsa
+    /// precisão: calculamos tempo restante a partir da duração do áudio.
+    private var inicioDasFases: [UUID: Date] = [:]
 
     /// O Whisper e o Qwen juntos podem ocupar 13,7 GB. A fila mantém os
     /// pedidos em ordem de chegada e permite que somente um deles carregue os
@@ -438,6 +443,36 @@ final class Biblioteca {
         filaDeProcessamento.contains(arquivo.id)
     }
 
+    func tempoRestanteEstimadoDaTranscricao(_ arquivo: Arquivo) -> TimeInterval? {
+        let chave = arquivo.id.rawValue
+        guard fases[chave] == .transcrevendo, let inicio = inicioDasFases[chave] else { return nil }
+
+        // Não há percentual emitido pelo Whisper. Em vez de inventar uma taxa
+        // universal, usamos o tempo observado nas transcrições anteriores
+        // deste Mac. Sem uma amostra local, a interface mostra “calibrando”.
+        guard let segundosPorSegundoDeAudio = UserDefaults.standard
+            .object(forKey: Self.chaveSegundosPorSegundoDeAudio) as? Double,
+            segundosPorSegundoDeAudio > 0
+        else { return nil }
+
+        let totalEstimado = max(20, arquivo.duracao * segundosPorSegundoDeAudio + 15)
+        return max(0, totalEstimado - Date().timeIntervalSince(inicio))
+    }
+
+    private func registrarVelocidadeDaTranscricao(_ arquivo: Arquivo, iniciadaEm inicio: Date) {
+        guard arquivo.duracao > 0 else { return }
+        let amostra = Date().timeIntervalSince(inicio) / arquivo.duracao
+        guard amostra.isFinite, amostra > 0 else { return }
+
+        // Média móvel: uma execução isolada (Mac aquecendo, outro processo
+        // pesado) não domina a previsão das próximas, mas ela vai se adaptar
+        // gradualmente ao uso real desta máquina.
+        let anterior = UserDefaults.standard
+            .object(forKey: Self.chaveSegundosPorSegundoDeAudio) as? Double
+        let calibrado = anterior.map { $0 * 0.7 + amostra * 0.3 } ?? amostra
+        UserDefaults.standard.set(calibrado, forKey: Self.chaveSegundosPorSegundoDeAudio)
+    }
+
     private func iniciarProximoProcessamentoSeNecessario() {
         guard arquivoEmProcessamento == nil else { return }
 
@@ -500,6 +535,7 @@ final class Biblioteca {
 
         erros[chave] = nil
         fases[chave] = .transcrevendo
+        inicioDasFases[chave] = Date()
         let promptDeEntidades = await PromptDeEntidades.construir(para: arquivo)
 
         // Criado por execução, e descarregado no fim: os dois modelos somam
@@ -527,7 +563,13 @@ final class Biblioteca {
             let final = try await pipeline.processar(arquivo) { fase in
                 Task { @MainActor [weak self] in
                     guard self?.identificadorDaExecucao == execucao else { return }
+                    if fase == .salvando,
+                       self?.fases[chave] == .transcrevendo,
+                       let inicio = self?.inicioDasFases[chave] {
+                        self?.registrarVelocidadeDaTranscricao(arquivo, iniciadaEm: inicio)
+                    }
                     self?.fases[chave] = fase
+                    self?.inicioDasFases[chave] = fase == .transcrevendo ? Date() : nil
                 }
             }
             guard identificadorDaExecucao == execucao,
@@ -566,6 +608,7 @@ final class Biblioteca {
         guard identificadorDaExecucao == execucao else { return }
 
         fases[chave] = nil
+        inicioDasFases[chave] = nil
         arquivoEmProcessamento = nil
         identificadorDaExecucao = nil
         tarefaDeProcessamento = nil

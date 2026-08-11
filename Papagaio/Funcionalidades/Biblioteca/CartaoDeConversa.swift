@@ -7,6 +7,7 @@ struct CartaoDeConversa: View {
     let estado: EstadoDoArquivo
     let processando: Bool
     let naFila: Bool
+    let tempoRestanteEstimadoDaTranscricao: () -> TimeInterval?
     let emOperacaoDeLixeira: Bool
     let aoReprocessar: () -> Void
     let aoRenomear: (String) -> Void
@@ -45,6 +46,7 @@ struct CartaoDeConversa: View {
         estado: EstadoDoArquivo,
         processando: Bool,
         naFila: Bool,
+        tempoRestanteEstimadoDaTranscricao: @escaping () -> TimeInterval?,
         emOperacaoDeLixeira: Bool,
         aoReprocessar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
@@ -61,6 +63,7 @@ struct CartaoDeConversa: View {
         self.estado = estado
         self.processando = processando
         self.naFila = naFila
+        self.tempoRestanteEstimadoDaTranscricao = tempoRestanteEstimadoDaTranscricao
         self.emOperacaoDeLixeira = emOperacaoDeLixeira
         self.aoReprocessar = aoReprocessar
         self.aoRenomear = aoRenomear
@@ -133,17 +136,10 @@ struct CartaoDeConversa: View {
             VStack(alignment: .leading, spacing: 0) {
                 CapaDeConversa(arquivo: arquivo, capaURL: capaURL)
 
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     Text(titulo)
                         .font(PapagaioTema.Tipo.tituloDeCard)
                         .foregroundStyle(PapagaioTema.texto)
-                        // Reservar as duas linhas mantém os selos e o rodapé na
-                        // mesma altura em todos os cartões da fileira. Sem isso
-                        // um título de uma linha desalinhava o cartão inteiro em
-                        // relação ao vizinho.
-                        // Uma linha só, sem reticências: em vez de cortar, o
-                        // título encolhe até caber. O alinhamento da fileira
-                        // vem do `maxHeight`, não da altura do texto.
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                         .help(titulo)
@@ -161,15 +157,19 @@ struct CartaoDeConversa: View {
                     // O selo "Áudio local" saiu: era verdadeiro em 100% dos
                     // cartões, então não distinguia nada — só competia por
                     // espaço com o estado, que é a informação que muda.
-                    LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.curto, espacoVertical: PapagaioTema.Espaco.curto) {
-                        SeloDeStatus(
-                            texto: estado.descricao,
-                            simbolo: estado.simbolo,
-                            estilo: estado.estilo
-                        )
+                    if case .processando(.transcrevendo) = estado {
+                        progressoDaTranscricao
+                    } else {
+                        LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.curto, espacoVertical: PapagaioTema.Espaco.curto) {
+                            SeloDeStatus(
+                                texto: estado.descricao,
+                                simbolo: estado.simbolo,
+                                estilo: estado.estilo
+                            )
 
-                        if let pasta {
-                            SeloDeStatus(texto: pasta, simbolo: "folder", estilo: .neutro)
+                            if let pasta {
+                                SeloDeStatus(texto: pasta, simbolo: "folder", estilo: .neutro)
+                            }
                         }
                     }
 
@@ -210,7 +210,7 @@ struct CartaoDeConversa: View {
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineLimit(1)
                 }
-                .padding(PapagaioTema.Espaco.largo)
+                .padding(PapagaioTema.Espaco.medio)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             // O fundo é desenhado fora do link, então só o texto e a capa
@@ -219,10 +219,10 @@ struct CartaoDeConversa: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Conversa \(titulo). \(estado.descricao)")
-        // Sem `minHeight` fixo: os 390pt anteriores deixavam ~80pt de área
-        // morta no fim de todo cartão, e mais ainda nos de título curto.
-        // `maxHeight: .infinity` iguala a altura de todos na mesma fileira.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 260, maxHeight: 260, alignment: .top)
+        // A altura do card é fixa. Conteúdo comprido deve ficar contido no
+        // próprio card — nunca pode invadir a linha seguinte da grade.
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .cartaoPapagaio()
         .overlay(alignment: .topLeading) {
             botaoDeFavoritoDoCard
@@ -296,6 +296,31 @@ struct CartaoDeConversa: View {
             }
         }
         .opacity(emOperacaoDeLixeira ? 0.72 : 1)
+    }
+
+    private var progressoDaTranscricao: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .tint(PapagaioTema.destaque)
+                Label(
+                    textoDaEstimativa,
+                    systemImage: "waveform"
+                )
+                .font(PapagaioTema.Tipo.legenda.weight(.semibold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+            }
+        }
+    }
+
+    private var textoDaEstimativa: String {
+        guard let restante = tempoRestanteEstimadoDaTranscricao() else {
+            return "Transcrevendo · calibrando previsão…"
+        }
+        let segundos = max(1, Int(restante.rounded(.up)))
+        if segundos < 60 { return "Transcrevendo · cerca de \(segundos) s restantes" }
+        return "Transcrevendo · cerca de \(segundos / 60) min restantes"
     }
 
     @ViewBuilder
@@ -561,9 +586,9 @@ struct CapaDeConversa: View {
                     .foregroundStyle(PapagaioTema.destaqueEscuro.opacity(0.62))
             }
         }
-        // 88 em vez de 116: a capa é decorativa e idêntica em todos os cartões
-        // sem imagem própria, então não merece um terço da altura útil.
-        .frame(height: 88)
+        // A capa é decorativa; manter 72pt deixa espaço suficiente para os
+        // metadados dentro da altura fixa do cartão.
+        .frame(height: 72)
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .accessibilityHidden(true)
     }

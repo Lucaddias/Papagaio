@@ -35,10 +35,13 @@ public struct QwenEngine: SummarizationEngine {
         let transcricao = Self.formatar(trechos)
         let tokens = try await contexto.contarTokens(transcricao)
 
+        let resumo: Resumo
         if tokens <= ContextoLlama.tetoDeEntrada {
-            return try await passeUnico(transcricao)
+            resumo = try await passeUnico(transcricao)
+        } else {
+            resumo = try await mapReduce(trechos)
         }
-        return try await mapReduce(trechos)
+        return Self.validarCitacoes(resumo, em: trechos)
     }
 
     // MARK: - Passe único
@@ -117,6 +120,60 @@ public struct QwenEngine: SummarizationEngine {
         }
         if !atual.isEmpty { chunks.append(atual) }
         return chunks
+    }
+
+    // MARK: - Citações verificáveis
+
+    /// O modelo é bom em escolher ideias relevantes, mas não é uma fonte
+    /// confiável para o segundo exato. Uma citação só sobrevive quando seu
+    /// texto aparece de fato em um trecho da transcrição; a âncora e o falante
+    /// sempre vêm desse trecho real, nunca do JSON produzido pelo modelo.
+    static func validarCitacoes(_ resumo: Resumo, em trechos: [Trecho]) -> Resumo {
+        var textosVistos = Set<String>()
+        let citacoes = resumo.citacoes.compactMap { citacao -> Citacao? in
+            let texto = limparCitacao(citacao.texto)
+            let normalizado = normalizar(texto)
+            let palavras = normalizado.split(separator: " ")
+
+            // Frases muito curtas tendem a ser genéricas e não ajudam a
+            // explicar por que uma conversa importa.
+            guard palavras.count >= 6,
+                  textosVistos.insert(normalizado).inserted,
+                  let trecho = trechos.first(where: {
+                      normalizar(limparCitacao($0.texto)).contains(normalizado)
+                  })
+            else { return nil }
+
+            return Citacao(texto: texto, speaker: trecho.speaker, start: trecho.start)
+        }
+
+        return Resumo(
+            titulo: resumo.titulo,
+            visaoGeral: resumo.visaoGeral,
+            temas: resumo.temas,
+            citacoes: Array(citacoes.prefix(3)),
+            proximosPassos: resumo.proximosPassos
+        )
+    }
+
+    /// Limpeza editorial mínima. Ela só remove muletas de fala comuns;
+    /// conteúdo, números e decisões permanecem literalmente os mesmos.
+    private static func limparCitacao(_ texto: String) -> String {
+        let semMuletas = texto.replacingOccurrences(
+            of: #"(?i)\b(ah+|eh+|é+|hum+|hmm+|ahn+|uh+|putz|tipo|né)\b[\s,]*"#,
+            with: "",
+            options: .regularExpression
+        )
+        return semMuletas
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalizar(_ texto: String) -> String {
+        texto
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "pt_BR"))
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Prompts

@@ -60,6 +60,7 @@ struct ArquivoDetalheView: View {
     @State private var participantesEditados = ""
     @State private var dataEditada = Date()
     @State private var duracaoEditada = ""
+    @State private var mostrandoDetalhes = false
     /// Recarrega a ficha depois de salvar: os metadados vêm de `UserDefaults`,
     /// que não notifica a view sozinho.
     @State private var versaoDaFicha = 0
@@ -322,21 +323,38 @@ struct ArquivoDetalheView: View {
 
     private var textoDoCabecalho: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-            // O título abre a ficha completa — é de lá que saem título e
-            // descrição, que não cabem num popover de campo isolado.
-            Button {
-                abrirEditorDeInformacoes()
-            } label: {
-                Text(titulo)
-                    .font(PapagaioTema.Tipo.tituloDePagina)
-                    .minimumScaleFactor(0.6)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.curto) {
+                // O título abre a ficha completa — é de lá que saem título e
+                // descrição, que não cabem num popover de campo isolado.
+                Button {
+                    abrirEditorDeInformacoes()
+                } label: {
+                    Text(titulo)
+                        .font(PapagaioTema.Tipo.tituloDePagina)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(PapagaioTema.texto)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .buttonStyle(.plain)
+                .help("Editar título e descrição")
+
+                Button {
+                    mostrandoDetalhes.toggle()
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 32, height: 32)
+                }
+                .buttonStyle(.plain)
+                .help("Mostrar detalhes da conversa")
+                .accessibilityLabel("Mostrar detalhes da conversa")
+                .popover(isPresented: $mostrandoDetalhes, arrowEdge: .top) {
+                    detalhesDaConversa
+                }
             }
-            .buttonStyle(.plain)
-            .help("Editar título e descrição")
 
             if !metadados.descricao.isEmpty {
                 Text(metadados.descricao)
@@ -348,43 +366,38 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    /// Ficha na ponta direita da linha das abas — só leitura.
-    ///
-    /// Editar acontece no formulário (pelo título ou pelo menu do cartão), que
-    /// é onde a pessoa preenche isso de qualquer jeito. Deixar cada campo
-    /// clicável aqui duplicava o mesmo caminho em dois lugares.
-    private var fichaDoCabecalho: some View {
-        // Fluxo em vez de linha rígida: com muitos nomes ela quebra dentro do
-        // próprio espaço, sem empurrar as abas nem sumir na borda da janela.
-        LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.medio, espacoVertical: PapagaioTema.Espaco.minimo) {
-            // Campo vazio continua visível, dizendo que não foi informado:
-            // sumir dava a impressão de que a ficha nem existia.
-            metadadoDoCabecalho(
+    /// Ficha compacta, aberta pelo botão ao lado do título. Mantê-la em coluna
+    /// impede que nomes grandes comprimam ou quebrem a barra de abas.
+    private var detalhesDaConversa: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            detalheDaConversa(
                 entrevistado.isEmpty
                     ? "Entrevistado não informado"
                     : "\(quantidadeDePessoas(entrevistado) > 1 ? "Entrevistados" : "Entrevistado"): \(entrevistado)",
                 simbolo: "person"
             )
-            metadadoDoCabecalho(
+            detalheDaConversa(
                 entrevistadores.isEmpty
                     ? "Entrevistador não informado"
                     : "\(quantidadeDePessoas(entrevistadores) > 1 ? "Entrevistadores" : "Entrevistador"): \(entrevistadores)",
                 simbolo: "person.crop.circle.badge.checkmark"
             )
-            metadadoDoCabecalho(
+            detalheDaConversa(
                 metadados.formato.isEmpty ? "Modalidade não informada" : metadados.formato,
                 simbolo: simboloDaModalidade(metadados.formato)
             )
-            metadadoDoCabecalho(
+            detalheDaConversa(
                 participantes == 1 ? "1 participante" : "\(participantes) participantes",
                 simbolo: participantes == 1 ? "person" : "person.2"
             )
-            metadadoDoCabecalho(
+            detalheDaConversa(
                 arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
                 simbolo: "calendar"
             )
-            metadadoDoCabecalho(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
+            detalheDaConversa(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
         }
+        .padding(PapagaioTema.Espaco.largo)
+        .frame(width: 360, alignment: .leading)
     }
 
     private var seloDoCabecalho: some View {
@@ -451,14 +464,12 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    private func metadadoDoCabecalho(_ texto: String, simbolo: String) -> some View {
+    private func detalheDaConversa(_ texto: String, simbolo: String) -> some View {
         Label(texto, systemImage: simbolo)
             .font(PapagaioTema.Tipo.apoio)
             .foregroundStyle(PapagaioTema.textoSecundario)
-            .lineLimit(1)
-            // `LayoutDeFluxo` mede cada item pelo tamanho natural; sem isto o
-            // rótulo comprido tentaria ocupar a linha toda.
-            .fixedSize(horizontal: true, vertical: false)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var seletorDeSecao: some View {
@@ -468,8 +479,7 @@ struct ArquivoDetalheView: View {
                 withAnimation(animacaoDeInterface) {
                     secaoSelecionada = secao
                 }
-            },
-            acessorio: { fichaDoCabecalho }
+            }
         )
     }
 
@@ -629,14 +639,15 @@ struct ArquivoDetalheView: View {
         anexosDaGravacao = gravacoesDaConversa()
     }
 
-    /// O áudio da própria gravação entra fixo na lista de mídia: depois que a
-    /// transcrição e o resumo estão prontos o arquivo costuma virar só peso em
-    /// disco, e daqui o usuário consegue apagá-lo sem sair do app.
+    /// A gravação pode ter dois canais físicos: microfone e sistema. Eles são
+    /// necessários ao player, mas representam uma única reunião para quem usa
+    /// o app. Por isso a mídia mostra apenas o áudio principal; o canal de
+    /// sistema jamais vira um segundo anexo visível.
     private func gravacoesDaConversa() -> [AnexoDeMidiaDaConversa] {
-        [audio, audioSecundario]
-            .compactMap { $0 }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .compactMap { try? MidiasDaConversa.anexo(para: $0) }
+        guard FileManager.default.fileExists(atPath: audio.path),
+              let anexo = try? MidiasDaConversa.anexo(para: audio)
+        else { return [] }
+        return [anexo]
     }
 
     private func selecionarMidias() {

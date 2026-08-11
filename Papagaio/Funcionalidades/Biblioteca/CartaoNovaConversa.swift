@@ -56,7 +56,7 @@ struct CartaoNovaConversa: View {
             }
         }
         .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: .infinity, minHeight: 260)
+        .frame(maxWidth: .infinity, minHeight: 260, maxHeight: 260)
         .background(PapagaioTema.superficie.opacity(0.55), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
