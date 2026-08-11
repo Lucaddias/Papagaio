@@ -229,6 +229,7 @@
 				INFOPLIST_KEY_NSContactsUsageDescription = "O Papagaio usa contatos para reconhecer melhor nomes próprios em transcrições.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "O Papagaio grava o seu microfone para transcrever o que você fala na reunião.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "O Papagaio usa o reconhecimento de fala para mostrar a nota ditada enquanto você fala. O texto final é refinado no seu Mac, sem sair dele.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -259,6 +260,7 @@
 				INFOPLIST_KEY_NSContactsUsageDescription = "O Papagaio usa contatos para reconhecer melhor nomes próprios em transcrições.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "O Papagaio grava o seu microfone para transcrever o que você fala na reunião.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "O Papagaio usa o reconhecimento de fala para mostrar a nota ditada enquanto você fala. O texto final é refinado no seu Mac, sem sair dele.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
