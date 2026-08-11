@@ -1,6 +1,0 @@
-framework module onnxruntime {
-  umbrella header "onnxruntime_c_api.h"
-
-  export *
-  module * { export * }
-}
