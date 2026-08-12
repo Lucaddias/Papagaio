@@ -570,6 +570,17 @@ final class Biblioteca {
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
         guard identificadorDaExecucao == execucao else { return }
 
+        // Antes de esquecer o começo, aprende com ele: quanto este Mac levou
+        // por segundo de áudio. É esse número que a próxima estimativa usa.
+        if let inicio = iniciadoEm[chave],
+           let arquivo = arquivos.first(where: { $0.id.rawValue == chave }),
+           arquivo.duracao > 0 {
+            RitmoDeProcessamento.registrar(
+                decorrido: Date().timeIntervalSince(inicio),
+                paraAudioDe: arquivo.duracao
+            )
+        }
+
         fases[chave] = nil
         iniciadoEm[chave] = nil
         arquivoEmProcessamento = nil
@@ -658,18 +669,16 @@ final class Biblioteca {
     /// uma palavra em `Fase.descricao` quebrava a cor sem quebrar o build.
     /// Quanto do processamento já passou e quanto falta, em segundos.
     ///
-    /// É uma **estimativa por tempo decorrido**, não medição real: nem o
-    /// whisper nem o Qwen reportam percentual daqui. A referência é a duração
-    /// do áudio — na prática o large-v3 leva algo perto de metade dela para
-    /// transcrever, e o resumo some num punhado de segundos por minuto de
-    /// conversa. Erra, e por isso a interface fala em "cerca de".
+    /// Continua sendo **estimativa por tempo decorrido** — nem o whisper nem o
+    /// Qwen reportam percentual daqui —, mas agora calibrada por este Mac, e
+    /// não por um fator fixo. Ver `RitmoDeProcessamento`.
     ///
     /// A fração satura em 95% enquanto o trabalho não termina: barra parada em
     /// 100% com o app ainda pensando é pior que barra lenta.
     func progresso(de arquivo: Arquivo) -> (inicio: Date, estimativa: TimeInterval)? {
         let chave = arquivo.id.rawValue
         guard fases[chave] != nil, let inicio = iniciadoEm[chave] else { return nil }
-        return (inicio, max(20, arquivo.duracao * 0.75))
+        return (inicio, RitmoDeProcessamento.estimativa(paraAudioDe: arquivo.duracao))
     }
 
     func estado(de arquivo: Arquivo) -> EstadoDoArquivo {
