@@ -209,13 +209,6 @@ struct ContentView: View {
                             await biblioteca.atualizarTrechos(trechos, de: arquivo)
                         },
                         aoDitar: { url in try await biblioteca.transcreverDitado(url) },
-                        // A conversa substitui a raiz do `NavigationStack`, e
-                        // com ela some a barra do app. Ajustes e lixeira
-                        // viajam junto para não ficarem inalcançáveis aqui.
-                        aoAbrirConfiguracoes: {
-                            conversaAberta.removeAll()
-                            telaSelecionada = .configuracoes
-                        }
                     )
                 }
             }
