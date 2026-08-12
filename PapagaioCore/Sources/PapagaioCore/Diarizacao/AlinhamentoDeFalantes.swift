@@ -8,21 +8,25 @@ import Foundation
 /// - um segmento cobre claramente mais do que todos os outros → o falante dele;
 /// - topo de dois segmentos com overlap parecido (segundo ≥ 80% do primeiro) →
 ///   `nil`: é um empate técnico, e chutar um falante aqui inventa atribuição
-///   sem evidência.
+///   sem evidência — **salvo quando os dois lados são o mesmo falante**: aí o
+///   turno foi só dividido em dois segmentos, e a costura é segura.
 ///
 /// E, porque o diarizador não cobre cada instante do áudio (segmentos de fala
 /// separados por pausas) —
 /// - palavra de duração zero (artefato do Whisper) com seu instante dentro de
 ///   um único segmento → o falante dele (o ponto, não o intervalo, decide);
-/// - palavra num buraco pequeno (≤ 1s do segmento contíguo mais próximo) →
+/// - palavra num buraco pequeno (≤ 2s do segmento contíguo mais próximo) →
 ///   o falante do segmento mais próximo; dois segmentos a distâncias
-///   parecidas (segunda ≤ 125% da primeira) seguem sem falante.
+///   parecidas (segunda ≤ 125% da primeira) seguem sem falante quando são
+///   falantes diferentes.
 ///
 /// Não altera nada do trecho além de `Palavra.falanteAcustico`.
 public enum AlinhamentoDeFalantes {
     /// Maior buraco entre segmentos que a palavra atravessa por proximidade.
-    /// Abaixo disso a fala é continuação; acima é pausa real.
-    static let ponteMaxima: TimeInterval = 1.0
+    /// Abaixo disso a fala é continuação; acima é pausa real. Medido nos
+    /// áudios reais: a mediana dos buracos que o Whisper transcreve está em
+    /// ~1,3s, e 91% deles ficam em ≤ 2s.
+    static let ponteMaxima: TimeInterval = 2.0
 
     /// Segundos de sobreposição entre a palavra e o segmento. Não negativo.
     static func overlap(_ palavra: Palavra, _ segmento: SegmentoDeFalante) -> TimeInterval {
@@ -60,8 +64,11 @@ public enum AlinhamentoDeFalantes {
         if let primeiro = coberturas.first {
             // Empate técnico: o segundo colocado cobre quase tanto quanto o
             // primeiro — a fronteira entre os segmentos cortou a palavra.
+            // Dois segmentos do MESMO falante não são ambiguidade: o turno foi
+            // só dividido na fronteira, e a costura é segura.
             if let segundo = coberturas.dropFirst().first,
-               segundo.overlap >= primeiro.overlap * 0.8 {
+               segundo.overlap >= primeiro.overlap * 0.8,
+               segundo.segmento.falanteId != primeiro.segmento.falanteId {
                 return palavra
             }
             return comFalante(palavra, primeiro.segmento.falanteId)

@@ -41,9 +41,25 @@ func alinhamentoEmpateTecnicoEUnknown() {
     #expect(atribuidas[0].falanteAcustico == nil)
 }
 
+@Test("Palavra cortada na fronteira de segmentos do mesmo falante costura")
+func alinhamentoEmpateTecnicoDoMesmoFalanteCostura() {
+    // Mesma fronteira, mas os dois segmentos são S1: o turno foi só dividido em
+    // dois pedaços — a costura é segura, sem ambiguidade de falante.
+    let palavras = [palavra("e", 0.95, 1.05)]
+    let segmentos = [
+        SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 1),
+        SegmentoDeFalante(falanteId: "S1", inicio: 1, fim: 2),
+    ]
+
+    let atribuidas = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)
+    #expect(atribuidas[0].falanteAcustico == "S1")
+}
+
 @Test("Palavra num buraco grande demais fica desconhecida")
 func alinhamentoSemOverlapEUnknown() {
-    let palavras = [palavra("oi", 4, 4.5)]
+    // Buraco de 3s (palavra a partir de 5, segmento termina em 2): acima da
+    // ponte máxima de 2s — é pausa real, sem costura.
+    let palavras = [palavra("oi", 5, 5.5)]
     let segmentos = [
         SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 2)
     ]
