@@ -95,6 +95,14 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
         rec.isMeteringEnabled = true
         rec.prepareToRecord()
         guard rec.record() else {
+            // Falhar aqui deixava um `AVAudioRecorder` preparado e vivo,
+            // segurando o dispositivo de entrada: a tentativa seguinte
+            // encontrava o microfone ocupado e falhava também, e assim por
+            // diante. Soltar o recurso antes de propagar o erro quebra esse
+            // ciclo — a próxima tentativa começa limpa.
+            rec.stop()
+            try? FileManager.default.removeItem(at: pasta)
+            self.pasta = nil
             throw ErroCaptura.arquivoInvalido("AVAudioRecorder recusou começar a gravar")
         }
         recorder = rec

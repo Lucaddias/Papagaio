@@ -138,7 +138,7 @@ final class Biblioteca {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
         else { return }
 
-        cancelarProcessamentoDoArquivo(arquivo.id)
+        await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
         if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
@@ -422,15 +422,32 @@ final class Biblioteca {
         iniciarProximoProcessamentoSeNecessario()
     }
 
-    private func cancelarProcessamentoDoArquivo(_ arquivoID: ArquivoID) {
+    /// Cancela e **espera o trabalho realmente parar**.
+    ///
+    /// `Task.cancel()` só levanta uma bandeira; quem decide obedecer é o
+    /// código que roda dentro. O whisper e o Qwen trabalham em blocos longos e
+    /// síncronos, então continuam ocupando GPU e memória por bastante tempo
+    /// depois do pedido — e o `iniciarProximoProcessamentoSeNecessario()` já
+    /// disparava o próximo em cima disso. Dois modelos de 13,7 GB carregados
+    /// ao mesmo tempo é o que fazia o `AVAudioRecorder` recusar começar a
+    /// gravar logo em seguida.
+    ///
+    /// Esperar pelo `value` custa alguns segundos, mas garante que a máquina
+    /// esteja livre antes de começar qualquer coisa nova.
+    private func cancelarProcessamentoDoArquivo(_ arquivoID: ArquivoID) async {
         filaDeProcessamento.removeAll { $0 == arquivoID }
         guard arquivoEmProcessamento == arquivoID else { return }
 
-        tarefaDeProcessamento?.cancel()
+        let emCurso = tarefaDeProcessamento
         tarefaDeProcessamento = nil
         arquivoEmProcessamento = nil
         identificadorDaExecucao = nil
         fases[arquivoID.rawValue] = nil
+        iniciadoEm[arquivoID.rawValue] = nil
+
+        emCurso?.cancel()
+        await emCurso?.value
+
         iniciarProximoProcessamentoSeNecessario()
     }
 
