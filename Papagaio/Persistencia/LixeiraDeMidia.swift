@@ -50,7 +50,7 @@ enum LixeiraDeMidia {
     /// Devolve o arquivo ao lugar e ao **nome** de origem.
     ///
     /// O nome importa: o app procura o áudio por nome exato
-    /// (`microfone.wav`, `sistema.m4a`, `gravacao.<ext>`). Na lixeira o arquivo
+    /// (`microfone.wav`, `sistema.caf`, `gravacao.<ext>`). Na lixeira o arquivo
     /// ganha um prefixo com UUID para dois homônimos não se sobrescreverem, e
     /// é aqui que esse prefixo sai. Restaurar por fora, arrastando no Finder,
     /// deixaria o prefixo e o player não acharia nada.

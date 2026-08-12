@@ -108,6 +108,7 @@ struct BibliotecaHomeView: View {
         if emCaptura {
             PainelDeGravacao(
                 waveform: gravador.waveform,
+                waveformSistema: gravador.waveformSistema,
                 tempoDeGravacao: gravador.tempoDeGravacao,
                 pausado: gravador.pausado,
                 aoPausar: aoPausarGravacao,

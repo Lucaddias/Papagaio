@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 struct ArquivoDetalheView: View {
     let arquivo: Arquivo
     let audio: URL
-    /// Canal do sistema (`sistema.m4a`) para reprodução em paralelo ao
+    /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou

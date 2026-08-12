@@ -100,7 +100,7 @@ func armazenamentoArquivosCanonicos() throws {
     #expect(FileManager.default.fileExists(atPath: microfone.deletingLastPathComponent().path))
 
     let sistema = try armazenamento.criarArquivoDeAudio(id: id, nome: Armazenamento.Nome.sistema)
-    #expect(sistema.lastPathComponent == "sistema.m4a")
+    #expect(sistema.lastPathComponent == "sistema.caf")
 
     let importado = try armazenamento.criarArquivoImportado(id: id, extensao: "m4a")
     #expect(importado.lastPathComponent == "gravacao.m4a")

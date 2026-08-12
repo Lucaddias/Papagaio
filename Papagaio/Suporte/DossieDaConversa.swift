@@ -49,7 +49,8 @@ enum DossieDaConversa {
         // de dois canais chegaria pela metade.
         let candidatos = [
             audioPrincipal,
-            audioPrincipal.deletingLastPathComponent().appendingPathComponent("sistema.m4a"),
+            audioPrincipal.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistema),
+            audioPrincipal.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistemaM4ALegado),
         ]
         for origem in candidatos where FileManager.default.fileExists(atPath: origem.path) {
             try? FileManager.default.copyItem(

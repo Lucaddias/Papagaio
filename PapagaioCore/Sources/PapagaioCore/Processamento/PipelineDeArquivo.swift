@@ -95,7 +95,7 @@ public struct PipelineDeArquivo: Sendable {
     /// de uma versão anterior.
     private func transcrever(_ arquivo: Arquivo) async throws -> [Trecho] {
         let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
-        // Canais separados (nova convenção): `microfone.wav` + `sistema.m4a`.
+        // Canais separados (nova convenção): `microfone.wav` + `sistema.caf`.
         // Os nomes legados ficam na cadeia — wav do sistema, pcm, mixagem —
         // para a biblioteca existente continuar transcrevendo até sair.
         let microfone = Self.primeiroComConteudo(pasta, [
@@ -105,6 +105,7 @@ public struct PipelineDeArquivo: Sendable {
         ])
         let sistema = Self.primeiroComConteudo(pasta, [
             Armazenamento.Nome.sistema,
+            Armazenamento.Nome.sistemaM4ALegado,
             Armazenamento.Nome.wavSistema,
             Armazenamento.Nome.pcmSistema,
         ])

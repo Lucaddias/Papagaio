@@ -627,7 +627,7 @@ final class Biblioteca {
         return !Self.existe(pasta.appendingPathComponent(Armazenamento.Nome.microfone))
     }
 
-    /// Canal do sistema tocado em paralelo ao microfone — `sistema.m4a`.
+    /// Canal do sistema tocado em paralelo ao microfone — `sistema.caf`.
     ///
     /// Só existe quando a gravação capturou os dois canais (o tap subiu).
     /// Importado e legado são canal único: `nil` aqui, e a reprodução toca
@@ -637,8 +637,11 @@ final class Biblioteca {
         guard Self.existe(pasta.appendingPathComponent(Armazenamento.Nome.microfone)) else {
             return nil
         }
-        let sistema = pasta.appendingPathComponent(Armazenamento.Nome.sistema)
-        return Self.existe(sistema) ? sistema : nil
+        for nome in [Armazenamento.Nome.sistema, Armazenamento.Nome.sistemaM4ALegado] {
+            let sistema = pasta.appendingPathComponent(nome)
+            if Self.existe(sistema) { return sistema }
+        }
+        return nil
     }
 
     private static func existe(_ url: URL) -> Bool {
