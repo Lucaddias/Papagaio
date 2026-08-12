@@ -61,6 +61,43 @@ func decodificaCompleto() {
     #expect(resumo?.proximosPassos.first?.responsavel == "Luca")
 }
 
+@Test("Citações só recebem âncora de um trecho que realmente contém o texto")
+func validaCitacoesContraATranscricao() {
+    let trechos = [
+        Trecho(
+            start: 42,
+            end: 50,
+            texto: "Éé, putz, precisamos ouvir os alunos antes de decidir o próximo passo.",
+            speaker: Speaker.eu
+        ),
+        Trecho(
+            start: 80,
+            end: 88,
+            texto: "Vamos marcar a reunião para sexta-feira e enviar o convite hoje.",
+            speaker: Speaker.interlocutor
+        ),
+    ]
+    let resumo = Resumo(
+        titulo: "Teste",
+        visaoGeral: "Teste.",
+        citacoes: [
+            Citacao(
+                texto: "Éé, putz, precisamos ouvir os alunos antes de decidir o próximo passo.",
+                speaker: nil,
+                start: 999
+            ),
+            Citacao(texto: "Uma frase inventada que não existe nesta reunião.", speaker: nil, start: 80),
+        ]
+    )
+
+    let validado = QwenEngine.validarCitacoes(resumo, em: trechos)
+
+    #expect(validado.citacoes.count == 1)
+    #expect(validado.citacoes[0].texto == "precisamos ouvir os alunos antes de decidir o próximo passo.")
+    #expect(validado.citacoes[0].start == 42)
+    #expect(validado.citacoes[0].speaker == Speaker.eu)
+}
+
 // MARK: - Gramática
 
 @Test("Gramática GBNF tem uma regra por linha e define root")
