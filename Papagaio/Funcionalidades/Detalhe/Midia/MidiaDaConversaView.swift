@@ -11,6 +11,71 @@ struct MidiaDaConversaView: View {
     let aoRestaurar: (MidiaNaLixeira) -> Void
     let aoApagarDeVez: (MidiaNaLixeira) -> Void
 
+    @State private var mostrandoLixeira = false
+
+    private var botaoDaLixeira: some View {
+        Button {
+            mostrandoLixeira = true
+        } label: {
+            Label(
+                naLixeira.count == 1 ? "1 na lixeira" : "\(naLixeira.count) na lixeira",
+                systemImage: "trash"
+            )
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(PapagaioTema.destaqueEscuro)
+            .padding(.horizontal, PapagaioTema.Espaco.medio)
+            .frame(height: PapagaioTema.Altura.compacta)
+            .background(PapagaioTema.destaque.opacity(0.14), in: Capsule())
+            .overlay {
+                Capsule().stroke(PapagaioTema.destaque.opacity(0.58), lineWidth: 1)
+            }
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Mídias removidas desta conversa")
+        .popover(isPresented: $mostrandoLixeira, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text("Removidos desta conversa")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .textCase(.uppercase)
+
+                ForEach(naLixeira) { item in
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.nome)
+                                .font(PapagaioTema.Tipo.apoio.weight(.semibold))
+                                .foregroundStyle(PapagaioTema.texto)
+                                .lineLimit(1)
+                            Text(item.apagadoEm.formatted(.dateTime.day().month().hour().minute()))
+                                .font(.caption)
+                                .foregroundStyle(PapagaioTema.textoSecundario)
+                        }
+
+                        Spacer(minLength: PapagaioTema.Espaco.curto)
+
+                        Button("Restaurar") { aoRestaurar(item) }
+                            .buttonStyle(.plain)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                        Button {
+                            aoApagarDeVez(item)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(PapagaioTema.perigo)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Apagar definitivamente")
+                    }
+                }
+            }
+            .padding(PapagaioTema.Espaco.largo)
+            .frame(width: 340)
+        }
+    }
+
     var body: some View {
         // Em janela estreita a coluna lateral roubaria a largura de um cartão
         // inteiro; aí ela volta a ser uma faixa acima da grade.
@@ -75,18 +140,6 @@ struct MidiaDaConversaView: View {
                         aoRemover: { aoRemover(anexo) }
                     )
                 }
-
-                // Removido não some da grade: fica no lugar, apagado, com as
-                // duas saídas à mão. Sumir na hora obriga a pessoa a procurar
-                // uma lixeira em outra tela para desfazer um clique errado —
-                // e o arrependimento acontece aqui, dois segundos depois.
-                ForEach(naLixeira) { item in
-                    CartaoDeMidiaRemovida(
-                        item: item,
-                        aoRestaurar: { aoRestaurar(item) },
-                        aoApagarDeVez: { aoApagarDeVez(item) }
-                    )
-                }
             }
 
         }
@@ -114,6 +167,12 @@ struct MidiaDaConversaView: View {
             .frame(height: PapagaioTema.Altura.compacta)
             .background(PapagaioTema.superficieSuave, in: Capsule())
 
+            // Remover um anexo é fácil demais para o desfazer morar em outra
+            // tela. Aqui, do lado da contagem, ele fica onde o arrependimento
+            // acontece.
+            if !naLixeira.isEmpty {
+                botaoDaLixeira
+            }
         }
         .fixedSize()
     }
