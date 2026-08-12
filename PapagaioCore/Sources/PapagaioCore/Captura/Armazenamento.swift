@@ -109,6 +109,16 @@ public struct Armazenamento: Sendable {
         try fm.removeItem(at: pasta)
     }
 
+    /// Remove todas as gravações deste container, inclusive pastas órfãs de
+    /// uma captura que tenha sido interrompida antes de entrar no SwiftData.
+    /// Os modelos ficam em `Models` e deliberadamente não fazem parte desta
+    /// operação: são recursos do app, não dados da conta.
+    public func removerTodasAsGravacoes(_ fm: FileManager = .default) throws {
+        let gravacoes = raiz.appendingPathComponent(Self.pastaGravacoes, isDirectory: true)
+        guard fm.fileExists(atPath: gravacoes.path) else { return }
+        try fm.removeItem(at: gravacoes)
+    }
+
     /// Nomes canônicos dentro da pasta de uma gravação.
     ///
     /// O backend de áudio agora segue o Eko: sem mixagem prévia em disco.

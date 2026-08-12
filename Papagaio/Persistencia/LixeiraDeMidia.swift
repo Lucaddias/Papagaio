@@ -108,6 +108,12 @@ enum LixeiraDeMidia {
         UserDefaults.standard.removeObject(forKey: chave)
     }
 
+    /// A biblioteca já removeu a pasta de gravações inteira. Aqui descartamos
+    /// só os metadados, sem seguir caminhos absolutos fora do container.
+    static func limparRegistros() {
+        UserDefaults.standard.removeObject(forKey: chave)
+    }
+
     private static func salvar(_ itens: [MidiaNaLixeira]) {
         guard let dados = try? JSONEncoder().encode(itens) else { return }
         UserDefaults.standard.set(dados, forKey: chave)

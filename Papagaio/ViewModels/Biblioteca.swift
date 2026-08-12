@@ -251,6 +251,31 @@ final class Biblioteca {
         }
     }
 
+    /// Remove permanentemente toda a biblioteca da conta atual. A execução do
+    /// pipeline é cancelada e aguardada antes de apagar o banco, impedindo que
+    /// um processamento tardio recrie um registro depois da exclusão.
+    func excluirDadosDaConta() async throws {
+        let tarefa = tarefaDeProcessamento
+        tarefa?.cancel()
+        tarefaDeProcessamento = nil
+        arquivoEmProcessamento = nil
+        identificadorDaExecucao = nil
+        filaDeProcessamento.removeAll()
+
+        if let tarefa { await tarefa.value }
+
+        try armazenamento.removerTodasAsGravacoes()
+        try await repositorio.apagarTodosOsDados(espaco: espaco)
+
+        arquivos.removeAll()
+        arquivosNaLixeira.removeAll()
+        fases.removeAll()
+        iniciadoEm.removeAll()
+        erros.removeAll()
+        operacoesDeLixeiraEmAndamento.removeAll()
+        erroDaLixeira = nil
+    }
+
     func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
         operacoesDeLixeiraEmAndamento.contains(arquivo.id)
     }

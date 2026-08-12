@@ -3,6 +3,8 @@ import SwiftUI
 struct SegurancaDoPerfil: View {
     let aoAlterarSenha: () -> Void
     let aoSair: () -> Void
+    let aoExcluirConta: () -> Void
+    let excluindoConta: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
@@ -12,11 +14,23 @@ struct SegurancaDoPerfil: View {
 
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .center) {
-                    conteudo
+                    conteudoDaSessao
                 }
 
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-                    conteudo
+                    conteudoDaSessao
+                }
+            }
+
+            SeparadorPapagaio()
+
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: PapagaioTema.Espaco.largo) {
+                    conteudoDeExclusao
+                }
+
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                    conteudoDeExclusao
                 }
             }
         }
@@ -24,7 +38,7 @@ struct SegurancaDoPerfil: View {
         .cartaoPapagaio()
     }
 
-    private var conteudo: some View {
+    private var conteudoDaSessao: some View {
         Group {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text("Senha")
@@ -42,6 +56,27 @@ struct SegurancaDoPerfil: View {
 
                 Button("Sair", role: .destructive, action: aoSair)
                     .buttonStyle(BotaoDeContornoPapagaio())
+        }
+    }
+
+    private var conteudoDeExclusao: some View {
+        Group {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text("Excluir conta")
+                    .font(.headline)
+                    .foregroundStyle(PapagaioTema.perigo)
+                Text("Remove permanentemente seu perfil, conversas, áudios, notas e equipes deste Mac.")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+            Spacer()
+
+            Button(role: .destructive, action: aoExcluirConta) {
+                Label(excluindoConta ? "Excluindo..." : "Excluir conta", systemImage: "trash")
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+            .disabled(excluindoConta)
         }
     }
 }

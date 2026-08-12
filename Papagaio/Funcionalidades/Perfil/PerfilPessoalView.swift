@@ -8,9 +8,13 @@ struct PerfilPessoalView: View {
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void
     let aoSair: () -> Void
+    let aoExcluirConta: () async throws -> Void
     @State private var nome: String = ""
     @State private var email: String = ""
     @State private var mostrandoAvisoDeSenha = false
+    @State private var mostrandoConfirmacaoDeExclusao = false
+    @State private var excluindoConta = false
+    @State private var erroDeExclusao: String?
 
     var body: some View {
         ScrollView {
@@ -62,7 +66,9 @@ struct PerfilPessoalView: View {
 
                 SegurancaDoPerfil(
                     aoAlterarSenha: { mostrandoAvisoDeSenha = true },
-                    aoSair: aoSair
+                    aoSair: aoSair,
+                    aoExcluirConta: { mostrandoConfirmacaoDeExclusao = true },
+                    excluindoConta: excluindoConta
                 )
                 .frame(maxWidth: 690)
             }
@@ -79,6 +85,22 @@ struct PerfilPessoalView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("A senha é gerenciada pelo seu ID Apple. Para alterar, use os ajustes da sua conta Apple.")
+        }
+        .alert("Excluir conta permanentemente?", isPresented: $mostrandoConfirmacaoDeExclusao) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Excluir conta e arquivos", role: .destructive) {
+                Task { await excluirConta() }
+            }
+        } message: {
+            Text("Esta ação não pode ser desfeita. Seu perfil, conversas, áudios, transcrições, notas, tarefas e equipes deste Mac serão removidos.")
+        }
+        .alert("Não foi possível excluir a conta", isPresented: Binding(
+            get: { erroDeExclusao != nil },
+            set: { if !$0 { erroDeExclusao = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeExclusao = nil }
+        } message: {
+            Text(erroDeExclusao ?? "")
         }
     }
 
@@ -97,6 +119,17 @@ struct PerfilPessoalView: View {
         painel.title = "Escolher foto do perfil"
         if painel.runModal() == .OK, let url = painel.url {
             perfil.escolherAvatar(url)
+        }
+    }
+
+    private func excluirConta() async {
+        excluindoConta = true
+        defer { excluindoConta = false }
+
+        do {
+            try await aoExcluirConta()
+        } catch {
+            erroDeExclusao = error.localizedDescription
         }
     }
 }
