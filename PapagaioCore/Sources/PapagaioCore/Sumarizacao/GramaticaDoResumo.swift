@@ -33,7 +33,10 @@ public enum GramaticaDoResumo {
     - "titulo": título curto da reunião
     - "visaoGeral": parágrafo único resumindo a reunião inteira
     - "temas": lista de {"titulo", "detalhe"}
-    - "citacoes": lista de {"texto", "speaker", "start"} — "start" em segundos
+    - "citacoes": no máximo 3 falas MARCANTES, copiadas LITERALMENTE da     transcrição — {"texto", "speaker", "start"}, com "start" em segundos.
+      Marcante é a fala que carrega ideia, conselho, decisão, conclusão,     aprendizado ou posicionamento, e que se entende sozinha, fora do contexto.
+      Não sirvem: saudação, confirmação curta, pergunta solta, repetição e     transição de assunto.
+      Copie palavra por palavra, sem reescrever nem juntar frases distantes.     Entre 8 e 32 palavras. Prefira devolver menos, ou nenhuma, a inventar.
     - "proximosPassos": lista de {"descricao", "responsavel"}
     Use "null" quando não souber o falante ou o responsável.
     """

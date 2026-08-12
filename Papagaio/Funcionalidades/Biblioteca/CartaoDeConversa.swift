@@ -137,13 +137,17 @@ struct CartaoDeConversa: View {
         }
     }
 
+    /// Zero quando ninguém foi informado e a transcrição não separou falantes.
+    ///
+    /// O piso em 1 dizia "1 participante" para conversa nenhuma preenchida —
+    /// um dado inventado, e que a pessoa não tem como corrigir, já que o número
+    /// é calculado. Mesma regra da ficha, para as duas telas não discordarem.
     private var participantes: Int {
-        max(1, metadados.participantes ?? participantesDetectados)
+        metadados.participantes ?? participantesDetectados
     }
 
     private var participantesDetectados: Int {
-        let speakers = Set(arquivo.trechos.compactMap(\.speaker).filter { !$0.isEmpty })
-        return max(1, speakers.count)
+        Set(arquivo.trechos.compactMap(\.speaker).filter { !$0.isEmpty }).count
     }
 
     var body: some View {
@@ -424,6 +428,14 @@ struct CartaoDeConversa: View {
         }
     }
 
+    private func quantidadeDeNomes(_ texto: String) -> Int {
+        texto
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .count
+    }
+
     private func abrirEditorDeInformacoes() {
         tituloEditado = titulo
         entrevistadoEditado = metadados.entrevistado
@@ -442,8 +454,13 @@ struct CartaoDeConversa: View {
         let tituloLimpo = tituloEditado.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
-        let participantesLimpos = participantesEditados.trimmingCharacters(in: .whitespacesAndNewlines)
-        let quantidade = Int(participantesLimpos).map { max(1, $0) }
+        // Contado a partir dos nomes que a pessoa **acabou de digitar**, e não
+        // de `participantesEditados`, que é preenchido ao abrir o formulário e
+        // nunca mais muda. Lendo dali, adicionar dois entrevistados e salvar
+        // gravava o número antigo — o cartão mostrava um total, a ficha
+        // mostrava outro, e nenhum dos dois batia com a lista de nomes.
+        let quantidade = quantidadeDeNomes(entrevistadoEditado)
+            + quantidadeDeNomes(entrevistadoresEditados)
         let novosMetadados = MetadadosVisuaisDoArquivo(
             entrevistado: entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
             emailDoEntrevistado: emailDoEntrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -451,12 +468,16 @@ struct CartaoDeConversa: View {
             emailDosEntrevistadores: emailDosEntrevistadoresEditado.trimmingCharacters(in: .whitespacesAndNewlines),
             descricao: descricaoEditada.trimmingCharacters(in: .whitespacesAndNewlines),
             formato: formatoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
-            participantes: quantidade
+            // `nil` quando ninguém foi informado: guardar zero afirmaria que a
+            // conversa não teve participantes, e o certo é dizer que não se
+            // sabe. É o `nil` que faz o cartão cair na detecção por falante.
+            participantes: quantidade > 0 ? quantidade : nil
         )
 
         metadados = novosMetadados
         PreferenciasVisuaisDoArquivo.definirMetadados(novosMetadados, para: arquivo.id)
-        aoAtualizarMetadados(tituloLimpo, dataEditada, TimeInterval.lendo(duracaoEditada) ?? arquivo.duracao)
+        // A duração não é editável no formulário: vem do próprio áudio.
+        aoAtualizarMetadados(tituloLimpo, dataEditada, arquivo.duracao)
         aoAlterarPreferenciasVisuais()
         editandoInformacoes = false
     }
