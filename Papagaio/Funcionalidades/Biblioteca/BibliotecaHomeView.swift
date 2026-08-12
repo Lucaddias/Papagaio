@@ -432,39 +432,7 @@ struct BibliotecaHomeView: View {
 
                 ForEach(arquivosFiltrados) { arquivo in
                     if let biblioteca {
-                        CartaoDeConversa(
-                            arquivo: arquivo,
-                            estado: biblioteca.estado(de: arquivo),
-                            progresso: biblioteca.progresso(de: arquivo),
-                            importado: biblioteca.importado(arquivo),
-                            processando: biblioteca.estaProcessando(arquivo),
-                            naFila: biblioteca.estaNaFila(arquivo),
-                            tempoRestanteEstimadoDaTranscricao: {
-                                biblioteca.tempoRestanteEstimadoDaTranscricao(arquivo)
-                            },
-                            emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
-                            aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
-                            aoRenomear: { novoTitulo in Task { await biblioteca.renomear(arquivo, para: novoTitulo) } },
-                            aoAtualizarMetadados: { titulo, data, duracao in
-                                Task { await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao) }
-                            },
-                            aoDuplicar: {
-                                Task {
-                                    if let copia = await biblioteca.duplicar(arquivo) {
-                                        PreferenciasVisuaisDoArquivo.copiar(de: arquivo.id, para: copia.id)
-                                        await MainActor.run {
-                                            atualizarPreferenciasVisuais()
-                                        }
-                                    }
-                                }
-                            },
-                            urlDeAudio: biblioteca.audio(de: arquivo),
-                            menuAberto: menuAberto == arquivo.id,
-                            aoAlternarMenu: { alternarMenu(de: arquivo) },
-                            aoFecharMenu: { fecharMenu() },
-                            aoAlterarPreferenciasVisuais: atualizarPreferenciasVisuais,
-                            aoMoverParaLixeira: { Task { await biblioteca.moverParaLixeira(arquivo) } }
-                        )
+                        cartaoDeConversa(arquivo, biblioteca: biblioteca)
                     }
                 }
             }
@@ -560,6 +528,49 @@ struct BibliotecaHomeView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func cartaoDeConversa(_ arquivo: Arquivo, biblioteca: Biblioteca) -> some View {
+        CartaoDeConversa(
+            arquivo: arquivo,
+            estado: biblioteca.estado(de: arquivo),
+            progresso: biblioteca.progresso(de: arquivo),
+            importado: biblioteca.importado(arquivo),
+            processando: biblioteca.estaProcessando(arquivo),
+            naFila: biblioteca.estaNaFila(arquivo),
+            emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
+            aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
+            aoRenomear: { novoTitulo in
+                Task { await biblioteca.renomear(arquivo, para: novoTitulo) }
+            },
+            aoAtualizarMetadados: { titulo, data, duracao in
+                Task {
+                    await biblioteca.atualizarMetadados(
+                        arquivo,
+                        titulo: titulo,
+                        criadoEm: data,
+                        duracao: duracao
+                    )
+                }
+            },
+            aoDuplicar: { duplicar(arquivo, na: biblioteca) },
+            urlDeAudio: biblioteca.audio(de: arquivo),
+            menuAberto: menuAberto == arquivo.id,
+            aoAlternarMenu: { alternarMenu(de: arquivo) },
+            aoFecharMenu: fecharMenu,
+            aoAlterarPreferenciasVisuais: atualizarPreferenciasVisuais,
+            aoMoverParaLixeira: {
+                Task { await biblioteca.moverParaLixeira(arquivo) }
+            }
+        )
+    }
+
+    private func duplicar(_ arquivo: Arquivo, na biblioteca: Biblioteca) {
+        Task {
+            guard let copia = await biblioteca.duplicar(arquivo) else { return }
+            PreferenciasVisuaisDoArquivo.copiar(de: arquivo.id, para: copia.id)
+            atualizarPreferenciasVisuais()
         }
     }
 

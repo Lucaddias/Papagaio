@@ -90,12 +90,12 @@ func validaCitacoesContraATranscricao() {
         ]
     )
 
-    let validado = QwenEngine.validarCitacoes(resumo, em: trechos)
+    let citacoesValidadas = ValidacaoDeCitacoes.validar(resumo.citacoes, contra: trechos)
 
-    #expect(validado.citacoes.count == 1)
-    #expect(validado.citacoes[0].texto == "precisamos ouvir os alunos antes de decidir o próximo passo.")
-    #expect(validado.citacoes[0].start == 42)
-    #expect(validado.citacoes[0].speaker == Speaker.eu)
+    #expect(citacoesValidadas.count == 1)
+    #expect(citacoesValidadas[0].texto == "Precisamos ouvir os alunos antes de decidir o próximo passo.")
+    #expect(citacoesValidadas[0].start == 42)
+    #expect(citacoesValidadas[0].speaker == Speaker.eu)
 }
 
 // MARK: - Gramática

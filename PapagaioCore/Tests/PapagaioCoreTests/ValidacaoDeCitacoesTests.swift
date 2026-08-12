@@ -31,7 +31,7 @@ private let transcricao: [Trecho] = [
 @Test("Citação real é aprovada com o tempo e o falante do trecho de origem")
 func citacaoRealPreservaTempoEFalante() {
     let sugerida = Citacao(
-        texto: "a gente devia priorizar a retenção antes de gastar com aquisição, porque trazer usuário novo para um produto que ainda não segura ninguém é jogar dinheiro fora",
+        texto: "a gente devia priorizar a retenção antes de gastar com aquisição",
         speaker: "Alguém",
         start: 7
     )
@@ -93,7 +93,7 @@ func normalizacaoBasicaEhAceita() {
 @Test("No máximo três citações, uma por trecho, em ordem de tempo")
 func tetoDeTresEOrdemPorTempo() {
     let repetida = Citacao(
-        texto: "a gente devia priorizar a retenção antes de gastar com aquisição, porque trazer usuário novo para um produto que ainda não segura ninguém é jogar dinheiro fora",
+        texto: "a gente devia priorizar a retenção antes de gastar com aquisição",
         speaker: nil,
         start: nil
     )
