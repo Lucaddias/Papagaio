@@ -19,74 +19,9 @@ struct PainelDeNotasDuranteGravacao: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-                Image(systemName: "note.text")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .frame(width: 44, height: 44)
-                    .background(PapagaioTema.destaqueSuave, in: Circle())
+            cabecalho
 
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    Text("Notas da conversa")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.texto)
-
-                    Text(
-                        "Registre observações em tempo real. Cada nota fica sincronizada com o ponto atual da gravação."
-                    )
-                    .font(.callout)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 12)
-
-                SeloDeStatus(
-                    texto: "\(quantidadeDeNotas) notas",
-                    simbolo: "bookmark",
-                    estilo: .neutro
-                )
-            }
-
-            HStack(spacing: PapagaioTema.Espaco.curto) {
-                Button("Inserir marcador", systemImage: "bookmark.badge.plus") {
-                    gravador.inserirMarcador()
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .accessibilityHint("Salva um marcador no tempo atual da gravação.")
-
-                Button {
-                    gravador.proximaNotaSeraCritica.toggle()
-                } label: {
-                    Label(
-                        gravador.proximaNotaSeraCritica ? "Próxima nota é crítica" : "Marcar como crítica",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .accessibilityValue(
-                    gravador.proximaNotaSeraCritica ? "Ativado" : "Desativado"
-                )
-
-                // Salvar a nota no instante em que ela foi pensada é o ponto
-                // inteiro do recurso — antes tudo virava um bloco só no fim.
-                Button("Salvar nota", systemImage: "return") {
-                    gravador.adicionarNota()
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .keyboardShortcut(.return, modifiers: [.command])
-                .disabled(rascunhoVazio)
-                .help("Salva a nota no instante atual (⌘↩)")
-
-                Spacer(minLength: 8)
-
-                Text("\(gravador.tempoDeGravacao.comoCronometro)")
-                    .font(.system(.callout, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .monospacedDigit()
-                    .accessibilityLabel("Tempo atual da gravação")
-                    .accessibilityValue(gravador.tempoDeGravacao.faladoPorExtenso)
-            }
+            acoes
 
             ZStack(alignment: .topLeading) {
                 EditorDeNotaAlinhado(texto: $gravador.rascunhoDaNota)
@@ -148,6 +83,136 @@ struct PainelDeNotasDuranteGravacao: View {
         .padding(PapagaioTema.Espaco.secao)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
+    }
+
+    /// Os controles não podem impor a largura mínima da janela. A sequência
+    /// preserva a linha única em telas largas e passa para duas linhas, depois
+    /// para uma coluna, conforme o espaço realmente disponível.
+    private var cabecalho: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+                iconeDoCabecalho
+                descricaoDoCabecalho
+                Spacer(minLength: 12)
+                contadorDeNotas
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+                    iconeDoCabecalho
+                    descricaoDoCabecalho
+                }
+                contadorDeNotas
+            }
+        }
+    }
+
+    private var iconeDoCabecalho: some View {
+        Image(systemName: "note.text")
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(PapagaioTema.destaqueEscuro)
+            .frame(width: 44, height: 44)
+            .background(PapagaioTema.destaqueSuave, in: Circle())
+    }
+
+    private var descricaoDoCabecalho: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+            Text("Notas da conversa")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+
+            Text("Registre observações em tempo real. Cada nota fica sincronizada com o ponto atual da gravação.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var contadorDeNotas: some View {
+        SeloDeStatus(
+            texto: "\(quantidadeDeNotas) notas",
+            simbolo: "bookmark",
+            estilo: .neutro
+        )
+    }
+
+    private var acoes: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                botoesDeNota
+                Spacer(minLength: 8)
+                cronometro
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    botaoInserirMarcador
+                    botaoMarcarCritica
+                }
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    botaoSalvarNota
+                    Spacer(minLength: 8)
+                    cronometro
+                }
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                botaoInserirMarcador.frame(maxWidth: .infinity)
+                botaoMarcarCritica.frame(maxWidth: .infinity)
+                HStack {
+                    botaoSalvarNota
+                    Spacer(minLength: 8)
+                    cronometro
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var botoesDeNota: some View {
+        botaoInserirMarcador
+        botaoMarcarCritica
+        botaoSalvarNota
+    }
+
+    private var botaoInserirMarcador: some View {
+        Button("Inserir marcador", systemImage: "bookmark.badge.plus") {
+            gravador.inserirMarcador()
+        }
+        .buttonStyle(BotaoDeContornoPapagaio())
+        .accessibilityHint("Salva um marcador no tempo atual da gravação.")
+    }
+
+    private var botaoMarcarCritica: some View {
+        Button {
+            gravador.proximaNotaSeraCritica.toggle()
+        } label: {
+            Label(
+                gravador.proximaNotaSeraCritica ? "Próxima nota é crítica" : "Marcar como crítica",
+                systemImage: "exclamationmark.triangle"
+            )
+        }
+        .buttonStyle(BotaoDeContornoPapagaio())
+        .accessibilityValue(gravador.proximaNotaSeraCritica ? "Ativado" : "Desativado")
+    }
+
+    private var botaoSalvarNota: some View {
+        Button("Salvar nota", systemImage: "return") {
+            gravador.adicionarNota()
+        }
+        .buttonStyle(BotaoDeContornoPapagaio())
+        .keyboardShortcut(.return, modifiers: [.command])
+        .disabled(rascunhoVazio)
+        .help("Salva a nota no instante atual (⌘↩)")
+    }
+
+    private var cronometro: some View {
+        Text("\(gravador.tempoDeGravacao.comoCronometro)")
+            .font(.system(.callout, design: .monospaced).weight(.semibold))
+            .foregroundStyle(PapagaioTema.textoSecundario)
+            .monospacedDigit()
+            .accessibilityLabel("Tempo atual da gravação")
+            .accessibilityValue(gravador.tempoDeGravacao.faladoPorExtenso)
     }
 
     /// Continua a lista de tópicos ao apertar Enter; tópico vazio encerra.

@@ -37,7 +37,11 @@ public actor CicloDeVidaDeModelos {
         // mesmo lugar. Não há meio termo útil com um modelo de 10,7 GB — ou ele
         // está na memória, ou não está.
         fonte.setEventHandler { [weak self] in
-            Task { await self?.descarregarTudo() }
+            // Promove a referência fraca antes de cruzar a fronteira `sending`
+            // da Task. Capturar o `weak self` diretamente faria a Task capturar
+            // a caixa mutável criada pela closure do Dispatch.
+            guard let self else { return }
+            Task { await self.descarregarTudo() }
         }
         fonte.resume()
         monitor = fonte

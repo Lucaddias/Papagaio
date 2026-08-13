@@ -408,7 +408,7 @@ struct BotaoPrincipalPapagaio: ButtonStyle {
             .font(.body.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSobrePrimario)
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .minimumScaleFactor(0.82)
             .padding(.horizontal, PapagaioTema.Espaco.largo)
             .frame(minHeight: PapagaioTema.Altura.destaque)
             .background(
@@ -428,7 +428,7 @@ struct BotaoDeContornoPapagaio: ButtonStyle {
             .font(.body.weight(.medium))
             .foregroundStyle(habilitado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .minimumScaleFactor(0.82)
             .padding(.horizontal, PapagaioTema.Espaco.largo)
             .frame(minHeight: PapagaioTema.Altura.destaque)
             .background(PapagaioTema.superficie, in: Capsule())
