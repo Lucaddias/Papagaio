@@ -650,11 +650,12 @@ struct CapaDeConversa: View {
     }
 }
 
-/// Barra fina com o quanto falta, em linguagem de gente.
+/// Barra fina com o andamento do processamento.
 ///
-/// Existe porque importar e esperar sem nenhum sinal é a pior parte do fluxo:
-/// a pessoa não sabe se o app travou, se falta um minuto ou dez. Uma
-/// estimativa aproximada, dita como aproximada, informa mais que o silêncio.
+/// Mostra só a porcentagem, à direita. O tempo restante saiu porque era a parte
+/// menos confiável e a mais lida: dizer "cerca de 40 min" e terminar em 12 faz
+/// a pessoa desconfiar do número seguinte. A porcentagem que avança sozinha já
+/// responde à pergunta real, que é "isto está vivo?".
 struct BarraDeProgressoDoProcessamento: View {
     let inicio: Date
     let estimativa: TimeInterval
@@ -664,18 +665,15 @@ struct BarraDeProgressoDoProcessamento: View {
         // sem uma batida de fora, a barra ficaria congelada até a fase mudar —
         // e a fase muda duas vezes em vários minutos.
         TimelineView(.periodic(from: inicio, by: 1)) { contexto in
-            corpo(agora: contexto.date)
+            corpo(fracao: Self.fracao(
+                decorrido: contexto.date.timeIntervalSince(inicio),
+                estimativa: estimativa
+            ))
         }
     }
 
-    private func corpo(agora: Date) -> some View {
-        let decorrido = agora.timeIntervalSince(inicio)
-        // Satura em 95% enquanto o trabalho não termina: barra parada em 100%
-        // com o app ainda pensando é pior que barra lenta.
-        let fracao = min(0.95, max(0, decorrido / estimativa))
-        let restante = max(0, estimativa - decorrido)
-
-        return VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+    private func corpo(fracao: Double) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             GeometryReader { geometria in
                 ZStack(alignment: .leading) {
                     Capsule()
@@ -688,27 +686,37 @@ struct BarraDeProgressoDoProcessamento: View {
             }
             .frame(height: 4)
 
-            HStack {
-                Text("\(Int((fracao * 100).rounded()))%")
-                    .monospacedDigit()
-
-                Spacer()
-
-                Text(textoDoRestante(restante))
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(PapagaioTema.textoSecundario)
+            Text("\(Int((fracao * 100).rounded()))%")
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .animation(.easeOut(duration: 0.3), value: fracao)
     }
 
-    /// "Cerca de" na frente porque é estimativa, e abaixo de um minuto o número
-    /// exato em segundos daria uma precisão que o cálculo não tem.
-    private func textoDoRestante(_ restante: TimeInterval) -> String {
-        let segundos = Int(restante.rounded())
-        if segundos <= 0 { return "finalizando…" }
-        if segundos < 60 { return "menos de 1 min" }
-        let minutos = Int((restante / 60).rounded())
-        return "cerca de \(minutos) min"
+    /// Avança rápido até a estimativa e desacelera depois, sem nunca travar.
+    ///
+    /// A versão anterior era linear e saturava em 95%: se a estimativa errasse
+    /// para menos, a barra ficava parada nesse número por minutos, que é a
+    /// aparência exata de um app travado.
+    ///
+    /// Aqui são duas partes. Até a estimativa, avanço proporcional até 90% — é
+    /// o trecho em que a previsão vale alguma coisa. Passando dela, o que sobra
+    /// é consumido de forma assintótica: cada minuto extra come uma fração do
+    /// que falta, então o número sempre sobe, sempre menos, e chega perto de
+    /// 100 sem nunca prometer o fim antes da hora.
+    ///
+    /// Errar para menos deixou de ser um congelamento e virou uma desaceleração
+    /// — que é como a espera realmente se comporta.
+    static func fracao(decorrido: TimeInterval, estimativa: TimeInterval) -> Double {
+        guard estimativa > 0, decorrido > 0 else { return 0 }
+
+        if decorrido < estimativa {
+            return 0.9 * (decorrido / estimativa)
+        }
+
+        let excedente = (decorrido - estimativa) / estimativa
+        return 0.9 + 0.1 * (1 - exp(-excedente))
     }
 }

@@ -132,3 +132,40 @@ struct BotaoDeAtalhoDaBarra: View {
         return .clear
     }
 }
+
+/// Botão pequeno para dentro do selo de gravação.
+///
+/// Menor que o `BotaoCircularPapagaio` de propósito: ele convive com texto numa
+/// cápsula de 36pt de altura, e o botão padrão ocuparia a cápsula inteira.
+struct BotaoDoSelo: View {
+    let simbolo: String
+    let ajuda: String
+    var perigo = false
+    let acao: () -> Void
+
+    @State private var pairando = false
+
+    var body: some View {
+        Button(action: acao) {
+            Image(systemName: simbolo)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(cor)
+                .frame(width: 24, height: 24)
+                .background(
+                    pairando ? PapagaioTema.superficieSuave : .clear,
+                    in: Circle()
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(ajuda)
+        .accessibilityLabel(ajuda)
+        .onHover { pairando = $0 }
+        .animation(.easeOut(duration: 0.12), value: pairando)
+    }
+
+    private var cor: Color {
+        if perigo { return PapagaioTema.perigo }
+        return pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario
+    }
+}

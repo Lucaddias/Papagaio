@@ -185,6 +185,10 @@ struct ArquivoDetalheView: View {
         // `ignoresSafeArea` porque a janela está sem barra de título: sem
         // isto o topo ficava transparente e mostrava o papel de parede,
         // que era a faixa estranha acima do título.
+        // Anuncia o espaço do player para quem posiciona o selo de gravação.
+        // 116 é a altura da barra flutuante mais o respiro dela; zero quando o
+        // player não está na tela, e aí o selo volta para o canto de baixo.
+        .alturaDoPlayerPapagaio(deveMostrarPlayer ? 116 : 0)
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         // Piso baixo de propósito: acima disso o conteúdo era desenhado mais

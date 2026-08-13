@@ -1,4 +1,4 @@
-{
+"images": [
   "images" : [
     {
       "filename" : "iconpapagaio - cópia 5.png",
@@ -49,12 +49,14 @@
       "size" : "256x256"
     },
     {
+
       "filename" : "iconpapagaio 2.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "512x512"
     },
     {
+
       "filename" : "iconpapagaio 1.png",
       "idiom" : "mac",
       "scale" : "2x",

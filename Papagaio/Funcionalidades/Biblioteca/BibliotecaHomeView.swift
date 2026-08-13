@@ -427,7 +427,8 @@ struct BibliotecaHomeView: View {
                         prontoParaEntrada: biblioteca != nil,
                         aoAlternarGravacao: aoAlternarGravacao,
                         aoImportar: { mostrandoImportador = true },
-                        aoSoltarArquivos: aoSoltarArquivos
+                        aoSoltarArquivos: aoSoltarArquivos,
+                        aoVoltarParaGravacao: { focoNaGravacao = true }
                     )
                 }
 

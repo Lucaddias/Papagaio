@@ -126,6 +126,20 @@ final class GravadorViewModel {
 
     private func iniciar() async {
         guard let armazenamento else { return }
+
+        // Descarta qualquer sessão que tenha sobrado.
+        //
+        // O `Timer` de medição é criado com `target:`, e alvo de timer é
+        // retido: uma sessão que não foi encerrada continua viva, com o
+        // `AVAudioRecorder` dela segurando o microfone. A tentativa seguinte
+        // então falhava com "recusou começar a gravar" sem motivo aparente.
+        if let anterior = sessao {
+            await anterior.descartar()
+            sessao = nil
+        }
+        tarefaNivel?.cancel()
+        tarefaNivel = nil
+
         avisos = []
         waveform = []
         waveformSistema = []
@@ -138,6 +152,9 @@ final class GravadorViewModel {
         do {
             try await sessao.iniciar()
         } catch {
+            // Sem isto a sessão que falhou continuava sendo a `self.sessao` de
+            // uma tentativa anterior, e nada a soltava.
+            self.sessao = nil
             estado = .falhou("\(error)")
             return
         }
