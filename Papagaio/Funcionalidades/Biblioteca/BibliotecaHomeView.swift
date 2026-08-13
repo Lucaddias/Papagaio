@@ -543,6 +543,9 @@ struct BibliotecaHomeView: View {
             naFila: biblioteca.estaNaFila(arquivo),
             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
+            aoDiarizar: {
+                Task { await biblioteca.diarizarTranscricao(arquivo) }
+            },
             aoRenomear: { novoTitulo in
                 Task { await biblioteca.renomear(arquivo, para: novoTitulo) }
             },

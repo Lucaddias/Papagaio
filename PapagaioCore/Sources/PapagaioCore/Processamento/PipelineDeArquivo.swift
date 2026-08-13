@@ -111,6 +111,19 @@ public struct PipelineDeArquivo: Sendable {
         return atualizado
     }
 
+    /// Aplica **só** a diarização sobre uma transcrição já salva, sem
+    /// re-transcrever nem resumir — o caminho leve para arquivos gravados
+    /// antes da diarização existir: as palavras já têm timestamp, falta
+    /// atribuir o falante.
+    ///
+    /// Nunca lança: mesma filosofia da diarização decorativa do `processar`.
+    /// Sem modelos, sem fala ou sem palavras com timestamp, o arquivo volta
+    /// como estava.
+    @discardableResult
+    public func diarizarExistente(_ arquivo: Arquivo) async -> Arquivo {
+        await aplicarDiarizacao(arquivo)
+    }
+
     // MARK: - Escolha do insumo
 
     /// Transcreve pelo caminho que preserva o falante.

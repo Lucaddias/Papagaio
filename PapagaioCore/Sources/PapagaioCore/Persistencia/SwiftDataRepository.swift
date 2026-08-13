@@ -344,7 +344,18 @@ public actor SwiftDataRepository: ArquivoRepository {
                     // `contains("[")` apagar a palavra inteira junto. Aqui a
                     // cura arranca só o código e mantém a fala:
                     palavras: (try? JSONDecoder().decode([Palavra].self, from: pTrecho.palavrasJSON ?? Data()))?
-                        .map { Palavra(id: $0.id, start: $0.start, end: $0.end, texto: curarTextoDePalavraLegada($0.texto)) }
+                        .map {
+                            Palavra(
+                                id: $0.id,
+                                start: $0.start,
+                                end: $0.end,
+                                texto: curarTextoDePalavraLegada($0.texto),
+                                // A diarização sobrevive ao round-trip: sem isto
+                                // os falantes somiam ao reabrir o app (o init com
+                                // default apagava o campo).
+                                falanteAcustico: $0.falanteAcustico
+                            )
+                        }
                         .filter { !$0.texto.isEmpty } ?? []
                 )
             }

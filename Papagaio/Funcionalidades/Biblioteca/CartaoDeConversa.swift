@@ -13,6 +13,7 @@ struct CartaoDeConversa: View {
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
     let aoReprocessar: () -> Void
+    let aoDiarizar: () -> Void
     let aoRenomear: (String) -> Void
     let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void
     let aoDuplicar: () -> Void
@@ -53,6 +54,7 @@ struct CartaoDeConversa: View {
         naFila: Bool,
         emOperacaoDeLixeira: Bool,
         aoReprocessar: @escaping () -> Void,
+        aoDiarizar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
         aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
         aoDuplicar: @escaping () -> Void,
@@ -71,6 +73,7 @@ struct CartaoDeConversa: View {
         self.naFila = naFila
         self.emOperacaoDeLixeira = emOperacaoDeLixeira
         self.aoReprocessar = aoReprocessar
+        self.aoDiarizar = aoDiarizar
         self.aoRenomear = aoRenomear
         self.aoAtualizarMetadados = aoAtualizarMetadados
         self.aoDuplicar = aoDuplicar
@@ -87,6 +90,13 @@ struct CartaoDeConversa: View {
     }
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
+
+    /// Arquivos gravados antes da diarização existir têm palavras com
+    /// timestamp, mas sem falante acústico: dá para distingui-los sem
+    /// re-transcrever. Sem palavras não há o que alinhar.
+    private var podeDiarizar: Bool {
+        arquivo.trechos.contains { !$0.palavras.isEmpty }
+    }
 
     /// Só as pessoas que foram realmente preenchidas.
     ///
@@ -389,6 +399,9 @@ struct CartaoDeConversa: View {
                 MenuDeArquivoAberto(
                     bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
                     bloqueioDeLixeira: emOperacaoDeLixeira,
+                    podeDiarizar: podeDiarizar,
+                    aoDiarizar: executarMenu(aoDiarizar),
+                    aoReprocessar: executarMenu(aoReprocessar),
                     aoEditarImagem: executarMenu(editarImagem),
                     aoRenomear: executarMenu(abrirEditorDeInformacoes),
                     aoMoverParaPasta: executarMenu(abrirMoverParaPasta),

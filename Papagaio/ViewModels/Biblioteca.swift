@@ -621,6 +621,63 @@ final class Biblioteca {
         await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
     }
 
+    /// Aplica a diarização às palavras de uma transcrição já salva, sem
+    /// re-transcrever nem resumir — para arquivos de antes da diarização
+    /// existir. Leve: só os modelos pequenos de diarização (~40 MB) entram,
+    /// nunca o Whisper nem o Qwen.
+    func diarizarTranscricao(_ arquivo: Arquivo) async {
+        guard arquivoEmProcessamento != arquivo.id,
+              !filaDeProcessamento.contains(arquivo.id),
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+        let chave = arquivo.id.rawValue
+        guard fases[chave] == nil else { return }
+
+        let diarizacao = GerenciadorDeModelosDeDiarizacao.embutido()
+        guard diarizacao.disponivel else {
+            erros[chave] = "Modelos de diarização não estagiados. Rode Scripts/bootstrap-runtimes.sh."
+            return
+        }
+
+        erros[chave] = nil
+        fases[chave] = .diarizando
+        await ciclo.registrar(diarizacao)
+        defer {
+            Task {
+                await diarizacao.descarregar()
+                await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
+            }
+        }
+
+        // Os motores são apenas o contrato do pipeline; o caminho leve nunca
+        // chama transcrever/resumir, então nada de 13,7 GB entra em memória.
+        let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
+        let pipeline = PipelineDeArquivo(
+            armazenamento: armazenamento,
+            repositorio: repositorio,
+            idTranscricao: WhisperEngine.identificador,
+            idResumo: QwenEngine.identificador,
+            transcrever: { [motores] url, speaker in
+                try await motores.transcrever(url, speaker: speaker)
+            },
+            resumir: { [motores] trechos in
+                try await motores.resumir(trechos)
+            },
+            diarizar: { [diarizacao] url in
+                try await diarizacao.diarizar(url)
+            }
+        )
+
+        let diarizado = await pipeline.diarizarExistente(arquivo)
+        guard arquivos.contains(where: { $0.id == arquivo.id }) else { return }
+        do {
+            try await repositorio.salvar(diarizado)
+            substituir(diarizado)
+        } catch {
+            erros[chave] = "Não foi possível salvar a diarização: \(error.localizedDescription)"
+        }
+        fases[chave] = nil
+    }
+
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
         guard identificadorDaExecucao == execucao else { return }
 

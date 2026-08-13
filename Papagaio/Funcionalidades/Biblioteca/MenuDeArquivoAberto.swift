@@ -3,6 +3,9 @@ import SwiftUI
 struct MenuDeArquivoAberto: View {
     let bloqueioDeEdicao: Bool
     let bloqueioDeLixeira: Bool
+    let podeDiarizar: Bool
+    let aoDiarizar: () -> Void
+    let aoReprocessar: () -> Void
     let aoEditarImagem: () -> Void
     let aoRenomear: () -> Void
     let aoMoverParaPasta: () -> Void
@@ -19,6 +22,26 @@ struct MenuDeArquivoAberto: View {
             ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
             // Favoritar sai daqui: a estrela no canto do card já faz isso, e
             // repetir a ação no menu só alongava a lista.
+
+            SeparadorPapagaio()
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
+
+            // Diarização retroativa: arquivos gravados antes da diarização
+            // existir têm palavras sem falante — distinguir é leve (só os
+            // modelos pequenos), reprocessar re-transcreve tudo.
+            ItemDoMenuDeArquivo(
+                simbolo: "person.2.wave.2",
+                titulo: "Distinguir falantes",
+                desabilitado: bloqueioDeEdicao || !podeDiarizar,
+                acao: aoDiarizar
+            )
+            ItemDoMenuDeArquivo(
+                simbolo: "arrow.clockwise",
+                titulo: "Reprocessar",
+                desabilitado: bloqueioDeEdicao,
+                acao: aoReprocessar
+            )
 
             SeparadorPapagaio()
                 .padding(.horizontal, PapagaioTema.Espaco.medio)

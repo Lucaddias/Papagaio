@@ -90,6 +90,35 @@ func persistenciaRoundTrip() async throws {
     #expect(volta.resumo?.proximosPassos.first?.responsavel == "Luca")
 }
 
+@Test("Falante acústico da diarização sobrevive ao salvar e listar")
+func persistenciaPreservaFalanteAcustico() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+
+    let original = arquivoDeExemplo(
+        titulo: "Reunião diarizada",
+        espaco: espaco,
+        trechos: [
+            Trecho(start: 0, end: 40, texto: "abertura", speaker: Speaker.eu, palavras: [
+                Palavra(start: 0, end: 3, texto: "bom", falanteAcustico: "S1"),
+                Palavra(start: 3, end: 6, texto: "dia", falanteAcustico: "S2"),
+            ]),
+            // Palavra sem diarização (legada) continua sem falante.
+            Trecho(start: 40, end: 82, texto: "resposta", speaker: Speaker.interlocutor, palavras: [
+                Palavra(start: 40, end: 82, texto: "certo"),
+            ]),
+        ]
+    )
+
+    try await repo.salvar(original)
+    let volta = try #require(try await repo.listar(espaco: espaco).first)
+
+    // O bug era aqui: o re-map da cura zero o falante ao reabrir o app.
+    #expect(volta.trechos[0].palavras[0].falanteAcustico == "S1")
+    #expect(volta.trechos[0].palavras[1].falanteAcustico == "S2")
+    #expect(volta.trechos[1].palavras[0].falanteAcustico == nil)
+}
+
 @Test("Cura de palavras legadas arranca o token especial sem perder a fala")
 func curaDePalavrasLegadas() async throws {
     // A primeira versão mesclava o `[_TT_…]` do fim do segmento à última
