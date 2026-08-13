@@ -1,22 +1,21 @@
-import AVFoundation
+@preconcurrency import AudioToolbox
 import CoreAudio
 import Foundation
 
 /// Captura do áudio do sistema via Core Audio Process Taps (macOS 14.4+).
 ///
-/// Portado do Eko (`SystemAudioTap.swift`), que substitui o `CapturaSistema`
-/// anterior. A diferença que importa: o tap escreve **direto num `.m4a` AAC na
-/// taxa nativa do tap**, em vez de reamostrar para 16 kHz e mixar com o
-/// microfone em disco. É isso que devolve o "interlocutor" com clareza —
-/// re-encodar o tap em AAC mono 16 kHz é uma das causas do áudio abafado.
+/// A saída é capturada no stream real do dispositivo de saída selecionado pelo
+/// macOS e gravada num `.caf` PCM na taxa nativa do tap, sem reamostrar para
+/// 16 kHz e sem codificar AAC na thread de áudio. Isso preserva a clareza do
+/// interlocutor e mantém o callback seguro para tempo real.
 ///
 /// Três armadilhas documentadas que este código já evita:
 /// 1. `AVAudioEngine` NÃO funciona apontado para o aggregate device do tap
 ///    — por isso usamos `AudioDeviceCreateIOProcIDWithBlock` direto.
-/// 2. O aggregate device precisa de um sub-device de saída real além do
-///    sub-tap, ou a captura fica silenciosa sem erro.
-/// 3. Exclua o PID do próprio Papagaio do tap, para não capturar o próprio
-///    playback do app durante a gravação.
+/// 2. O aggregate device é construído somente com o sub-tap; adicionar o
+///    dispositivo de saída como subdevice reintroduz o caminho que já entregou
+///    silêncio no Papagaio.
+/// 3. O formato é lido do tap depois de sua criação; ele não é presumido.
 enum SystemAudioTapError: LocalizedError {
     case apiUnavailable
     case permissionDenied
@@ -40,25 +39,49 @@ enum SystemAudioTapError: LocalizedError {
 /// Se qualquer etapa falhar, a gravação de microfone segue normalmente —
 /// sem crash, com aviso.
 final class SystemAudioTap {
+    struct Statistics: Sendable {
+        let callbacks: UInt64
+        let frames: UInt64
+        /// `nil` quando o formato não é Float32 PCM e, portanto, não foi
+        /// possível medir pico sem converter no callback.
+        let peak: Float?
+
+        static let empty = Statistics(callbacks: 0, frames: 0, peak: nil)
+    }
+
     private var tapID: AudioObjectID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateDeviceID: AudioObjectID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
-    private var outputFile: AVAudioFile?
+    private var writer: SystemTrackWriter?
+    private var callbackState: SystemTapCallbackState?
+    private let nivel: NivelAudio
 
     private(set) var isRunning = false
 
-    /// Inicia a captura, escrevendo em `destinationURL` (criado como .m4a
-    /// AAC no formato nativo do tap — sem reamostragem no callback em
-    /// tempo real; a conversão para 16 kHz mono usada pelo Whisper acontece
-    /// depois, de forma offline, em `DecodificadorDeAudio`).
+    init(nivel: NivelAudio) {
+        self.nivel = nivel
+    }
+
+    /// Inicia a captura, escrevendo PCM no formato nativo do tap. A conversão
+    /// para o formato do Whisper acontece depois, de forma offline, em
+    /// `DecodificadorDeAudio`.
     func start(destinationURL: URL) throws {
         guard #available(macOS 14.4, *) else { throw SystemAudioTapError.apiUnavailable }
 
-        let description = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
-        description.uuid = UUID()
+        // Um tap global já produziu buffers de zeros neste app. O
+        // AudioRecorder validado captura o stream de saída concreto do
+        // dispositivo padrão, com uma descrição exclusiva sem processos
+        // incluídos. `isExclusive` aqui significa que a lista contém processos
+        // a excluir; vazia, ela deixa o mix de saída do stream disponível.
+        let (outputDeviceUID, outputStream) = try defaultOutputRoute()
+        let description = CATapDescription()
+        description.processes = []
+        description.isExclusive = true
         description.muteBehavior = CATapMuteBehavior.unmuted
         description.isPrivate = true
         description.name = "Papagaio System Audio Tap"
+        description.deviceUID = outputDeviceUID
+        description.stream = outputStream
 
         var newTapID = AudioObjectID(kAudioObjectUnknown)
         var status = AudioHardwareCreateProcessTap(description, &newTapID)
@@ -67,27 +90,23 @@ final class SystemAudioTap {
         }
         tapID = newTapID
 
-        // O aggregate precisa de um sub-device de saída real, além do
-        // sub-tap — ver aviso no topo do arquivo. Sem isso a captura fica
-        // silenciosa sem erro (falha do pior tipo: sem crash e sem áudio).
-        guard let outputDeviceUID = try? defaultOutputDeviceUID() else {
-            cleanupTapOnly()
-            throw SystemAudioTapError.coreAudioFailure(kAudioHardwareUnknownPropertyError, "ler o dispositivo de saída padrão")
-        }
-
         let aggregateUID = UUID().uuidString
+        let capturedTapUID: String
+        do {
+            capturedTapUID = try tapUID()
+        } catch {
+            cleanupTapOnly()
+            throw error
+        }
         let aggregateDescription: [String: Any] = [
             kAudioAggregateDeviceNameKey as String: "Papagaio-System-Aggregate-\(aggregateUID)",
             kAudioAggregateDeviceUIDKey as String: aggregateUID,
             kAudioAggregateDeviceIsPrivateKey as String: true,
-            kAudioAggregateDeviceTapAutoStartKey as String: true,
-            kAudioAggregateDeviceMainSubDeviceKey as String: outputDeviceUID,
-            kAudioAggregateDeviceSubDeviceListKey as String: [
-                [kAudioSubDeviceUIDKey as String: outputDeviceUID]
-            ],
+            kAudioAggregateDeviceTapAutoStartKey as String: false,
+            kAudioAggregateDeviceSubDeviceListKey as String: [],
             kAudioAggregateDeviceTapListKey as String: [
                 [
-                    kAudioSubTapUIDKey as String: description.uuid.uuidString,
+                    kAudioSubTapUIDKey as String: capturedTapUID,
                     kAudioSubTapDriftCompensationKey as String: true
                 ]
             ]
@@ -102,21 +121,31 @@ final class SystemAudioTap {
         aggregateDeviceID = newAggregateID
 
         // Formato real do tap — lido depois de criado, não assumido.
-        let format = try tapAudioFormat()
+        let format = try tapFormat()
 
-        let file = try AVAudioFile(forWriting: destinationURL, settings: [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVEncoderBitRateKey: 64_000
-        ])
-        outputFile = file
+        let trackWriter: SystemTrackWriter
+        do {
+            trackWriter = try SystemTrackWriter(url: destinationURL, format: format)
+        } catch {
+            cleanupAll()
+            throw error
+        }
+        writer = trackWriter
+        let state = SystemTapCallbackState(writer: trackWriter, format: format, nivel: nivel)
+        callbackState = state
 
         var newIOProcID: AudioDeviceIOProcID?
-        status = AudioDeviceCreateIOProcIDWithBlock(&newIOProcID, aggregateDeviceID, nil) { [weak self] _, inputData, _, _, _ in
-            guard let self, let file = self.outputFile,
-                  let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, bufferListNoCopy: inputData) else { return }
-            try? file.write(from: pcmBuffer)
+        // O writer é imutável durante toda a vida deste IOProc. Não use
+        // AVAudioFile aqui: criar buffers e codificar AAC no callback causa
+        // dropout e diverge do caminho comprovado do AudioRecorder.
+        status = AudioDeviceCreateIOProcIDWithBlock(&newIOProcID, aggregateDeviceID, nil) { _, inputData, _, _, _ in
+            let buffers = UnsafeMutableAudioBufferListPointer(
+                UnsafeMutablePointer(mutating: inputData)
+            )
+            guard let buffer = buffers.first, format.mBytesPerFrame > 0 else { return }
+            let frames = buffer.mDataByteSize / format.mBytesPerFrame
+            guard frames > 0 else { return }
+            state.consume(buffer: buffer, frames: frames)
         }
         guard status == noErr, let ioProcID = newIOProcID else {
             cleanupAll()
@@ -133,7 +162,8 @@ final class SystemAudioTap {
         isRunning = true
     }
 
-    func stop() {
+    @discardableResult
+    func stop() -> Statistics {
         if let ioProcID {
             AudioDeviceStop(aggregateDeviceID, ioProcID)
             AudioDeviceDestroyIOProcID(aggregateDeviceID, ioProcID)
@@ -147,8 +177,11 @@ final class SystemAudioTap {
         ioProcID = nil
         aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
         tapID = AudioObjectID(kAudioObjectUnknown)
-        outputFile = nil
+        let statistics = callbackState?.statistics ?? .empty
+        callbackState = nil
+        writer = nil
         isRunning = false
+        return statistics
     }
 
     private func cleanupTapOnly() {
@@ -164,9 +197,9 @@ final class SystemAudioTap {
 
     // MARK: - Core Audio helpers
 
-    /// `kAudioTapPropertyFormat` devolve a ASBD real do tap — construa o
-    /// AVAudioFormat a partir dela em vez de assumir 48 kHz estéreo.
-    private func tapAudioFormat() throws -> AVAudioFormat {
+    /// `kAudioTapPropertyFormat` devolve a ASBD real do tap. Ela é usada
+    /// diretamente pelo writer, sem conversão para AVFoundation no callback.
+    private func tapFormat() throws -> AudioStreamBasicDescription {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioTapPropertyFormat,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -175,13 +208,37 @@ final class SystemAudioTap {
         var asbd = AudioStreamBasicDescription()
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
         let status = AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &asbd)
-        guard status == noErr, let format = AVAudioFormat(streamDescription: &asbd) else {
+        guard status == noErr,
+              asbd.mFormatID == kAudioFormatLinearPCM,
+              asbd.mSampleRate > 0,
+              asbd.mBytesPerFrame > 0
+        else {
             throw SystemAudioTapError.coreAudioFailure(status, "ler o formato do tap")
         }
-        return format
+        return asbd
     }
 
-    private func defaultOutputDeviceUID() throws -> String {
+    private func tapUID() throws -> String {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioTapPropertyUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var uid: CFString = "" as CFString
+        var size = UInt32(MemoryLayout<CFString>.size)
+        let status = AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &uid)
+        guard status == noErr else {
+            throw SystemAudioTapError.coreAudioFailure(status, "ler o UID do tap")
+        }
+        return uid as String
+    }
+
+    /// Escolhe um stream de saída que realmente anuncie canais PCM. Há
+    /// dispositivos com mais de um stream (interfaces multicanal), e assumir
+    /// que o índice zero sempre é utilizável pode criar um tap válido, mas sem
+    /// sinal. Para a saída estéreo usual — incluindo os AirPods — isto devolve
+    /// o único stream de dois canais.
+    private func defaultOutputRoute() throws -> (deviceUID: String, stream: UInt) {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -205,7 +262,49 @@ final class SystemAudioTap {
         guard status == noErr else {
             throw SystemAudioTapError.coreAudioFailure(status, "ler o UID do dispositivo de saída")
         }
-        return deviceUID as String
+        var streamAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreams,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var streamSize: UInt32 = 0
+        status = AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &streamSize)
+        guard status == noErr, streamSize >= UInt32(MemoryLayout<AudioObjectID>.size),
+              streamSize.isMultiple(of: UInt32(MemoryLayout<AudioObjectID>.size))
+        else {
+            throw SystemAudioTapError.coreAudioFailure(status, "ler os streams de saída")
+        }
+
+        let streamCount = Int(streamSize) / MemoryLayout<AudioObjectID>.size
+        var streamIDs = Array(repeating: AudioObjectID(kAudioObjectUnknown), count: streamCount)
+        status = AudioObjectGetPropertyData(deviceID, &streamAddress, 0, nil, &streamSize, &streamIDs)
+        guard status == noErr else {
+            throw SystemAudioTapError.coreAudioFailure(status, "ler os streams de saída")
+        }
+
+        for (index, streamID) in streamIDs.enumerated() {
+            var formatAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioStreamPropertyVirtualFormat,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var format = AudioStreamBasicDescription()
+            var formatSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
+            status = AudioObjectGetPropertyData(
+                streamID, &formatAddress, 0, nil, &formatSize, &format
+            )
+            guard status == noErr else { continue }
+            if format.mFormatID == kAudioFormatLinearPCM,
+               format.mChannelsPerFrame > 0,
+               format.mSampleRate > 0 {
+                return (deviceUID as String, UInt(index))
+            }
+        }
+
+        throw SystemAudioTapError.coreAudioFailure(
+            kAudioHardwareUnsupportedOperationError,
+            "encontrar um stream PCM de saída com canais ativos"
+        )
     }
 
     private func mapPermissionOrFailure(_ status: OSStatus, step: String) -> Error {
@@ -216,6 +315,103 @@ final class SystemAudioTap {
             return SystemAudioTapError.permissionDenied
         }
         return SystemAudioTapError.coreAudioFailure(status, step)
+    }
+}
+
+/// Escritor baseado no mesmo caminho do AudioRecorder: o callback apenas
+/// entrega o `AudioBuffer` emprestado ao `ExtAudioFileWriteAsync`. O arquivo
+/// é CAF/PCM, portanto não há compressão nem alocação de `AVAudioPCMBuffer`
+/// em tempo real.
+private final class SystemTrackWriter {
+    private var file: ExtAudioFileRef?
+
+    init(url: URL, format: AudioStreamBasicDescription) throws {
+        var fileFormat = format
+        var reference: ExtAudioFileRef?
+        let createStatus = ExtAudioFileCreateWithURL(
+            url as CFURL,
+            kAudioFileCAFType,
+            &fileFormat,
+            nil,
+            AudioFileFlags.eraseFile.rawValue,
+            &reference
+        )
+        guard createStatus == noErr, let reference else {
+            throw SystemAudioTapError.coreAudioFailure(createStatus, "criar o arquivo do áudio do sistema")
+        }
+
+        var clientFormat = format
+        let configureStatus = ExtAudioFileSetProperty(
+            reference,
+            kExtAudioFileProperty_ClientDataFormat,
+            UInt32(MemoryLayout<AudioStreamBasicDescription>.size),
+            &clientFormat
+        )
+        guard configureStatus == noErr else {
+            ExtAudioFileDispose(reference)
+            throw SystemAudioTapError.coreAudioFailure(configureStatus, "configurar o arquivo do áudio do sistema")
+        }
+
+        let prepareStatus = ExtAudioFileWriteAsync(reference, 0, nil)
+        guard prepareStatus == noErr else {
+            ExtAudioFileDispose(reference)
+            throw SystemAudioTapError.coreAudioFailure(prepareStatus, "preparar a escrita do áudio do sistema")
+        }
+        file = reference
+    }
+
+    deinit {
+        if let file { ExtAudioFileDispose(file) }
+    }
+
+    func append(buffer: AudioBuffer, frames: UInt32) {
+        guard let file else { return }
+        var list = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
+        _ = ExtAudioFileWriteAsync(file, frames, &list)
+    }
+}
+
+/// Estado mutado exclusivamente pela thread do IOProc e lido apenas depois de
+/// `AudioDeviceStop`; por isso não exige lock no caminho de tempo real.
+private final class SystemTapCallbackState {
+    private let writer: SystemTrackWriter
+    private let format: AudioStreamBasicDescription
+    private let nivel: NivelAudio
+    private var callbackCount: UInt64 = 0
+    private var frameCount: UInt64 = 0
+    private var measuredFloatPCM = false
+    private var peak: Float = 0
+
+    init(writer: SystemTrackWriter, format: AudioStreamBasicDescription, nivel: NivelAudio) {
+        self.writer = writer
+        self.format = format
+        self.nivel = nivel
+    }
+
+    func consume(buffer: AudioBuffer, frames: UInt32) {
+        callbackCount &+= 1
+        frameCount &+= UInt64(frames)
+        writer.append(buffer: buffer, frames: frames)
+
+        guard format.mBitsPerChannel == 32,
+              format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              let data = buffer.mData
+        else { return }
+        measuredFloatPCM = true
+        let samples = data.assumingMemoryBound(to: Float.self)
+        let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+        nivel.registrar(samples, quantidade: count)
+        for index in 0..<count {
+            peak = max(peak, abs(samples[index]))
+        }
+    }
+
+    var statistics: SystemAudioTap.Statistics {
+        SystemAudioTap.Statistics(
+            callbacks: callbackCount,
+            frames: frameCount,
+            peak: measuredFloatPCM ? peak : nil
+        )
     }
 }
 #endif

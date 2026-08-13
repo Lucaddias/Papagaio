@@ -147,7 +147,9 @@ public final class ReprodutorDeArquivo {
     public func pausar() {
         primario?.pause()
         secundario?.pause()
-        tocando = false
+        // Sincroniza na própria ação: sem isto a tela pode ficar até um tick
+        // (100 ms) atrás do ponto real em que o áudio parou.
+        atualizarTempo()
     }
 
     public func alternar() {

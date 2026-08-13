@@ -104,8 +104,18 @@ baixar() {
     local nome="$1" url="$2" sha="$3" xcf="$4"
 
     if [ -d "$DESTINO/$xcf" ]; then
-        echo "==> $nome já presente em PapagaioCore/Frameworks/$xcf — pulando"
-        return
+        # Sem Git LFS, o checkout deixa ponteiros de texto dentro do
+        # xcframework. A pasta existe, mas não é um framework utilizável e o
+        # Xcode deixa de resolver o produto PapagaioCore. Só pulamos quando
+        # houver o Info.plist real do XCFramework.
+        local info="$DESTINO/$xcf/Info.plist"
+        if [ -f "$info" ] && ! head -n 1 "$info" | grep -q '^version https://git-lfs.github.com/spec/v1$'; then
+            echo "==> $nome já presente em PapagaioCore/Frameworks/$xcf — pulando"
+            return
+        fi
+
+        echo "==> removendo ponteiro incompleto de $xcf"
+        rm -rf "$DESTINO/$xcf"
     fi
 
     echo "==> baixando $nome ($url)"

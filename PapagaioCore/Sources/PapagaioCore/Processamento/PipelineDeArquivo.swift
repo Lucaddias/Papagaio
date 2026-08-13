@@ -71,9 +71,19 @@ public struct PipelineDeArquivo: Sendable {
     ) async throws -> Arquivo {
         var atualizado = arquivo
 
+        // Pontos de desistência entre as fases.
+        //
+        // O whisper e o Qwen são blocos síncronos e longos: uma vez dentro
+        // deles, nada os interrompe. Verificar aqui é o que permite ao app
+        // largar o trabalho assim que a fase corrente termina, em vez de
+        // seguir resumindo uma conversa que a pessoa acabou de apagar.
+        try Task.checkCancellation()
+
         aoProgredir(.transcrevendo)
         atualizado.trechos = try await transcrever(arquivo)
         atualizado.engineTranscricao = idTranscricao
+
+        try Task.checkCancellation()
 
         // A diarização é decorativa e **nunca** decide o destino da gravação:
         // falha de modelo, de áudio ou de alinhamento não sobe — o `try?` por
@@ -89,6 +99,8 @@ public struct PipelineDeArquivo: Sendable {
         // Sem fala reconhecida não há o que resumir — e mandar transcrição
         // vazia para o Qwen produz um resumo inventado.
         guard !atualizado.trechos.isEmpty else { return atualizado }
+
+        try Task.checkCancellation()
 
         aoProgredir(.resumindo)
         atualizado.resumo = try await resumir(atualizado.trechos)
@@ -216,6 +228,7 @@ public struct PipelineDeArquivo: Sendable {
         ])
         let sistema = Self.primeiroComConteudo(pasta, [
             Armazenamento.Nome.sistema,
+            Armazenamento.Nome.sistemaM4ALegado,
             Armazenamento.Nome.wavSistema,
             Armazenamento.Nome.pcmSistema,
         ])

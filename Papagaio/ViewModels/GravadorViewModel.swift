@@ -30,6 +30,9 @@ final class GravadorViewModel {
 
     /// Amostras de nível para a waveform ao vivo, ~20 Hz, janela de ~6 s.
     private(set) var waveform: [Float] = []
+    /// A waveform da saída do sistema é independente: não confunda uma linha
+    /// plana do microfone com ausência de áudio do interlocutor.
+    private(set) var waveformSistema: [Float] = []
     private let quadrosWaveform = 120
 
     /// O valor vem da quantidade de amostras que já entrou na mixagem, não do
@@ -100,6 +103,7 @@ final class GravadorViewModel {
         avisos = ["Gravação cancelada — nenhum arquivo foi criado."]
         tempoDeGravacao = 0
         waveform = []
+        waveformSistema = []
         limparDepoisDeGravar()
         estado = .ocioso
     }
@@ -122,8 +126,23 @@ final class GravadorViewModel {
 
     private func iniciar() async {
         guard let armazenamento else { return }
+
+        // Descarta qualquer sessão que tenha sobrado.
+        //
+        // O `Timer` de medição é criado com `target:`, e alvo de timer é
+        // retido: uma sessão que não foi encerrada continua viva, com o
+        // `AVAudioRecorder` dela segurando o microfone. A tentativa seguinte
+        // então falhava com "recusou começar a gravar" sem motivo aparente.
+        if let anterior = sessao {
+            await anterior.descartar()
+            sessao = nil
+        }
+        tarefaNivel?.cancel()
+        tarefaNivel = nil
+
         avisos = []
         waveform = []
+        waveformSistema = []
         tempoDeGravacao = 0
         notasDaGravacao = []
         rascunhoDaNota = ""
@@ -133,6 +152,9 @@ final class GravadorViewModel {
         do {
             try await sessao.iniciar()
         } catch {
+            // Sem isto a sessão que falhou continuava sendo a `self.sessao` de
+            // uma tentativa anterior, e nada a soltava.
+            self.sessao = nil
             estado = .falhou("\(error)")
             return
         }
@@ -196,15 +218,18 @@ final class GravadorViewModel {
     private func iniciarMonitoramentoDeNivel(sessao: SessaoGravacao, identificador: UUID) {
         identificadorDaGravacao = identificador
         let nivel = sessao.nivelMicrofone
+        let nivelSistema = sessao.nivelSistema
         tarefaNivel = Task { [weak self] in
             while !Task.isCancelled {
                 let valor = nivel.normalizado
+                let valorSistema = nivelSistema.normalizado
                 let tempo = sessao.tempoDecorrido
                 await MainActor.run {
                     guard self?.identificadorDaGravacao == identificador,
                           self?.estado == .gravando
                     else { return }
                     self?.acrescentarAoWaveform(valor)
+                    self?.acrescentarAoWaveformSistema(valorSistema)
                     self?.tempoDeGravacao = tempo
                 }
                 try? await Task.sleep(for: .milliseconds(50))
@@ -255,6 +280,13 @@ final class GravadorViewModel {
         waveform.append(valor)
         if waveform.count > quadrosWaveform {
             waveform.removeFirst(waveform.count - quadrosWaveform)
+        }
+    }
+
+    private func acrescentarAoWaveformSistema(_ valor: Float) {
+        waveformSistema.append(valor)
+        if waveformSistema.count > quadrosWaveform {
+            waveformSistema.removeFirst(waveformSistema.count - quadrosWaveform)
         }
     }
 

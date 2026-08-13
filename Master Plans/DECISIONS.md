@@ -902,6 +902,60 @@ só documentar — o rótulo estava errado na tela, não no papel.
 Um clique de gravar/parar produzia arquivo de 26 KB e 0:00 na biblioteca. Agora
 a pasta é apagada e a gravação não entra na lista.
 
+## D-2.9 — Tap de saída por stream do dispositivo padrão
+
+**Decidido:** `SystemAudioTap` passa a criar um `CATapDescription` exclusivo
+no stream de saída do dispositivo padrão e um aggregate privado contendo apenas
+o sub-tap. A configuração foi portada do `AudioRecorder`, projeto de referência
+que grava simultaneamente microfone e saída do sistema nesta máquina.
+
+**Descartado:** o tap global com aggregate contendo também o dispositivo físico
+de saída. Apesar de criar callbacks, esta rota já foi medida no Papagaio como
+um canal de zeros (D-2.6).
+
+**Validação pendente:** o build cobre a integração estática; a confirmação de
+sinal exige uma gravação real, com áudio de outro processo, no app assinado e
+aberto pelo Finder/Dock. Ela permanece fora do alcance de testes unitários e do
+simulador de dispositivo de áudio.
+
+## D-2.10 — Stream de saída é descoberto, não presumido
+
+**Decidido:** antes de criar o Process Tap, o Papagaio enumera os streams da
+saída padrão e usa o primeiro que anuncia PCM, taxa válida e ao menos um canal.
+
+**Descartado:** fixar `stream = 0`. O índice zero corresponde aos AirPods
+estéreo usados nesta máquina hoje, mas não é contrato de Core Audio para
+interfaces multicanal ou rotas que o usuário venha a selecionar depois.
+
+## D-2.11 — Captura grava PCM/CAF assíncrono; AAC não roda no callback
+
+**Decidido:** o canal de sistema é gravado como `sistema.caf` PCM pelo
+`ExtAudioFileWriteAsync`, como no AudioRecorder. A transcrição e reprodução
+aceitam CAF; `sistema.m4a` continua como leitura legada.
+
+**Descartado:** criar `AVAudioPCMBuffer` e escrever AAC/M4A pelo `AVAudioFile`
+dentro do bloco do `IOProc`. Essa rota codifica e pode alocar na thread de
+áudio, além de não ser a arquitetura que se mostrou funcional no projeto de
+referência.
+
+## D-2.12 — Resultado da captura exige sinal, não apenas tap iniciado
+
+**Decidido:** no fim da gravação, o Papagaio mede callbacks, quadros e pico
+Float32 do tap. Ele remove o canal do sistema e mostra um aviso específico se
+não houve callbacks ou se os buffers recebidos foram silêncio.
+
+**Por quê:** o estado anterior considerava sucesso tão logo `AudioDeviceStart`
+retornava sem erro, escondendo a diferença operacional entre TCC negado,
+callback ausente e stream que entrega zeros.
+
+## D-2.13 — Medidores separados para microfone e áudio do sistema
+
+**Decidido:** a tela de gravação desenha uma waveform por canal. O medidor do
+sistema lê o RMS do próprio Process Tap e não reutiliza o nível do microfone.
+
+**Por quê:** uma única waveform tornava impossível distinguir na interface um
+microfone silencioso de um tap do sistema silencioso durante a gravação.
+
 ---
 
 ## Passos 8 e 9 — Persistência e busca (2026-07-31)
@@ -1398,6 +1452,29 @@ ser reativado apenas adicionando de volta o entitlement.
 
 ---
 
+## D-13.4 — Correções de empacotamento para a Mac App Store (2026-08-13)
+
+**Decidido:** o ícone distribuído é `Papagaio/PapagaioAppIcon.icns`, declarado
+por `CFBundleIconFile` e contendo todas as representações de 16 a 1024 pixels.
+O catálogo anterior continha um `Contents.json` inválido e o `actool` não gerava
+um `.icns` completo; a fonte PNG foi preservada em `Config/AppIconSource` para
+regenerar o arquivo quando necessário.
+
+**Entitlements:** a chave inválida
+`com.apple.security.personal-information.contacts` foi substituída por
+`com.apple.security.personal-information.addressbook`, necessária para o uso
+real de `CNContactStore`. As capacidades `usernotifications.communication` e
+`usernotifications.time-sensitive` foram removidas: o app só agenda
+notificações locais padrão e não implementa intents de mensagem ou chamada.
+
+**Validação local:** build `Release` sem assinatura passou e o bundle resultante
+declara `CFBundleIconFile = PapagaioAppIcon`; a representação
+`icon_512x512@2x.png` extraída do `.icns` mede 1024 x 1024. A assinatura de
+distribuição e a validação final continuam sendo responsabilidade do archive do
+Xcode Cloud/App Store Connect.
+
+---
+
 ## Riscos abertos
 
 | # | Risco | Estado |
@@ -1405,7 +1482,7 @@ ser reativado apenas adicionando de volta o entitlement.
 | **R-1** | ~~**Xcode não está instalado.**~~ Estava em `~/Downloads/Xcode-beta.app`, fora do caminho procurado. O compilador `metal` faltava de fato e foi baixado à parte (Metal Toolchain 27A5194o, 805 MB). | **Resolvido na sessão 3.** Ativação por `DEVELOPER_DIR` — ver D-0.9. Verificado com shader Metal e build SwiftPM Swift 6 reais. |
 | **R-2** | Distribuição de Core Audio Process Taps pela Mac App Store não confirmada. D-0.1 depende disso. | **Continua aberto.** O Passo 2 foi implementado por decisão do usuário sem essa confirmação. Tecnicamente a API funciona nesta máquina; o risco é de revisão da App Store, não de viabilidade. |
 | **R-11** | **O tap do sistema entrega silêncio.** Confirmado em gravação real: 126,6 s de zeros exatos no canal do sistema, com o microfone correto na mesma sessão. 9 configurações testadas, todas iguais. Sem esse canal **não há áudio do interlocutor**, e o posicionamento "app de reunião online" (D-0.1) não se sustenta. | **Aberto e bloqueante para o Passo 2.** Próximo teste depende de R-10 (assinatura real). Ver D-2.6. |
-| **R-12** | `kAudioAggregateDeviceTapAutoStartKey = true` **impede** os callbacks do `IOProc` no macOS 27.0 beta — só com `false` o áudio flui. O código de produção usa `true`. | A corrigir junto com R-11, quando houver como validar. |
+| **R-12** | `kAudioAggregateDeviceTapAutoStartKey = true` **impede** os callbacks do `IOProc` no macOS 27.0 beta — só com `false` o áudio flui. | **Configuração corrigida em D-2.9:** o tap por stream usa `false`. Requer validação real de sinal junto com R-11. |
 | **R-3** | Escopo somado nos dois eixos (Process Taps + modelos locais) ainda exige bastante validação de hardware. | **Reduzido em 2026-08-01:** o eixo de equipes/CloudKit foi removido por D-13.3. |
 | **R-4** | ~~`Qwen2.5-14B-Q5_K_M` é GGUF/llama.cpp, incompatível com a stack e com o sandbox.~~ | **Resolvido por D-0.5/D-0.6.** Modelo confirmado como GGUF; sandbox resolvido via linkagem de biblioteca, não subprocess. |
 | **R-5** | Corpus do Passo 6 exige 5 gravações reais em PT-BR com ground truth **transcrito à mão**. Sem isso, todas as métricas são ficção. Não há decisão sobre quem produz nem quando. | A decidir antes do Passo 6. |
