@@ -183,7 +183,117 @@ func pipelineSalvaAntesDeResumir() async throws {
     let salvos = await repositorio.salvos
     #expect(salvos.count == 2)
     #expect(salvos[1].resumo != nil)
-    #expect(fases.withLock { $0 } == [.transcrevendo, .salvando, .resumindo, .salvando])
+    #expect(fases.withLock { $0 } == [.transcrevendo, .diarizando, .salvando, .resumindo, .salvando])
+}
+
+@Test("Diarização roda por canal e casa falantes com as palavras")
+func pipelineDiarizaPorCanal() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: true, sistema: true, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    let diarizados = Mutex<[String]>([])
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { url, _ in
+            // Palavras com timestamps por canal — o que a diarização vai casar.
+            if url.lastPathComponent == Armazenamento.Nome.microfone {
+                return [Trecho(
+                    start: 0, end: 3, texto: "oi tudo", speaker: Speaker.eu,
+                    palavras: [
+                        Palavra(start: 0, end: 1, texto: "oi"),
+                        Palavra(start: 1, end: 3, texto: "tudo"),
+                    ]
+                )]
+            }
+            return [Trecho(
+                start: 4, end: 6, texto: "bem", speaker: Speaker.interlocutor,
+                palavras: [Palavra(start: 4, end: 6, texto: "bem")]
+            )]
+        },
+        resumir: { _ in resumoDeMentira },
+        diarizar: { url in
+            diarizados.withLock { $0.append(url.lastPathComponent) }
+            // Um só falante em cada canal, cobrindo tudo: cada palavra herda S1.
+            return [SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 10)]
+        }
+    )
+
+    let final = try await pipeline.processar(arquivo)
+
+    #expect(diarizados.withLock { $0 } == [
+        Armazenamento.Nome.microfone, Armazenamento.Nome.sistema
+    ])
+    // O rótulo do canal não muda — diarização não é o speaker.
+    #expect(final.trechos[0].speaker == Speaker.eu)
+    #expect(final.trechos[1].speaker == Speaker.interlocutor)
+    // As palavras herdaram o falante acústico.
+    #expect(final.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "S1" })
+}
+
+@Test("Falha de diarização nunca derruba transcrição nem resumo")
+func pipelineIsolaFalhaDeDiarizacao() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: true, sistema: true, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    let repositorio = RepositorioEspiao()
+    struct ErroDiarizacaoDeTeste: Error {}
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: repositorio,
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { _, _ in [
+            Trecho(
+                start: 0, end: 2, texto: "oi", speaker: Speaker.eu,
+                palavras: [Palavra(start: 0, end: 2, texto: "oi")]
+            )
+        ] },
+        resumir: { _ in resumoDeMentira },
+        diarizar: { _ in throw ErroDiarizacaoDeTeste() }
+    )
+
+    let final = try await pipeline.processar(arquivo)
+
+    // Salvou tudo, duas vezes, e o resumo saiu — a diarização só faltou.
+    #expect(await repositorio.salvos.count == 2)
+    #expect(final.resumo?.titulo == "Resumo")
+    #expect(final.trechos[0].palavras[0].falanteAcustico == nil)
+}
+
+@Test("Só com mixagem, a diarização é a única fonte de vozes e é chamada")
+func pipelineDiarizaMixagemQuandoNaoHaCanais() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: false, sistema: false, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    // O trecho transcrito não faz Palavra — usa comPalavras para ancorar as
+    // palavras à mixagem, como o Whisper faria num importado.
+    let palavra = Palavra(start: 0, end: 1, texto: "oi")
+    let chamouDiarizacao = Mutex(false)
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { _, _ in
+            [Trecho(start: 0, end: 2, texto: "oi", palavras: [palavra])]
+        },
+        resumir: { _ in resumoDeMentira },
+        diarizar: { url in
+            chamouDiarizacao.withLock { $0 = true }
+            #expect(url.lastPathComponent == Armazenamento.Nome.mixagem)
+            return [SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 2)]
+        }
+    )
+
+    let final = try await pipeline.processar(arquivo)
+    #expect(chamouDiarizacao.withLock { $0 } == true)
+    #expect(final.trechos[0].palavras[0].falanteAcustico == "S1")
 }
 
 @Test("Silêncio total não vira resumo inventado")

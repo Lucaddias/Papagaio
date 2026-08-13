@@ -35,10 +35,21 @@ public struct QwenEngine: SummarizationEngine {
         let transcricao = Self.formatar(trechos)
         let tokens = try await contexto.contarTokens(transcricao)
 
-        if tokens <= ContextoLlama.tetoDeEntrada {
-            return try await passeUnico(transcricao)
-        }
-        return try await mapReduce(trechos)
+        let bruto = tokens <= ContextoLlama.tetoDeEntrada
+            ? try await passeUnico(transcricao)
+            : try await mapReduce(trechos)
+
+        // O modelo sugere; a transcrição decide. Sem esta passagem, o que
+        // chega à tela é a lembrança que o Qwen tem da conversa — texto
+        // parafraseado e `start` estimado, que leva o player para o lugar
+        // errado. Ver `ValidacaoDeCitacoes`.
+        return Resumo(
+            titulo: bruto.titulo,
+            visaoGeral: bruto.visaoGeral,
+            temas: bruto.temas,
+            citacoes: ValidacaoDeCitacoes.validar(bruto.citacoes, contra: trechos),
+            proximosPassos: bruto.proximosPassos
+        )
     }
 
     // MARK: - Passe único

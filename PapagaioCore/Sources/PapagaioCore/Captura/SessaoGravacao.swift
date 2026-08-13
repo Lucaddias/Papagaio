@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Em vez de `AVAudioEngine` + ring buffers + conversão em tempo real, o
 /// microfone é gravado direto por `AVAudioRecorder` num `.wav` PCM 16 kHz
-/// mono (16 bits) e o áudio do sistema pelo `SystemAudioTap` num `.m4a` AAC
+/// mono (16 bits) e o áudio do sistema pelo `SystemAudioTap` num `.caf` PCM
 /// **na taxa nativa do tap**. Nenhuma mixagem é escrita em disco: a
 /// reprodução junta os dois canais só no playback — ver `ReprodutorDeArquivo`.
 ///
@@ -48,6 +48,10 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     /// Nível do microfone para a waveform ao vivo. Escrito pelo medidor do
     /// `AVAudioRecorder` a ~4 Hz e lido pela UI.
     public let nivelMicrofone = NivelAudio()
+    /// Nível entregue pelo Process Tap da saída do sistema. É separado do
+    /// microfone para que a interface revele imediatamente se o interlocutor
+    /// está chegando ao app.
+    public let nivelSistema = NivelAudio()
 
     private var recorder: AVAudioRecorder?
     private var timer: Timer?
@@ -95,6 +99,14 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
         rec.isMeteringEnabled = true
         rec.prepareToRecord()
         guard rec.record() else {
+            // Falhar aqui deixava um `AVAudioRecorder` preparado e vivo,
+            // segurando o dispositivo de entrada: a tentativa seguinte
+            // encontrava o microfone ocupado e falhava também, e assim por
+            // diante. Soltar o recurso antes de propagar o erro quebra esse
+            // ciclo — a próxima tentativa começa limpa.
+            rec.stop()
+            try? FileManager.default.removeItem(at: pasta)
+            self.pasta = nil
             throw ErroCaptura.arquivoInvalido("AVAudioRecorder recusou começar a gravar")
         }
         recorder = rec
@@ -132,13 +144,13 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
                 nome: Armazenamento.Nome.sistema
             )
             urlCriada = url
-            let tap = SystemAudioTap()
+            let tap = SystemAudioTap(nivel: nivelSistema)
             try tap.start(destinationURL: url)
             systemTap = tap
             sistemaURL = url
             capturouSistema = true
         } catch {
-            // O `sistema.m4a` órfão é pior que arquivo nenhum. Ele tem alguns
+            // O `sistema.caf` órfão é pior que arquivo nenhum. Ele tem alguns
             // bytes de cabeçalho, então passa no teste de "existe e não está
             // vazio", vira o insumo escolhido pelo pipeline e a transcrição
             // morre inteira com "arquivo de áudio inválido" — mesmo havendo um
@@ -170,7 +182,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     }
 
     public func descartar() async {
-        encerrarCaptura()
+        _ = encerrarCaptura()
         if let pasta {
             try? FileManager.default.removeItem(at: pasta)
         }
@@ -182,14 +194,24 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     public func parar() async -> Resultado {
         let duracao = recorder?.currentTime ?? tempoDecorrido
         let urlDoSistema = sistemaURL
-        encerrarCaptura()
+        let estatisticasDoSistema = encerrarCaptura()
         pausada = false
         tempoDecorrido = duracao
 
         var sistemaOk = false
         #if os(macOS)
         sistemaOk = capturouSistema
-        if descartarSistemaSeVazio(urlDoSistema) {
+        if let estatisticasDoSistema, estatisticasDoSistema.callbacks == 0 {
+            sistemaOk = false
+            capturouSistema = false
+            if let urlDoSistema { try? FileManager.default.removeItem(at: urlDoSistema) }
+            avisos.append("Áudio do sistema não recebeu callbacks. Verifique a permissão de Captura de Áudio do Sistema para este Papagaio.")
+        } else if let pico = estatisticasDoSistema?.peak, pico < 0.000_1 {
+            sistemaOk = false
+            capturouSistema = false
+            if let urlDoSistema { try? FileManager.default.removeItem(at: urlDoSistema) }
+            avisos.append("O tap recebeu áudio do sistema, mas todos os buffers vieram em silêncio. A rota de saída atual não está entregando sinal ao tap.")
+        } else if descartarSistemaSeVazio(urlDoSistema) {
             sistemaOk = false
             capturouSistema = false
             avisos.append("Áudio do sistema não capturou nada — a conversa tem só o microfone.")
@@ -226,7 +248,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     }
 
     #if os(macOS)
-    /// Apaga o `sistema.m4a` que ficou sem som e diz se apagou.
+    /// Apaga o `sistema.caf` que ficou sem som e diz se apagou.
     ///
     /// O tap pode **começar sem erro e não gravar nada** — foi o que aconteceu
     /// aqui: um contêiner M4A de 1 KB, só cabeçalho. Ele não é inofensivo:
@@ -248,15 +270,18 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     }
     #endif
 
-    private func encerrarCaptura() {
+    private func encerrarCaptura() -> SystemAudioTap.Statistics? {
         timer?.invalidate()
         timer = nil
         recorder?.stop()
         recorder = nil
         #if os(macOS)
-        systemTap?.stop()
+        let estatisticas = systemTap?.stop()
         systemTap = nil
         sistemaURL = nil
+        return estatisticas
+        #else
+        return nil
         #endif
     }
 

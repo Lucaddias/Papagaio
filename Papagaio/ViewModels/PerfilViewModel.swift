@@ -71,6 +71,21 @@ final class PerfilViewModel: NSObject {
         removerCredencial()
     }
 
+    /// Limpa o perfil e a sessão que pertencem a esta instalação do app.
+    /// A revogação do consentimento do Sign in with Apple é administrada pela
+    /// Apple; aqui removemos a conta local e seus dados no dispositivo.
+    func excluirDadosDaConta() {
+        removerDoKeychain()
+        UserDefaults.standard.removeObject(forKey: Chave.nome)
+        UserDefaults.standard.removeObject(forKey: Chave.email)
+        UserDefaults.standard.removeObject(forKey: Chave.avatar)
+        identificador = nil
+        nome = ""
+        email = ""
+        avatarURL = nil
+        erro = nil
+    }
+
     func salvarDados(nome: String, email: String) {
         let nomeLimpo = nome.trimmingCharacters(in: .whitespacesAndNewlines)
         let emailLimpo = email.trimmingCharacters(in: .whitespacesAndNewlines)

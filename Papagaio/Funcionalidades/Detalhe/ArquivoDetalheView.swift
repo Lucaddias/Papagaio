@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 struct ArquivoDetalheView: View {
     let arquivo: Arquivo
     let audio: URL
-    /// Canal do sistema (`sistema.m4a`) para reprodução em paralelo ao
+    /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
@@ -27,7 +27,6 @@ struct ArquivoDetalheView: View {
     let aoAtualizarTranscricao: ([Trecho]) async -> Void
     /// Refina com o Whisper local o trecho ditado numa nota.
     let aoDitar: (URL) async throws -> String
-    let aoAbrirConfiguracoes: () -> Void
 
     @State private var reprodutor: ReprodutorDeArquivo?
     @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
@@ -70,6 +69,7 @@ struct ArquivoDetalheView: View {
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
     @State private var trechoEmEdicao: UUID?
     @State private var textoDoTrechoEmEdicao = ""
+    @State private var falaEmEdicao: UUID?
     @Environment(\.accessibilityReduceMotion) private var reduzirMovimento
     @Environment(\.dismiss) private var fechar
 
@@ -78,11 +78,8 @@ struct ArquivoDetalheView: View {
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var mostrandoFicha = false
     @State private var pairandoNaFicha = false
-    @State private var editandoFicha = false
     @State private var entrevistadoDaFicha = ""
-    @State private var emailDoEntrevistadoDaFicha = ""
     @State private var entrevistadoresDaFicha = ""
-    @State private var emailDosEntrevistadoresDaFicha = ""
     @State private var formatoDaFicha = ""
     private var metadados: MetadadosVisuaisDoArquivo {
         _ = versaoDaFicha
@@ -104,6 +101,9 @@ struct ArquivoDetalheView: View {
         return max(1, speakers.count)
     }
     private var trechos: [Trecho] { arquivo.trechos }
+    /// A conversa em falas por falante acústico — `nil` sem diarização, quando
+    /// a transcrição continua em blocos de trecho.
+    private var falas: [FalaDeFalante]? { FalasDaConversa.agrupar(trechos) }
     private var notas: [NotaDaConversa] { notasEditaveis }
     private var podeIniciarTranscricao: Bool {
         trechos.isEmpty && !processando && !naFila
@@ -189,6 +189,10 @@ struct ArquivoDetalheView: View {
         // `ignoresSafeArea` porque a janela está sem barra de título: sem
         // isto o topo ficava transparente e mostrava o papel de parede,
         // que era a faixa estranha acima do título.
+        // Anuncia o espaço do player para quem posiciona o selo de gravação.
+        // 116 é a altura da barra flutuante mais o respiro dela; zero quando o
+        // player não está na tela, e aí o selo volta para o canto de baixo.
+        .alturaDoPlayerPapagaio(deveMostrarPlayer ? 116 : 0)
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         // Piso baixo de propósito: acima disso o conteúdo era desenhado mais
@@ -242,8 +246,8 @@ struct ArquivoDetalheView: View {
             Text(erroDeMidia ?? "")
         }
         .sheet(isPresented: Binding(
-            get: { trechoEmEdicao != nil },
-            set: { if !$0 { cancelarEdicaoDoTrecho() } }
+            get: { trechoEmEdicao != nil || falaEmEdicao != nil },
+            set: { if !$0 { cancelarEdicaoDoTrecho(); cancelarEdicaoDaFala() } }
         )) {
             folhaDeCorrecaoDoTrecho
         }
@@ -336,14 +340,6 @@ struct ArquivoDetalheView: View {
             Spacer(minLength: PapagaioTema.Espaco.curto)
 
             BotaoCircularPapagaio(
-                simbolo: "gearshape",
-                ajuda: "Ajustes",
-                legendaAtiva: $legendaDaBarra
-            ) {
-                aoAbrirConfiguracoes()
-            }
-
-            BotaoCircularPapagaio(
                 simbolo: "square.and.arrow.up",
                 ajuda: arquivo.resumo == nil
                     ? "Disponível depois que o resumo estiver pronto"
@@ -416,11 +412,8 @@ struct ArquivoDetalheView: View {
     private var botaoDeFicha: some View {
         Button {
             entrevistadoDaFicha = metadados.entrevistado
-            emailDoEntrevistadoDaFicha = metadados.emailDoEntrevistado
             entrevistadoresDaFicha = metadados.entrevistadores
-            emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
             formatoDaFicha = metadados.formato
-            editandoFicha = false
             mostrandoFicha = true
         } label: {
             // `person.text.rectangle` em vez de `info.circle`: o conteúdo é a
@@ -466,98 +459,68 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    /// Ficha compacta por padrão, formulário só quando pedido.
+    /// A ficha só mostra. Quem edita é o formulário, no clique do título.
     ///
-    /// Aberta já em modo de edição, ela ocupava meia tela para responder a uma
-    /// pergunta que quase sempre é "quem participou disso mesmo?". Ler é o
-    /// caso comum; editar é a exceção, e exceção fica atrás de um botão.
+    /// Ter os dois caminhos de edição — o formulário completo e um modo de
+    /// edição aqui dentro — significava manter duas telas fazendo a mesma
+    /// coisa, com regras que precisavam concordar. E o popover crescia de 280
+    /// para 460pt no clique do "Editar", o que fazia a tela pular. Como espelho
+    /// do formulário, ele fica sempre do mesmo tamanho e sempre igual.
     private var fichaEmPopover: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            if editandoFicha {
-                PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistador(es)",
-                    nome: $entrevistadoresDaFicha,
-                    email: $emailDosEntrevistadoresDaFicha,
-                    placeholderNome: "Ex.: João Santos",
-                    placeholderEmail: "joao.santos@empresa.com"
-                )
-
-                PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistado(s)",
-                    nome: $entrevistadoDaFicha,
-                    email: $emailDoEntrevistadoDaFicha,
-                    placeholderNome: "Ex.: Ana Silva",
-                    placeholderEmail: "ana.silva@email.com"
-                )
-
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    Text("Modalidade")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                        .textCase(.uppercase)
-                    HStack(spacing: PapagaioTema.Espaco.curto) {
-                        modalidade("Presencial", simbolo: "mappin.and.ellipse")
-                        modalidade("Online", simbolo: "video")
-                    }
-                }
-            } else {
-                // Rótulo no plural quando há mais de um nome: "Entrevistado:
-                // Ana, João" lia errado, como se fosse uma pessoa só de nome
-                // composto.
-                linhaDaFicha(
-                    rotuloDePessoas("Entrevistador", "Entrevistadores", em: entrevistadoresDaFicha),
-                    valor: entrevistadoresDaFicha,
-                    simbolo: "person.crop.circle.badge.checkmark"
-                )
-                linhaDaFicha(
-                    rotuloDePessoas("Entrevistado", "Entrevistados", em: entrevistadoDaFicha),
-                    valor: entrevistadoDaFicha,
-                    simbolo: "person"
-                )
-                linhaDaFicha(
-                    "Modalidade",
-                    valor: formatoDaFicha,
-                    simbolo: simboloDaModalidade(formatoDaFicha)
-                )
-            }
+            // Rótulo no plural quando há mais de um nome: "Entrevistado: Ana,
+            // João" lia errado, como se fosse uma pessoa só de nome composto.
+            linhaDaFicha(
+                rotuloDePessoas("Entrevistador", "Entrevistadores", em: entrevistadoresDaFicha),
+                valor: entrevistadoresDaFicha,
+                simbolo: "person.crop.circle.badge.checkmark"
+            )
+            linhaDaFicha(
+                rotuloDePessoas("Entrevistado", "Entrevistados", em: entrevistadoDaFicha),
+                valor: entrevistadoDaFicha,
+                simbolo: "person"
+            )
+            linhaDaFicha(
+                "Modalidade",
+                valor: formatoDaFicha,
+                simbolo: simboloDaModalidade(formatoDaFicha)
+            )
 
             Divider()
 
             // Estes três são consequência, não escolha: participantes sai dos
-            // nomes acima, data e duração vêm do próprio áudio. Editáveis, só
-            // dariam à pessoa a chance de contradizer o arquivo.
+            // nomes acima, data e duração vêm do próprio áudio.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                dadoDaFicha(
-                    participantesDaFicha == 1
-                        ? "1 participante"
-                        : "\(participantesDaFicha) participantes",
-                    simbolo: participantesDaFicha == 1 ? "person" : "person.2"
-                )
+                dadoDaFicha(textoDeParticipantes, simbolo: participantesDaFicha > 1 ? "person.2" : "person")
                 dadoDaFicha(
                     arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
             }
-
-            Button {
-                withAnimation(.snappy(duration: 0.18)) { editandoFicha.toggle() }
-            } label: {
-                Label(
-                    editandoFicha ? "Concluir" : "Editar",
-                    systemImage: editandoFicha ? "checkmark" : "pencil"
-                )
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(PapagaioTema.destaqueEscuro)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(PapagaioTema.Espaco.largo)
-        .frame(width: editandoFicha ? 460 : 280)
-        // Salva ao fechar: um popover de ficha com botão "Salvar" faria a
-        // pessoa confirmar duas vezes — fechar já é a confirmação.
-        .onDisappear { salvarFichaRapida() }
+        .frame(width: 300)
+    }
+
+    /// Contado a partir dos nomes salvos, e não de um campo próprio: o número
+    /// é consequência de quem foi preenchido no formulário.
+    private var participantesDaFicha: Int {
+        nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha)
+    }
+
+    /// Ninguém preenchido é **zero**, não um.
+    ///
+    /// O piso em 1 vinha de supor que sempre há ao menos quem gravou. Mas a
+    /// ficha mostra quem foi *informado*, e afirmar "1 participante" para uma
+    /// conversa vazia é inventar um dado — ainda por cima um que a pessoa não
+    /// tem como corrigir, já que o número é calculado.
+    private var textoDeParticipantes: String {
+        switch participantesDaFicha {
+        case 0: "Participantes não informados"
+        case 1: "1 participante"
+        default: "\(participantesDaFicha) participantes"
+        }
     }
 
     /// Mesma coluna de ícone das linhas de cima — 18pt fixos.
@@ -604,56 +567,6 @@ struct ArquivoDetalheView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    /// Contado a partir dos nomes preenchidos **agora**, e não do que está
-    /// salvo: o número tem que acompanhar a digitação, senão parece travado.
-    private var participantesDaFicha: Int {
-        max(1, nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha))
-    }
-
-    private func modalidade(_ nome: String, simbolo: String) -> some View {
-        let ativa = formatoDaFicha == nome
-        return Button {
-            // Clicar de novo na modalidade ativa limpa: é como se desmarca sem
-            // precisar de um terceiro botão "não informada".
-            formatoDaFicha = ativa ? "" : nome
-        } label: {
-            Label(nome, systemImage: simbolo)
-                .font(PapagaioTema.Tipo.apoio.weight(.semibold))
-                .foregroundStyle(ativa ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                .padding(.horizontal, PapagaioTema.Espaco.medio)
-                .frame(height: PapagaioTema.Altura.compacta)
-                .background(
-                    ativa ? PapagaioTema.destaque.opacity(0.14) : .clear,
-                    in: Capsule()
-                )
-                .overlay {
-                    Capsule().stroke(
-                        ativa ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
-                        lineWidth: 1
-                    )
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func salvarFichaRapida() {
-        let atuais = metadados
-        PreferenciasVisuaisDoArquivo.definirMetadados(
-            MetadadosVisuaisDoArquivo(
-                entrevistado: entrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                emailDoEntrevistado: emailDoEntrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                entrevistadores: entrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                emailDosEntrevistadores: emailDosEntrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                descricao: atuais.descricao,
-                formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                participantes: participantesDaFicha
-            ),
-            para: arquivo.id
-        )
-        aoAtualizarMetadados(titulo, arquivo.criadoEm, arquivo.duracao)
     }
 
     private var fichaDoCabecalho: some View {
@@ -1011,6 +924,9 @@ struct ArquivoDetalheView: View {
             try moverParaLixeira(anexo, daGravacao: false)
             try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
             anexosDeMidia = atualizados
+            // Sem isto o cartão apagado só apareceria na próxima abertura da
+            // aba: a lista de removidos é lida do disco, não deduzida daqui.
+            recarregarLixeiraDeMidia()
         } catch {
             erroDeMidia = "Não foi possível remover esse arquivo: \(error.localizedDescription)"
         }
@@ -1043,6 +959,7 @@ struct ArquivoDetalheView: View {
         do {
             try moverParaLixeira(anexo, daGravacao: true)
             anexosDaGravacao = gravacoesDaConversa()
+            recarregarLixeiraDeMidia()
         } catch {
             erroDeMidia = "Não foi possível mover o áudio da gravação para a lixeira: \(error.localizedDescription)"
         }
@@ -1388,49 +1305,135 @@ struct ArquivoDetalheView: View {
                 )
             }
         } else if let reprodutor {
-            ScrollViewReader { rolagem in
-                LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    ForEach(Array(trechos.enumerated()), id: \.element.id) { indice, trecho in
-                        let ativo = indice == reprodutor.indiceAtivo
-                            LinhaDeTranscricao(
-                                trecho: trecho,
-                                ativo: ativo,
-                                // Só o trecho ativo consulta a palavra: o
-                                // destaque por palavra é observado na linha
-                                // certa, não na transcrição inteira.
-                                indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
-                                animacao: animacaoDeInterface,
-                                aoTocarLinha: { tocar(trecho, no: reprodutor) },
-                                aoTocarPalavra: { palavra in
-                                    tocar(palavra, no: reprodutor)
-                                }
-                            )
-                            .id(trecho.id)
-                            // Lápis visível: escondido só no menu de contexto,
-                            // ninguém descobria que dava para corrigir o texto.
-                            // Fica sobreposto para a linha do Felipe continuar
-                            // intacta — o clique simples segue tocando.
-                            .overlay(alignment: .topTrailing) {
-                                Button {
-                                    iniciarEdicaoDoTrecho(trecho)
-                                } label: {
-                                    Image(systemName: "pencil")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                                        .frame(width: 26, height: 26)
-                                        .background(PapagaioTema.destaqueSuave, in: Circle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Corrigir o texto do trecho em \(trecho.start.comoRelogio)")
-                                .padding(PapagaioTema.Espaco.curto)
-                            }
+            if let falas {
+                transcricaoDeFalas(falas, no: reprodutor)
+            } else {
+                transcricaoDeTrechos(no: reprodutor)
+            }
+        }
+    }
+
+    /// Leitura por fala de falante: a voz é a unidade, não o bloco de texto.
+    ///
+    /// O destaque do player continua casando pela âncora da palavra — cada
+    /// palavra da fala sabe o trecho e o índice de onde veio, então a rolagem
+    /// e o destaque reagem ao áudio como na lista de trechos.
+    private func transcricaoDeFalas(
+        _ falas: [FalaDeFalante], no reprodutor: ReprodutorDeArquivo
+    ) -> some View {
+        ScrollViewReader { rolagem in
+            LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                ForEach(falas) { fala in
+                    LinhaDeFala(
+                        fala: fala,
+                        ativo: falaEstaAtiva(fala, no: reprodutor),
+                        palavraAtiva: palavraAtiva(fala, no: reprodutor),
+                        animacao: animacaoDeInterface,
+                        aoTocarFala: { tocar(fala, no: reprodutor) },
+                        aoTocarPalavra: { palavra in
+                            tocar(palavra, no: reprodutor)
+                        }
+                    )
+                    .id(fala.id)
+                    // Lápis visível, como na linha de trecho: a correção de
+                    // uma fala reescreve os trechos de onde ela saiu.
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            iniciarEdicaoDaFala(fala)
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                                .frame(width: 26, height: 26)
+                                .background(PapagaioTema.destaqueSuave, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Corrigir o texto da fala em \(fala.inicio.comoRelogio)")
+                        .padding(PapagaioTema.Espaco.curto)
                     }
                 }
-                .onChange(of: reprodutor.indiceAtivo) { _, novo in
-                    guard let novo, novo < trechos.count else { return }
-                    withAnimation(animacaoDeInterface) {
-                        rolagem.scrollTo(trechos[novo].id, anchor: .center)
-                    }
+            }
+            .onChange(of: reprodutor.indiceAtivo) { _, novo in
+                guard let novo, novo < trechos.count else { return }
+                let trechoAtivo = trechos[novo]
+                guard let fala = falas.first(where: { $0.trechoIds.contains(trechoAtivo.id) }) else {
+                    return
+                }
+                withAnimation(animacaoDeInterface) {
+                    rolagem.scrollTo(fala.id, anchor: .center)
+                }
+            }
+        }
+    }
+
+    /// A fala está tocando quando o trecho ativo saiu dela.
+    private func falaEstaAtiva(_ fala: FalaDeFalante, no reprodutor: ReprodutorDeArquivo) -> Bool {
+        guard let indice = reprodutor.indiceAtivo, trechos.indices.contains(indice) else {
+            return false
+        }
+        return fala.trechoIds.contains(trechos[indice].id)
+    }
+
+    /// A palavra tocando dentro da fala, casada pela âncora no trecho de
+    /// origem — ou `nil` quando a fala não está ativa ou é legada.
+    private func palavraAtiva(_ fala: FalaDeFalante, no reprodutor: ReprodutorDeArquivo) -> PalavraDeFala? {
+        guard falaEstaAtiva(fala, no: reprodutor),
+              let indiceDoTrecho = reprodutor.indiceAtivo,
+              let indiceDaPalavra = reprodutor.indiceDePalavraAtiva,
+              trechos.indices.contains(indiceDoTrecho)
+        else { return nil }
+        let trecho = trechos[indiceDoTrecho]
+        guard trecho.palavras.indices.contains(indiceDaPalavra) else { return nil }
+        return PalavraDeFala(
+            palavra: trecho.palavras[indiceDaPalavra],
+            trechoId: trecho.id,
+            indiceNoTrecho: indiceDaPalavra
+        )
+    }
+
+    private func transcricaoDeTrechos(no reprodutor: ReprodutorDeArquivo) -> some View {
+        ScrollViewReader { rolagem in
+            LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                ForEach(Array(trechos.enumerated()), id: \.element.id) { indice, trecho in
+                    let ativo = indice == reprodutor.indiceAtivo
+                        LinhaDeTranscricao(
+                            trecho: trecho,
+                            ativo: ativo,
+                            // Só o trecho ativo consulta a palavra: o
+                            // destaque por palavra é observado na linha
+                            // certa, não na transcrição inteira.
+                            indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
+                            animacao: animacaoDeInterface,
+                            aoTocarLinha: { tocar(trecho, no: reprodutor) },
+                            aoTocarPalavra: { palavra in
+                                tocar(palavra, no: reprodutor)
+                            }
+                        )
+                        .id(trecho.id)
+                        // Lápis visível: escondido só no menu de contexto,
+                        // ninguém descobria que dava para corrigir o texto.
+                        // Fica sobreposto para a linha do Felipe continuar
+                        // intacta — o clique simples segue tocando.
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                iniciarEdicaoDoTrecho(trecho)
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                                    .frame(width: 26, height: 26)
+                                    .background(PapagaioTema.destaqueSuave, in: Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Corrigir o texto do trecho em \(trecho.start.comoRelogio)")
+                            .padding(PapagaioTema.Espaco.curto)
+                        }
+                }
+            }
+            .onChange(of: reprodutor.indiceAtivo) { _, novo in
+                guard let novo, novo < trechos.count else { return }
+                withAnimation(animacaoDeInterface) {
+                    rolagem.scrollTo(trechos[novo].id, anchor: .center)
                 }
             }
         }
@@ -1441,15 +1444,23 @@ struct ArquivoDetalheView: View {
     /// Na lista o campo abria mas não recebia o teclado: a linha é um alvo de
     /// toque para tocar o trecho, e a rolagem automática do trecho ativo
     /// reposicionava tudo embaixo do cursor. Numa folha o foco é só dele.
+    ///
+    /// Serve para o trecho e para a fala: ao salvar uma fala, os trechos de
+    /// onde ela saiu são fundidos num só com o texto corrigido, e as palavras
+    /// são descartadas (os tempos do Whisper deixam de valer).
     private var folhaDeCorrecaoDoTrecho: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text("Corrigir trecho")
+                Text(trechoSendoCorrigido != nil ? "Corrigir trecho" : "Corrigir fala")
                     .font(.title2.weight(.bold))
                     .foregroundStyle(PapagaioTema.texto)
 
                 if let trecho = trechoSendoCorrigido {
                     Text("Em \(trecho.start.comoRelogio) da conversa")
+                        .font(.callout)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                } else if let fala = falaSendoCorrigida {
+                    Text("Em \(fala.inicio.comoRelogio) da conversa")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                 }
@@ -1468,7 +1479,7 @@ struct ArquivoDetalheView: View {
                         .stroke(PapagaioTema.borda, lineWidth: 1)
                 }
 
-            Text("O destaque por palavra deste trecho é descartado ao salvar: os tempos vêm do Whisper e deixam de valer para o texto novo.")
+            Text("O destaque por palavra é descartado ao salvar: os tempos vêm do Whisper e deixam de valer para o texto novo.")
                 .font(.caption)
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1476,11 +1487,15 @@ struct ArquivoDetalheView: View {
             HStack(spacing: PapagaioTema.Espaco.medio) {
                 Spacer()
 
-                Button("Cancelar") { cancelarEdicaoDoTrecho() }
+                Button("Cancelar") { cancelarEdicaoDoTrecho(); cancelarEdicaoDaFala() }
                     .buttonStyle(BotaoDeContornoPapagaio())
 
                 Button("Salvar") {
-                    if let trecho = trechoSendoCorrigido { salvarEdicaoDoTrecho(trecho) }
+                    if let trecho = trechoSendoCorrigido {
+                        salvarEdicaoDoTrecho(trecho)
+                    } else if let fala = falaSendoCorrigida {
+                        salvarEdicaoDaFala(fala)
+                    }
                 }
                 .buttonStyle(BotaoPrincipalPapagaio())
                 .keyboardShortcut(.return, modifiers: [.command])
@@ -1495,6 +1510,10 @@ struct ArquivoDetalheView: View {
         trechos.first { $0.id == trechoEmEdicao }
     }
 
+    private var falaSendoCorrigida: FalaDeFalante? {
+        falas?.first { $0.id == falaEmEdicao }
+    }
+
     private func iniciarEdicaoDoTrecho(_ trecho: Trecho) {
         textoDoTrechoEmEdicao = trecho.texto
         trechoEmEdicao = trecho.id
@@ -1502,6 +1521,16 @@ struct ArquivoDetalheView: View {
 
     private func cancelarEdicaoDoTrecho() {
         trechoEmEdicao = nil
+        textoDoTrechoEmEdicao = ""
+    }
+
+    private func iniciarEdicaoDaFala(_ fala: FalaDeFalante) {
+        textoDoTrechoEmEdicao = fala.texto
+        falaEmEdicao = fala.id
+    }
+
+    private func cancelarEdicaoDaFala() {
+        falaEmEdicao = nil
         textoDoTrechoEmEdicao = ""
     }
 
@@ -1517,6 +1546,47 @@ struct ArquivoDetalheView: View {
         Task { @MainActor in
             await aoAtualizarTranscricao(atualizados)
         }
+    }
+
+    /// Corrige o texto de uma fala inteira.
+    ///
+    /// A fala atravessa trechos; ao salvar, os trechos de onde ela saiu são
+    /// fundidos num só com o texto corrigido (o `start`/`end` dos trechos
+    /// originais são mantidos: a janela da fala não muda, só o texto). As
+    /// palavras são descartadas — como na correção de trecho, os tempos do
+    /// Whisper deixam de valer para o texto novo.
+    private func salvarEdicaoDaFala(_ fala: FalaDeFalante) {
+        let limpo = textoDoTrechoEmEdicao.trimmingCharacters(in: .whitespacesAndNewlines)
+        cancelarEdicaoDaFala()
+        guard !limpo.isEmpty, limpo != fala.texto else { return }
+
+        let idsDaFala = Set(fala.trechoIds)
+        guard let primeiro = trechos.first(where: { idsDaFala.contains($0.id) }),
+              let ultimo = trechos.last(where: { idsDaFala.contains($0.id) })
+        else { return }
+
+        let fundido = Trecho(
+            id: primeiro.id,
+            start: primeiro.start,
+            end: ultimo.end,
+            texto: limpo,
+            speaker: primeiro.speaker,
+            palavras: []
+        )
+        var atualizados = trechos
+            .filter { !idsDaFala.contains($0.id) }
+            .sorted { $0.start < $1.start }
+        atualizados.insert(fundido, at: indiceDeInsercao(fundido, em: atualizados))
+
+        Task { @MainActor in
+            await aoAtualizarTranscricao(atualizados)
+        }
+    }
+
+    /// Posição do trecho fundido numa lista ordenada por `start` — o trecho
+    /// mantém a ordem cronológica depois de substituir a fala.
+    private func indiceDeInsercao(_ trecho: Trecho, em trechos: [Trecho]) -> Int {
+        trechos.firstIndex { $0.start > trecho.start } ?? trechos.endIndex
     }
 
     private var transcricaoPendente: some View {
@@ -1552,6 +1622,17 @@ struct ArquivoDetalheView: View {
             // O timestamp é próprio da palavra (token_timestamps) — o salto
             // pousa no átomo da fala, não numa divisão do trecho.
             await reprodutor.saltar(paraSegundo: palavra.start)
+        }
+    }
+
+    private func tocar(_ fala: FalaDeFalante, no reprodutor: ReprodutorDeArquivo) {
+        tempoEmEdicao = nil
+        revelarPlayer()
+        Task { @MainActor in
+            // A fala pode ter nascido no fim de um trecho; o salto usa o
+            // início da fala, não o do trecho — o áudio começa na fala.
+            await reprodutor.saltar(paraSegundo: fala.inicio)
+            reprodutor.tocar()
         }
     }
 

@@ -14,6 +14,12 @@ PapagaioCore/Frameworks/
 # "The file 'Resources' couldn't be opened".
 PapagaioCore/Sources/PapagaioCore/Resources/silero_vad.onnx
 
+# Modelos de diarização (FluidAudio) — ~21,5 MB, mesmo motivo: baixados pelo
+# bootstrap para Sources/PapagaioCore/ModelosDeDiarizacao/ na árvore exata
+# que o ModelHub do FluidAudio espera (diarizacao/speaker-diarization/…).
+# Entram no bundle do PapagaioCore via `.copy` no Package.swift.
+PapagaioCore/Sources/PapagaioCore/ModelosDeDiarizacao/
+
 .build/
 *.xcuserdatad/
 

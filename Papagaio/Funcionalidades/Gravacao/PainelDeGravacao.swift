@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PainelDeGravacao: View {
     let waveform: [Float]
+    let waveformSistema: [Float]
     let tempoDeGravacao: TimeInterval
     let pausado: Bool
     let aoPausar: () async -> Void
@@ -17,16 +18,14 @@ struct PainelDeGravacao: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: PapagaioTema.Espaco.largo) {
                 medidor
-                Waveform(amostras: waveform, ativo: !pausado)
-                    .frame(minWidth: 160, maxWidth: .infinity, minHeight: 48, maxHeight: 48)
+                medidores
                 controles
             }
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                 HStack(spacing: PapagaioTema.Espaco.medio) {
                     medidor
-                    Waveform(amostras: waveform, ativo: !pausado)
-                        .frame(minWidth: 80, maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                    medidores
                 }
 
                 controles
@@ -36,6 +35,25 @@ struct PainelDeGravacao: View {
         .padding(PapagaioTema.Espaco.largo)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
+    }
+
+    private var medidores: some View {
+        VStack(spacing: 5) {
+            medidorDeCanal("Microfone", icone: "mic.fill", amostras: waveform)
+            medidorDeCanal("Áudio do sistema", icone: "speaker.wave.2.fill", amostras: waveformSistema)
+        }
+        .frame(minWidth: 190, maxWidth: .infinity)
+    }
+
+    private func medidorDeCanal(_ titulo: String, icone: String, amostras: [Float]) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            Label(titulo, systemImage: icone)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .frame(width: 122, alignment: .leading)
+            Waveform(amostras: amostras, ativo: !pausado)
+                .frame(height: 20)
+        }
     }
 
     private var medidor: some View {

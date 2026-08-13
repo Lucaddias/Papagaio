@@ -138,4 +138,15 @@ enum PreferenciasVisuaisDoArquivo {
             UserDefaults.standard.removeObject(forKey: chaveMetadadosDestino)
         }
     }
+
+    @MainActor
+    static func removerTodas() {
+        let defaults = UserDefaults.standard
+        let prefixos = [prefixoFavorito, prefixoPasta, prefixoCapa, prefixoMetadados]
+        for chave in defaults.dictionaryRepresentation().keys where prefixos.contains(where: chave.hasPrefix) {
+            defaults.removeObject(forKey: chave)
+        }
+        defaults.removeObject(forKey: "pastasDaBiblioteca")
+        capasDecodificadas.removeAllObjects()
+    }
 }

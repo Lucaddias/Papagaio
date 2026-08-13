@@ -175,8 +175,18 @@ struct EditorDeInformacoesDoCard: View {
     /// duração vem do próprio arquivo de áudio. Os dois eram campos livres, o
     /// que permitia salvar "3 participantes" numa conversa com cinco nomes na
     /// ficha — dado editável que contradiz outro dado da mesma tela.
+    /// Zero enquanto ninguém foi preenchido: o campo mostra o que a ficha tem,
+    /// e "1 participante" com o formulário em branco é um número inventado.
     private var participantesCalculados: Int {
-        max(1, quantidadeDeLinhas(entrevistado) + quantidadeDeLinhas(entrevistadores))
+        quantidadeDeLinhas(entrevistado) + quantidadeDeLinhas(entrevistadores)
+    }
+
+    private var textoDeParticipantes: String {
+        switch participantesCalculados {
+        case 0: "Nenhum informado"
+        case 1: "1 participante"
+        default: "\(participantesCalculados) participantes"
+        }
     }
 
     private func quantidadeDeLinhas(_ texto: String) -> Int {
@@ -191,10 +201,8 @@ struct EditorDeInformacoesDoCard: View {
         Group {
             campo("Participantes") {
                 valorCalculado(
-                    participantesCalculados == 1
-                        ? "1 participante"
-                        : "\(participantesCalculados) participantes",
-                    simbolo: participantesCalculados == 1 ? "person" : "person.2",
+                    textoDeParticipantes,
+                    simbolo: participantesCalculados > 1 ? "person.2" : "person",
                     ajuda: "Somado a partir dos nomes de entrevistado(s) e entrevistador(es)."
                 )
             }

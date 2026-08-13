@@ -50,7 +50,7 @@ enum LixeiraDeMidia {
     /// Devolve o arquivo ao lugar e ao **nome** de origem.
     ///
     /// O nome importa: o app procura o áudio por nome exato
-    /// (`microfone.wav`, `sistema.m4a`, `gravacao.<ext>`). Na lixeira o arquivo
+    /// (`microfone.wav`, `sistema.caf`, `gravacao.<ext>`). Na lixeira o arquivo
     /// ganha um prefixo com UUID para dois homônimos não se sobrescreverem, e
     /// é aqui que esse prefixo sai. Restaurar por fora, arrastando no Finder,
     /// deixaria o prefixo e o player não acharia nada.
@@ -105,6 +105,12 @@ enum LixeiraDeMidia {
 
     static func esvaziar() {
         itens().forEach { try? FileManager.default.removeItem(atPath: $0.caminhoNaLixeira) }
+        UserDefaults.standard.removeObject(forKey: chave)
+    }
+
+    /// A biblioteca já removeu a pasta de gravações inteira. Aqui descartamos
+    /// só os metadados, sem seguir caminhos absolutos fora do container.
+    static func limparRegistros() {
         UserDefaults.standard.removeObject(forKey: chave)
     }
 

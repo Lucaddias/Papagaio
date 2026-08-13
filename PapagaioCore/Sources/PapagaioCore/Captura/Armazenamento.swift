@@ -65,7 +65,7 @@ public struct Armazenamento: Sendable {
     }
 
     /// Cria a pasta da gravação e devolve a URL absoluta de um arquivo de
-    /// áudio canônico dentro dela (`microfone.wav`, `sistema.m4a`, …).
+    /// áudio canônico dentro dela (`microfone.wav`, `sistema.caf`, …).
     @discardableResult
     public func criarArquivoDeAudio(
         id: UUID,
@@ -109,6 +109,16 @@ public struct Armazenamento: Sendable {
         try fm.removeItem(at: pasta)
     }
 
+    /// Remove todas as gravações deste container, inclusive pastas órfãs de
+    /// uma captura que tenha sido interrompida antes de entrar no SwiftData.
+    /// Os modelos ficam em `Models` e deliberadamente não fazem parte desta
+    /// operação: são recursos do app, não dados da conta.
+    public func removerTodasAsGravacoes(_ fm: FileManager = .default) throws {
+        let gravacoes = raiz.appendingPathComponent(Self.pastaGravacoes, isDirectory: true)
+        guard fm.fileExists(atPath: gravacoes.path) else { return }
+        try fm.removeItem(at: gravacoes)
+    }
+
     /// Nomes canônicos dentro da pasta de uma gravação.
     ///
     /// O backend de áudio agora segue o Eko: sem mixagem prévia em disco.
@@ -122,9 +132,12 @@ public struct Armazenamento: Sendable {
         public static let microfone = "microfone.wav"
         /// WAV canônico do microfone (nome legado, idêntico ao atual).
         public static let wavMicrofone = "microfone.wav"
-        /// M4A do áudio do sistema, codificado pelo tap em taxa nativa AAC.
-        /// É o canal "interlocutor" — ver `SystemAudioTap`.
-        public static let sistema = "sistema.m4a"
+        /// CAF PCM do áudio do sistema no formato nativo do tap. É o canal
+        /// "interlocutor" — ver `SystemAudioTap`.
+        public static let sistema = "sistema.caf"
+        /// Nome usado pela implementação anterior, mantido apenas para ler
+        /// gravações já existentes.
+        public static let sistemaM4ALegado = "sistema.m4a"
         /// Prefixo do arquivo importado: está sempre em `gravacao.<extensão>`
         /// porque só o nome canônico permite que a `Biblioteca` resolva o
         /// áudio guardando apenas a pasta relativa no modelo.

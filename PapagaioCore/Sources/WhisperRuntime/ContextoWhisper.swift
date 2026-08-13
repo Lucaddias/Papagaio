@@ -153,7 +153,6 @@ public actor ContextoWhisper {
         // foi treinado com timestamps de palavra, então o `t0`/`t1` dos tokens
         // é medido, não estimado por distribuição.
         params.token_timestamps = true
-
         let codigo: Int32
         if let initialPrompt, !initialPrompt.isEmpty {
             codigo = initialPrompt.withCString { prompt in

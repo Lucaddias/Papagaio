@@ -15,12 +15,14 @@ struct ListaDeNotificacoesDoApp: View {
 
                 Spacer()
 
+
                 Button("Limpar", systemImage: "trash", action: aoLimpar)
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .disabled(notificacoes.isEmpty)
             }
+
 
             if gravando || processandoBiblioteca {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {

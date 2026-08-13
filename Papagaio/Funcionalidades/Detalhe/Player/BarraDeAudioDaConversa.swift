@@ -11,7 +11,11 @@ struct BarraDeAudioDaConversa: View {
     @Binding var tempoEmEdicao: TimeInterval?
     let aoConcluirEdicao: () -> Void
 
-    @State private var pairandoNoVolume = false
+    @State private var pairandoNoIcone = false
+    @State private var pairandoNaRegua = false
+
+    /// Aberta enquanto o ponteiro estiver no ícone **ou** na própria régua.
+    private var pairandoNoVolume: Bool { pairandoNoIcone || pairandoNaRegua }
     /// Nível de antes do mudo, para o clique seguinte devolvê-lo.
     @State private var volumeAntesDoMudo: Float = 1
 
@@ -153,18 +157,35 @@ struct BarraDeAudioDaConversa: View {
             }
             .buttonStyle(.plain)
             .help(reprodutor.volume == 0 ? "Reativar som" : "Silenciar")
+            .onHover { ativo in
+                withAnimation(.easeOut(duration: 0.14)) { pairandoNoIcone = ativo }
+            }
 
+            // A régua abre à **direita** do alto-falante, e é a velocidade que
+            // anda para o lado. O alto-falante fica onde está porque o grupo
+            // inteiro tem largura fixa e é ancorado à esquerda: crescer por
+            // dentro não move o começo dele.
             if pairandoNoVolume {
-                Slider(value: volume, in: 0...1)
-                    .tint(PapagaioTema.destaqueEscuro)
-                    .frame(width: 90)
-                    .accessibilityLabel("Volume")
+                // Num só `HStack` para o `onHover` ter uma view onde morar: o
+                // fim de um `if` dentro de `ViewBuilder` não é uma view, e não
+                // aceita modificador.
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Slider(value: volume, in: 0...1)
+                        .tint(PapagaioTema.destaqueEscuro)
+                        .frame(width: 90)
+                        .accessibilityLabel("Volume")
 
-                Text("\(Int((reprodutor.volume * 100).rounded()))%")
-                    .font(.caption.weight(.semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .frame(width: 36, alignment: .leading)
+                    Text("\(Int((reprodutor.volume * 100).rounded()))%")
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 36, alignment: .leading)
+                }
+                // A régua também segura a abertura: sem isto ela sumiria assim
+                // que o ponteiro saísse do ícone para arrastá-la.
+                .onHover { ativo in
+                    withAnimation(.easeOut(duration: 0.14)) { pairandoNaRegua = ativo }
+                }
             }
 
             Menu {
@@ -185,14 +206,24 @@ struct BarraDeAudioDaConversa: View {
             .buttonStyle(.plain)
             .help("Velocidade")
         }
-        // A área de hover é a linha inteira, e não só o ícone: entrando pela
-        // direita, o ponteiro cruzaria a velocidade antes do alto-falante e a
-        // régua abriria e fecharia no caminho.
+        // O hover é do alto-falante e da régua, e **não** da linha inteira:
+        // pegando a linha toda, passar o mouse na velocidade — ou clicar nela,
+        // que exige passar por cima — abria a régua sem que ninguém pedisse.
         .contentShape(Rectangle())
-        .onHover { ativo in
-            withAnimation(.snappy(duration: 0.16)) { pairandoNoVolume = ativo }
+        // Roda do mouse sobre a área ajusta o volume sem precisar mirar na
+        // régua — é o gesto que a pessoa já usa no resto do sistema, e
+        // funciona mesmo com a régua invisível.
+        .rodaDoMouse { delta in
+            let novo = min(max(reprodutor.volume + Float(delta) * 0.02, 0), 1)
+            reprodutor.volume = novo
+            if novo > 0 { volumeAntesDoMudo = novo }
         }
-        .fixedSize()
+        // Largura da versão aberta, sempre — alto-falante, régua, porcentagem
+        // e velocidade. Ancorado à esquerda, o alto-falante começa no mesmo
+        // ponto com ou sem a régua; o que muda é só quanto do espaço interno
+        // está ocupado. Sem a largura fixa, o grupo encolheria e, encostado na
+        // borda direita, arrastaria o alto-falante junto.
+        .frame(width: 238, alignment: .leading)
     }
 
     private var simboloDoVolume: String {

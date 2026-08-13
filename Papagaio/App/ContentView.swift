@@ -38,6 +38,12 @@ struct ContentView: View {
     @State private var duracaoDaFicha = ""
     @State private var consulta = ""
     @State private var legendaDaBarra: LegendaDaBarra?
+    @State private var confirmandoCancelamentoDaGravacao = false
+    /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
+    @State private var alturaDoPlayer: CGFloat = 0
+
+    /// Dentro de uma conversa, onde a base pertence ao player.
+    private var seloNoTopo: Bool { !conversaAberta.isEmpty }
     @State private var secaoDaBiblioteca: SecaoDaBiblioteca = .todos
     @State private var telaSelecionada: TelaPrincipal = .biblioteca
     /// Foco na tela de captura. Sair dela não interrompe a gravação — some o
@@ -130,18 +136,10 @@ struct ContentView: View {
                         pastaSelecionada: $pastaDaBibliotecaSelecionada,
                         mostrandoImportador: $mostrandoImportador,
                         processamentoAutomatico: processamentoAutomatico,
-                        aoAlternarGravacao: {
-                            await modelo.alternarGravacao()
-                            withAnimation(.snappy(duration: 0.18)) {
-                                focoNaGravacao = modelo.gravando
-                            }
-                        },
-                        aoPausarGravacao: { await modelo.pausar() },
-                        aoContinuarGravacao: { await modelo.continuar() },
-                        aoCancelarGravacao: {
-                            await modelo.cancelar()
-                            focoNaGravacao = false
-                        },
+                        aoAlternarGravacao: aoAlternarGravacao,
+                        aoPausarGravacao: aoPausarGravacao,
+                        aoContinuarGravacao: aoContinuarGravacao,
+                        aoCancelarGravacao: aoCancelarGravacao,
                         aoEscolherPastaDeModelos: escolherPastaDeModelos,
                         aoUsarPastaDoApp: usarPastaDoApp,
                         aoSoltarArquivos: importarArrastados,
@@ -164,7 +162,8 @@ struct ContentView: View {
                         equipes: equipes,
                         aoSelecionarEquipe: usarEquipe,
                         aoAdicionarEquipe: adicionarEquipe,
-                        aoSair: sairDoPerfil
+                        aoSair: sairDoPerfil,
+                        aoExcluirConta: excluirConta
                     )
                 case .equipe:
                     GestaoDeEquipeView(
@@ -181,9 +180,6 @@ struct ContentView: View {
                 // Sem padding: a legenda se ancora na base do próprio ícone,
                 // então a folga vive dentro de LegendaGlobalDaBarra.
                 LegendaGlobalDaBarra(texto: legendaDaBarra)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                seloDeGravacaoEmAndamento
             }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
@@ -209,13 +205,6 @@ struct ContentView: View {
                             await biblioteca.atualizarTrechos(trechos, de: arquivo)
                         },
                         aoDitar: { url in try await biblioteca.transcreverDitado(url) },
-                        // A conversa substitui a raiz do `NavigationStack`, e
-                        // com ela some a barra do app. Ajustes e lixeira
-                        // viajam junto para não ficarem inalcançáveis aqui.
-                        aoAbrirConfiguracoes: {
-                            conversaAberta.removeAll()
-                            telaSelecionada = .configuracoes
-                        }
                     )
                 }
             }
@@ -226,6 +215,22 @@ struct ContentView: View {
         // uma coluna só. Note que `windowResizability(.contentMinSize)` não
         // propaga isto de forma confiável através do `NavigationStack` — por
         // isso nenhum layout depende deste número.
+        // O selo fica **fora** do `NavigationStack`: dentro dele, abrir uma
+        // conversa substituía a raiz e levava o selo junto — justamente quando
+        // ele mais importa, que é longe da tela de captura.
+        // Dentro de uma conversa o selo vai para o topo, centralizado: embaixo
+        // ele disputa espaço com o player, e subir só um pouco o deixava
+        // pairando no meio do caminho. Em cima há uma faixa livre entre o
+        // voltar e o compartilhar, e ele não cobre nada.
+        //
+        // Nas outras telas fica no canto inferior direito, longe do conteúdo e
+        // perto de onde a pessoa espera avisos do sistema.
+        .overlay(alignment: seloNoTopo ? .top : .bottomTrailing) {
+            seloDeGravacaoEmAndamento
+        }
+        .onPreferenceChange(AlturaDoPlayerKey.self) { altura in
+            alturaDoPlayer = altura
+        }
         .frame(minWidth: 460, minHeight: 520)
         // `nil` em "Sistema": sem esquema preferido a janela herda a aparência
         // do Mac. Nos outros dois casos isto fixa a aparência da janela, e as
@@ -481,6 +486,40 @@ struct ContentView: View {
         voltarParaBiblioteca()
     }
 
+    /// Limpa apenas os dados que pertencem à conta local atual. Preferências
+    /// do app e modelos baixados são preservados para que uma nova conta não
+    /// precise reconfigurar a aparência nem baixar pesos novamente.
+    private func excluirConta() async throws {
+        if modelo.gravando {
+            await modelo.cancelar()
+        }
+
+        try await biblioteca?.excluirDadosDaConta()
+
+        for equipe in equipes {
+            MembrosDasEquipes.remover(equipeID: equipe.id)
+        }
+        EquipesDoUsuario.remover()
+        TarefasDaConversa.removerTodas()
+        MidiasDaConversa.removerTodas()
+        PreferenciasVisuaisDoArquivo.removerTodas()
+        LixeiraDeMidia.limparRegistros()
+        LixeiraDeTarefas.esvaziar()
+        UserDefaults.standard.removeObject(forKey: "espacoIndividual")
+
+        perfil.excluirDadosDaConta()
+        notificacoes.limpar()
+        equipes.removeAll()
+        equipeAtivaID = ""
+        contextoDaConta = .perfil
+        consulta = ""
+        conversaAberta.removeAll()
+        pastaDaBibliotecaSelecionada = nil
+        secaoDaBiblioteca = .todos
+        focoNaGravacao = false
+        telaSelecionada = .biblioteca
+    }
+
     /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da
     /// captura. Em qualquer outro lugar o chevron aparece.
     private var naTelaInicial: Bool {
@@ -512,35 +551,100 @@ struct ContentView: View {
     @ViewBuilder
     private var seloDeGravacaoEmAndamento: some View {
         if modelo.gravando && !focoNaGravacao {
-            Button {
-                telaSelecionada = .biblioteca
-                secaoDaBiblioteca = .todos
-                withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = true }
-            } label: {
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    Circle()
-                        .fill(modelo.pausado ? PapagaioTema.aviso : PapagaioTema.perigo)
-                        .frame(width: 9, height: 9)
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                // O corpo do selo continua sendo o atalho de volta: é o gesto
+                // mais provável de quem vê "Gravando" em outra tela.
+                Button {
+                    voltarParaGravacao()
+                } label: {
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
+                        Circle()
+                            .fill(modelo.pausado ? PapagaioTema.aviso : PapagaioTema.perigo)
+                            .frame(width: 9, height: 9)
 
-                    Text(modelo.pausado ? "Pausado" : "Gravando")
-                        .font(.callout.weight(.semibold))
+                        Text(modelo.pausado ? "Pausado" : "Gravando")
+                            .font(.callout.weight(.semibold))
 
-                    Text(modelo.tempoDeGravacao.comoCronometro)
-                        .font(.system(.callout, design: .monospaced))
-                        .monospacedDigit()
+                        Text(modelo.tempoDeGravacao.comoCronometro)
+                            .font(.system(.callout, design: .monospaced))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(PapagaioTema.texto)
+                    .contentShape(Rectangle())
                 }
-                .foregroundStyle(PapagaioTema.texto)
-                .padding(.horizontal, PapagaioTema.Espaco.largo)
-                .frame(height: PapagaioTema.Altura.padrao)
-                .background(PapagaioTema.superficie, in: Capsule())
-                .overlay { Capsule().stroke(PapagaioTema.borda, lineWidth: 1) }
-                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+                .buttonStyle(.plain)
+                .help("Voltar para a gravação em andamento")
+
+                Divider().frame(height: 18)
+
+                // Pausar e cancelar sem precisar voltar: quem está no meio de
+                // outra tarefa quer resolver ali, não navegar até a captura.
+                BotaoDoSelo(
+                    simbolo: modelo.pausado ? "play.fill" : "pause.fill",
+                    ajuda: modelo.pausado ? "Continuar gravação" : "Pausar gravação"
+                ) {
+                    Task {
+                        if modelo.pausado {
+                            await aoContinuarGravacao()
+                        } else {
+                            await aoPausarGravacao()
+                        }
+                    }
+                }
+
+                BotaoDoSelo(simbolo: "stop.fill", ajuda: "Finalizar gravação") {
+                    Task { await aoAlternarGravacao() }
+                }
+
+                BotaoDoSelo(simbolo: "xmark", ajuda: "Cancelar gravação", perigo: true) {
+                    confirmandoCancelamentoDaGravacao = true
+                }
             }
-            .buttonStyle(.plain)
-            .help("Voltar para a gravação em andamento")
+            .padding(.horizontal, PapagaioTema.Espaco.largo)
+            .frame(height: PapagaioTema.Altura.padrao)
+            .background(PapagaioTema.superficie, in: Capsule())
+            .overlay { Capsule().stroke(PapagaioTema.borda, lineWidth: 1) }
+            .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
             .padding(PapagaioTema.Espaco.secao)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .confirmationDialog(
+                "Cancelar a gravação?",
+                isPresented: $confirmandoCancelamentoDaGravacao,
+                titleVisibility: .visible
+            ) {
+                Button("Cancelar gravação", role: .destructive) {
+                    Task { await aoCancelarGravacao() }
+                }
+                Button("Continuar gravando", role: .cancel) {}
+            } message: {
+                Text("O áudio capturado até agora é descartado.")
+            }
         }
+    }
+
+    /// Traz a pessoa de volta à tela de captura, de onde quer que ela esteja.
+    private func voltarParaGravacao() {
+        conversaAberta.removeAll()
+        telaSelecionada = .biblioteca
+        secaoDaBiblioteca = .todos
+        withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = true }
+    }
+
+    /// Finalizar a partir do selo: encerra a captura e desliga o foco, para a
+    /// pessoa cair na biblioteca já com a conversa nova entrando na fila.
+    private func aoAlternarGravacao() async {
+        await modelo.alternarGravacao()
+        withAnimation(.snappy(duration: 0.18)) {
+            focoNaGravacao = modelo.gravando
+        }
+    }
+
+    private func aoPausarGravacao() async { await modelo.pausar() }
+    private func aoContinuarGravacao() async { await modelo.continuar() }
+
+    private func aoCancelarGravacao() async {
+        await modelo.cancelar()
+        focoNaGravacao = false
     }
 
     private func voltarParaBiblioteca() {
