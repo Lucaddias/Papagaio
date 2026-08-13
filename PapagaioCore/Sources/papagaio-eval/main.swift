@@ -165,6 +165,43 @@ case "resumir":
     for p in resumoFinal.proximosPassos { print("- \(p.descricao) (\(p.responsavel ?? "—"))") }
     await engineQ.descarregar()
 
+case "diarizar":
+    guard argumentos.count > 1 else {
+        print("uso: papagaio-eval diarizar <audio>")
+        exit(2)
+    }
+    let audioD = URL(fileURLWithPath: argumentos[1])
+    print("áudio:  \(audioD.lastPathComponent)")
+
+    // Modelos diarização embutidos no bundle do PapagaioCore (estagiados pelo
+    // bootstrap). `--pasta` permite apontar para o layout do ModelHub
+    // (…/speaker-diarization) quando o bundle não estiver montado.
+    let gerente: GerenciadorDeModelosDeDiarizacao
+    if let i = argumentos.firstIndex(of: "--pasta") {
+        let pasta = URL(fileURLWithPath: argumentos[i + 1])
+        gerente = GerenciadorDeModelosDeDiarizacao(diretorio: pasta)
+    } else {
+        gerente = .embutido()
+    }
+    print("modelos disponíveis: \(gerente.disponivel ? "sim" : "NÃO")")
+    if !gerente.disponivel { exit(4) }
+
+    let relogioD = ContinuousClock()
+    let inicioD = relogioD.now
+    let segmentos: [SegmentoDeFalante]
+    do {
+        segmentos = try await gerente.diarizar(audioD)
+    } catch {
+        FileHandle.standardError.write(Data("ERRO na diarização: \(error)\n".utf8))
+        exit(3)
+    }
+    print("tempo: \(relogioD.now - inicioD)")
+    print("segmentos: \(segmentos.count)")
+    for s in segmentos {
+        print(String(format: "  [%7.2f → %7.2f · %5.2fs] %@",
+                     s.inicio, s.fim, s.fim - s.inicio, s.falanteId))
+    }
+
 case "run":
     FileHandle.standardError.write(
         Data("papagaio-eval run: \(NotImplemented("harness de medição", passo: 6))\n".utf8)
