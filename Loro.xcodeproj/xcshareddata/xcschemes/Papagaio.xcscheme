@@ -17,7 +17,7 @@
                BlueprintIdentifier = "PA00000000000000000002"
                BuildableName = "Papagaio.app"
                BlueprintName = "Papagaio"
-               ReferencedContainer = "container:Papagaio.xcodeproj">
+               ReferencedContainer = "container:Loro.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -47,7 +47,7 @@
             BlueprintIdentifier = "PA00000000000000000002"
             BuildableName = "Papagaio.app"
             BlueprintName = "Papagaio"
-            ReferencedContainer = "container:Papagaio.xcodeproj">
+            ReferencedContainer = "container:Loro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -64,7 +64,7 @@
             BlueprintIdentifier = "PA00000000000000000002"
             BuildableName = "Papagaio.app"
             BlueprintName = "Papagaio"
-            ReferencedContainer = "container:Papagaio.xcodeproj">
+            ReferencedContainer = "container:Loro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
