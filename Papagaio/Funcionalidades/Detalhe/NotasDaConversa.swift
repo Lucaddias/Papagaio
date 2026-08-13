@@ -24,7 +24,17 @@ struct PainelDeNotasDaConversa: View {
     let aoAlternarDitado: () -> Void
 
     @State private var filtro: FiltroDeNotas = .todas
-    @FocusState private var notaEmFoco: UUID?
+    @State private var rascunho = ""
+    @FocusState private var escrevendo: Bool
+    /// Qual nota está aberta para edição.
+    ///
+    /// `@State`, e não `@FocusState`: foco só existe quando há um campo na
+    /// tela para recebê-lo, e o campo desta nota só aparece **porque** ela está
+    /// em edição. Guardando isso em `@FocusState`, o clique no lápis pedia
+    /// foco para um campo que ainda não existia, o SwiftUI descartava o pedido
+    /// e nada acontecia. O foco do teclado é assunto separado, resolvido dentro
+    /// da própria linha.
+    @State private var notaEmEdicao: UUID?
 
     /// Etiquetas saem do próprio texto, por `#`.
     ///
@@ -43,7 +53,6 @@ struct PainelDeNotasDaConversa: View {
 
         switch filtro {
         case .todas: return ordenadas
-        case .criticas: return ordenadas.filter(\.critica)
         case let .etiqueta(nome):
             return ordenadas.filter { Self.etiquetas(em: $0.texto).contains(nome) }
         }
@@ -51,13 +60,13 @@ struct PainelDeNotasDaConversa: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
-            acoes
+            campoDeEscrita
 
             if ditado.ocupado || !ditado.textoParcial.isEmpty {
                 previaDoDitado
             }
 
-            if !etiquetas.isEmpty || notas.contains(where: \.critica) {
+            if !etiquetas.isEmpty {
                 filtros
             }
 
@@ -66,23 +75,27 @@ struct PainelDeNotasDaConversa: View {
                     simbolo: "note.text",
                     titulo: notas.isEmpty ? "Nenhuma nota ainda" : "Nada com esse filtro",
                     mensagem: notas.isEmpty
-                        ? "Crie uma nota com ⌘N, marque um instante com ⌘K, ou dite falando."
+                        ? "Escreva no campo acima e pressione Enter. O instante do áudio fica guardado junto."
                         : "Troque o filtro para ver as outras notas."
                 )
-                .frame(maxWidth: .infinity, minHeight: 200)
+                // Menor que antes: o bloco de escrita já ocupa a parte de cima,
+                // e um vazio de 200pt embaixo dele fazia a tela parecer mais
+                // vazia do que está.
+                .frame(maxWidth: .infinity, minHeight: 140)
                 .cartaoPapagaio()
             } else {
                 LazyVStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                     ForEach(notasVisiveis) { nota in
                         LinhaDeNotaDaConversa(
                             nota: vinculo(para: nota),
-                            emFoco: $notaEmFoco,
+                            emEdicao: $notaEmEdicao,
                             aoTocar: { aoTocar(nota) },
                             aoRemover: { remover(nota) },
                             aoSalvar: aoSalvar
                         )
                     }
                 }
+
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -99,60 +112,91 @@ struct PainelDeNotasDaConversa: View {
         )
     }
 
-    private var acoes: some View {
-        HStack(spacing: PapagaioTema.Espaco.medio) {
-            Button {
-                criarNota()
-            } label: {
-                Label("Nova nota", systemImage: "square.and.pencil")
-            }
-            .buttonStyle(BotaoDeContornoPapagaio())
-            .keyboardShortcut("n", modifiers: [.command])
+    /// Um campo só, que salva no Enter.
+    ///
+    /// Antes eram três botões — nova nota, marcar instante, ditar — e a nota
+    /// nascia vazia esperando alguém digitar dentro dela, na lista. Dois passos
+    /// para uma ideia que dura três segundos numa conversa ao vivo.
+    ///
+    /// Agora é o inverso: o campo está sempre pronto, e o Enter fecha a nota
+    /// com o instante em que ela foi escrita. Marcador vira o caso em que se
+    /// aperta Enter com o campo vazio — mesma tecla, sem botão próprio.
+    private var campoDeEscrita: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
+                // O instante fica à vista enquanto se escreve: é o que
+                // diferencia esta nota de qualquer bloco de texto.
+                Text(instanteAtual().comoCronometro)
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .frame(width: 52, alignment: .leading)
+                    .padding(.top, 2)
 
-            Button {
-                criarNota(marcador: true)
-            } label: {
-                Label("Marcar instante", systemImage: "bookmark")
-            }
-            .buttonStyle(BotaoDeContornoPapagaio())
-            .keyboardShortcut("k", modifiers: [.command])
+                // Bloco de escrita, não campo de uma linha.
+                //
+                // Numa conversa a pessoa anota pouco e em rajadas: fica
+                // ouvindo, e de vez em quando registra o que importa. Um campo
+                // rasteiro parece formulário e convida a frases curtas; um
+                // bloco alto parece papel, e é para onde o olho volta entre
+                // uma anotação e outra. Ele também absorve o parágrafo inteiro
+                // sem rolar, no caso em que a ideia vem completa.
+                TextField("Escreva uma nota e pressione Enter…", text: $rascunho, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(PapagaioTema.Tipo.corpo)
+                    .lineLimit(4...14)
+                    .frame(minHeight: 96, alignment: .topLeading)
+                    .focused($escrevendo)
+                    .onSubmit { salvarRascunho() }
 
-            Button {
-                aoAlternarDitado()
-            } label: {
-                Label(rotuloDoDitado, systemImage: simboloDoDitado)
-            }
-            .buttonStyle(BotaoDeContornoPapagaio())
-            .disabled(ditado.estado == .transcrevendo)
-
-            Spacer(minLength: 12)
-
-            if case let .falhou(motivo) = ditado.estado {
-                Label(motivo, systemImage: "exclamationmark.triangle")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.perigo)
-                    .lineLimit(2)
-            } else {
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    Text("⌘N nota · ⌘K marcador")
-                    botaoDeAjuda
+                Button {
+                    aoAlternarDitado()
+                } label: {
+                    Image(systemName: simboloDoDitado)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(
+                            ditado.ocupado ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro
+                        )
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(rotuloDoDitado)
+                .disabled(ditado.estado == .transcrevendo)
+            }
+            .padding(PapagaioTema.Espaco.medio)
+            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                    .stroke(
+                        escrevendo ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
+                        lineWidth: 1
+                    )
+            }
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                if case let .falhou(motivo) = ditado.estado {
+                    Label(motivo, systemImage: "exclamationmark.triangle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.perigo)
+                        .lineLimit(2)
+                } else {
+                    Text("Enter salva · Enter vazio marca o instante")
+                        .font(.caption)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+
+                Spacer()
+
+                Label(
+                    estadoDeSalvamento,
+                    systemImage: estadoDeSalvamento == "Salvo" ? "checkmark.circle" : "clock"
+                )
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
-                .padding(.leading, PapagaioTema.Espaco.medio)
-                .padding(.trailing, PapagaioTema.Espaco.minimo)
-                .frame(height: PapagaioTema.Altura.compacta)
-                .background(PapagaioTema.superficieSuave, in: Capsule())
-            }
 
-            // O aviso de salvamento vem para cá junto com o resto: era a
-            // única coisa que o cabeçalho ainda carregava.
-            Label(
-                estadoDeSalvamento,
-                systemImage: estadoDeSalvamento == "Salvo" ? "checkmark.circle" : "clock"
-            )
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(PapagaioTema.textoSecundario)
+                botaoDeAjuda
+            }
         }
     }
 
@@ -161,12 +205,6 @@ struct PainelDeNotasDaConversa: View {
     private var filtros: some View {
         LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.curto, espacoVertical: PapagaioTema.Espaco.curto) {
             chipDeFiltro("Todas", ativo: filtro == .todas) { filtro = .todas }
-
-            if notas.contains(where: \.critica) {
-                chipDeFiltro("Críticas", ativo: filtro == .criticas, cor: PapagaioTema.perigo) {
-                    filtro = .criticas
-                }
-            }
 
             ForEach(etiquetas, id: \.self) { nome in
                 chipDeFiltro("#\(nome)", ativo: filtro == .etiqueta(nome)) {
@@ -245,18 +283,28 @@ struct PainelDeNotasDaConversa: View {
         )
     }
 
-    private func criarNota(marcador: Bool = false) {
+    /// Fecha a nota com o instante em que ela foi escrita.
+    ///
+    /// Campo vazio vira marcador: é o gesto de "guarda este ponto, volto
+    /// depois", e não faz sentido obrigar a inventar texto para isso.
+    private func salvarRascunho() {
+        let texto = rascunho.trimmingCharacters(in: .whitespacesAndNewlines)
         let instante = min(max(0, instanteAtual()), max(duracao, 0))
-        let nova = NotaDaConversa(
-            texto: "",
-            start: instante,
-            critica: false,
-            tipo: marcador ? .marcador : .nota
+
+        notas.append(
+            NotaDaConversa(
+                texto: texto,
+                start: instante,
+                critica: false,
+                tipo: texto.isEmpty ? .marcador : .nota
+            )
         )
-        notas.append(nova)
+        rascunho = ""
         filtro = .todas
         aoSalvar()
-        if !marcador { notaEmFoco = nova.id }
+        // O foco fica no campo: numa conversa ao vivo vem outra nota logo em
+        // seguida, e tirar a mão do teclado custa a frase seguinte.
+        escrevendo = true
     }
 
     private func remover(_ nota: NotaDaConversa) {
@@ -274,7 +322,6 @@ struct PainelDeNotasDaConversa: View {
 
     enum FiltroDeNotas: Equatable {
         case todas
-        case criticas
         case etiqueta(String)
     }
 }
@@ -282,12 +329,15 @@ struct PainelDeNotasDaConversa: View {
 /// Uma nota: tempo à esquerda, texto no meio, ações à direita.
 private struct LinhaDeNotaDaConversa: View {
     @Binding var nota: NotaDaConversa
-    @FocusState.Binding var emFoco: UUID?
+    @Binding var emEdicao: UUID?
     let aoTocar: () -> Void
     let aoRemover: () -> Void
     let aoSalvar: () -> Void
 
-    private var editando: Bool { emFoco == nota.id }
+    /// Foco do teclado, local à linha: o campo já existe quando isto é ligado.
+    @FocusState private var digitando: Bool
+
+    private var editando: Bool { emEdicao == nota.id }
 
     /// Fora de edição o texto é renderizado — negrito fica negrito, link fica
     /// clicável. Markdown cru na tela era o pior dos dois mundos: a pessoa
@@ -301,30 +351,47 @@ private struct LinhaDeNotaDaConversa: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+            // Tempo e play na mesma linha, e não empilhados: em coluna eles
+            // criavam duas alturas de texto num cartão que muitas vezes tem uma
+            // linha só, e o cartão inteiro crescia para acomodá-los.
             Button(action: aoTocar) {
-                VStack(spacing: 2) {
+                HStack(spacing: PapagaioTema.Espaco.minimo) {
                     Text(nota.start.comoRelogio)
-                        .font(.system(.caption, design: .monospaced).weight(.semibold))
+                        .font(.system(.callout, design: .monospaced).weight(.semibold))
                         .monospacedDigit()
-                    Image(systemName: "play.circle")
-                        .font(.caption)
+                    Image(systemName: "play.circle.fill")
+                        .font(.callout)
                 }
-                .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
-                .frame(width: 54)
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .frame(width: 74, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Ouvir a partir de \(nota.start.comoRelogio)")
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                if editando || nota.texto.isEmpty {
+                if editando {
                     // Campo que cresce com o texto: a área enorme em branco de
                     // antes intimidava e não sugeria nada.
                     TextField("O que aconteceu aqui? Use #etiqueta para agrupar", text: $nota.texto, axis: .vertical)
                         .textFieldStyle(.plain)
                         .font(.system(size: 16))
                         .lineLimit(1...12)
-                        .focused($emFoco, equals: nota.id)
+                        .focused($digitando)
                         .onChange(of: nota.texto) { _, _ in aoSalvar() }
+                        .onSubmit { emEdicao = nil }
+                        // O campo acabou de nascer; agora sim dá para focá-lo.
+                        .onAppear { digitando = true }
+                } else if nota.texto.isEmpty {
+                    // Marcador: ponto guardado sem texto. Antes ele caía no
+                    // ramo de edição e virava um campo vazio — um cartão alto,
+                    // mudo, que parecia defeito.
+                    Label("Marcador", systemImage: "bookmark.fill")
+                        .font(.system(size: 15).italic())
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { emEdicao = nota.id }
                 } else {
                     Text(textoRenderizado)
                         .font(.system(size: 16))
@@ -332,7 +399,7 @@ private struct LinhaDeNotaDaConversa: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
-                        .onTapGesture { emFoco = nota.id }
+                        .onTapGesture { emEdicao = nota.id }
                 }
 
                 let etiquetas = PainelDeNotasDaConversa.etiquetas(em: nota.texto)
@@ -351,32 +418,49 @@ private struct LinhaDeNotaDaConversa: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(spacing: PapagaioTema.Espaco.curto) {
+            // Sem o marcador de "crítica": era um segundo eixo de organização
+            // convivendo com as `#etiquetas`, que fazem o mesmo trabalho e são
+            // escritas no fluxo. Quem precisa destacar escreve `#urgente`.
+            //
+            // Editar e apagar: as duas ações que uma nota salva precisa ter, e
+            // só elas.
+            // Lado a lado, não empilhados, e com alvo de 28pt.
+            //
+            // Empilhados eles esticavam o cartão de uma nota curta para caber
+            // dois ícones em coluna. E o alvo antes era o desenho do glifo,
+            // uns 12pt — abaixo do mínimo confortável para clicar.
+            HStack(spacing: PapagaioTema.Espaco.minimo) {
                 Button {
-                    nota.critica.toggle()
-                    aoSalvar()
+                    emEdicao = editando ? nil : nota.id
                 } label: {
-                    Image(systemName: nota.critica ? "exclamationmark.triangle.fill" : "exclamationmark.triangle")
-                        .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.textoSecundario)
+                    Image(systemName: editando ? "checkmark" : "pencil")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(
+                            editando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario
+                        )
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(nota.critica ? "Desmarcar como crítica" : "Marcar como crítica")
+                .help(editando ? "Concluir edição" : "Editar nota")
 
                 Button(action: aoRemover) {
                     Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Apagar nota")
             }
-            .font(.callout)
         }
         .padding(PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay(alignment: .leading) {
             Capsule()
-                .fill(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaque)
+                .fill(PapagaioTema.destaque)
                 .frame(width: 4)
                 .padding(.vertical, PapagaioTema.Espaco.medio)
         }
