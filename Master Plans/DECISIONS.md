@@ -1452,6 +1452,29 @@ ser reativado apenas adicionando de volta o entitlement.
 
 ---
 
+## D-13.4 — Correções de empacotamento para a Mac App Store (2026-08-13)
+
+**Decidido:** o ícone distribuído é `Papagaio/PapagaioAppIcon.icns`, declarado
+por `CFBundleIconFile` e contendo todas as representações de 16 a 1024 pixels.
+O catálogo anterior continha um `Contents.json` inválido e o `actool` não gerava
+um `.icns` completo; a fonte PNG foi preservada em `Config/AppIconSource` para
+regenerar o arquivo quando necessário.
+
+**Entitlements:** a chave inválida
+`com.apple.security.personal-information.contacts` foi substituída por
+`com.apple.security.personal-information.addressbook`, necessária para o uso
+real de `CNContactStore`. As capacidades `usernotifications.communication` e
+`usernotifications.time-sensitive` foram removidas: o app só agenda
+notificações locais padrão e não implementa intents de mensagem ou chamada.
+
+**Validação local:** build `Release` sem assinatura passou e o bundle resultante
+declara `CFBundleIconFile = PapagaioAppIcon`; a representação
+`icon_512x512@2x.png` extraída do `.icns` mede 1024 x 1024. A assinatura de
+distribuição e a validação final continuam sendo responsabilidade do archive do
+Xcode Cloud/App Store Connect.
+
+---
+
 ## Riscos abertos
 
 | # | Risco | Estado |

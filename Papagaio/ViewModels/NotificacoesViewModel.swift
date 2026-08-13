@@ -88,10 +88,8 @@ final class NotificacoesViewModel {
         conteudo.body = notificacao.mensagem
         conteudo.sound = .default
 
-        // Sem `interruptionLevel`: os níveis acima do padrão dependem de
-        // entitlement, que por sua vez depende de perfil de provisionamento
-        // válido. Numa build assinada localmente o macOS aceita o pedido, não
-        // devolve erro e descarta a notificação em silêncio.
+        // Notificação local padrão: não requer entitlements de comunicação nem
+        // de notificação sensível ao tempo, que o app não utiliza.
         //
         // Sem `trigger`: entrega imediata. Com gatilho por tempo, fechar ou
         // minimizar a janela no intervalo às vezes cancelava a entrega — e é
