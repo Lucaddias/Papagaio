@@ -73,13 +73,8 @@ let package = Package(
             // O modelo do Silero VAD entra no bundle do alvo (2,3 MB). Veja
             // Scripts/bootstrap-runtimes.sh, que o baixa com versão e SHA-256
             // fixados dentro de Sources/PapagaioCore/Resources/.
-            // Os modelos de diarização (ModelosDeDiarizacao/) entram como
-            // `.copy` — cópia opaca — por que o `.process` recursivo recusa
-            // arquivos com o mesmo nome em pastas diferentes (cada .mlmodelc
-            // tem seu próprio metadata.json/coremldata.bin/model.mil).
             resources: [
                 .process("Resources"),
-                .copy("ModelosDeDiarizacao"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

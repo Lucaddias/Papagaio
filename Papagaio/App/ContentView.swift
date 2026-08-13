@@ -187,6 +187,7 @@ struct ContentView: View {
                         arquivo: arquivo,
                         audio: biblioteca.audio(de: arquivo),
                         audioSecundario: biblioteca.audioSecundario(de: arquivo),
+                        importado: biblioteca.importado(arquivo),
                         estado: biblioteca.estado(de: arquivo),
                         processando: biblioteca.estaProcessando(arquivo),
                         naFila: biblioteca.estaNaFila(arquivo),

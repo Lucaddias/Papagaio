@@ -100,7 +100,8 @@ struct PainelDeNotasDaConversa: View {
     }
 
     private var acoes: some View {
-        HStack(spacing: PapagaioTema.Espaco.medio) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: PapagaioTema.Espaco.medio) {
             Button {
                 criarNota()
             } label: {
@@ -153,7 +154,11 @@ struct PainelDeNotasDaConversa: View {
             )
             .font(.caption.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSecundario)
+            .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.vertical, PapagaioTema.Espaco.minimo)
         }
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     /// Filtrar é o que dá consequência à marcação: uma etiqueta que não muda

@@ -237,37 +237,23 @@ struct CartaoDeConversa: View {
                         }
                     }
 
-                    // Data, duração e participantes existem sempre — viram uma
-                    // linha de rodapé em vez de três células de grade com
-                    // rótulo em maiúscula competindo com o título.
-                    LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.medio, espacoVertical: PapagaioTema.Espaco.minimo) {
-                        Label(
-                            arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
-                            systemImage: "calendar"
-                        )
-                        Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
-
-                        // Gravado e importado são conversas diferentes: uma tem
-                        // dois canais e separa quem falou, a outra é um áudio
-                        // só. Saber disso muda o que esperar da transcrição.
-                        Label(
-                            importado ? "Importado" : "Gravado",
-                            systemImage: importado ? "square.and.arrow.down" : "mic"
-                        )
-
-                        // Participantes e modalidade só quando dizem algo: "1
-                        // participante" e "modalidade não informada" apareciam
-                        // em quase todo cartão, empurrando o rodapé para uma
-                        // segunda linha e desalinhando a fileira.
-                        if participantes > 1 {
-                            Label("\(participantes) participantes", systemImage: "person.2")
+                    // A ficha curta concentra os dados objetivos do card,
+                    // incluindo origem e modalidade com seus respectivos ícones.
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                        ViewThatFits(in: .horizontal) {
+                            metadadosDeTempo(participantesAbreviados: false)
+                            metadadosDeTempo(participantesAbreviados: true)
                         }
 
-                        if !metadados.formato.isEmpty {
+                        LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.medio, espacoVertical: PapagaioTema.Espaco.minimo) {
                             Label(
-                                metadados.formato,
-                                systemImage: simboloDaModalidade(metadados.formato)
+                                importado ? "Importado" : "Gravado",
+                                systemImage: importado ? "square.and.arrow.down" : "mic"
                             )
+
+                            if !metadados.formato.isEmpty {
+                                Label(metadados.formato, systemImage: simboloDaModalidade(metadados.formato))
+                            }
                         }
                     }
                     .font(PapagaioTema.Tipo.legenda)
@@ -297,6 +283,10 @@ struct CartaoDeConversa: View {
         .zIndex(menuAberto ? 10 : 0)
         .onAppear(perform: sincronizarPreferenciasVisuais)
         .onChange(of: arquivo.id.rawValue) { _, _ in
+            sincronizarPreferenciasVisuais()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: PreferenciasVisuaisDoArquivo.metadadosDidChange)) { notificacao in
+            guard let id = notificacao.object as? UUID, id == arquivo.id.rawValue else { return }
             sincronizarPreferenciasVisuais()
         }
         .sheet(isPresented: $editandoInformacoes) {
@@ -405,20 +395,40 @@ struct CartaoDeConversa: View {
     }
 
     private var botaoDeFavoritoDoCard: some View {
-        Button(action: alternarFavorito) {
-            Image(systemName: favorito ? "star.fill" : "star")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(favorito ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                .frame(width: 36, height: 36)
-                .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
-                .overlay {
-                    Circle().stroke(favorito ? PapagaioTema.destaque.opacity(0.5) : PapagaioTema.borda.opacity(0.9), lineWidth: 1)
-                }
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            Button(action: alternarFavorito) {
+                Image(systemName: favorito ? "star.fill" : "star")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(favorito ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                    .frame(width: 36, height: 36)
+                    .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
+                    .overlay {
+                        Circle().stroke(favorito ? PapagaioTema.destaque.opacity(0.5) : PapagaioTema.borda.opacity(0.9), lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+            .help(favorito ? "Desfavoritar" : "Favoritar")
+            .accessibilityLabel(favorito ? "Desfavoritar conversa" : "Favoritar conversa")
         }
-        .buttonStyle(.plain)
         .padding(PapagaioTema.Espaco.curto)
-        .help(favorito ? "Desfavoritar" : "Favoritar")
-        .accessibilityLabel(favorito ? "Desfavoritar conversa" : "Favoritar conversa")
+    }
+
+    private func metadadosDeTempo(participantesAbreviados: Bool) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            Label(
+                arquivo.criadoEm.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits)),
+                systemImage: "calendar"
+            )
+            Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
+
+            if participantes > 1 {
+                Label(
+                    participantesAbreviados ? "\(participantes)" : "\(participantes) participantes",
+                    systemImage: "person.2"
+                )
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {

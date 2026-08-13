@@ -3,6 +3,10 @@ import Foundation
 import PapagaioCore
 
 enum PreferenciasVisuaisDoArquivo {
+    /// `UserDefaults` não publica mudanças para as views que já estão na tela.
+    /// Este aviso mantém cartão, ficha e detalhe sincronizados assim que a
+    /// entrevista é salva — sem depender de abrir o editor novamente.
+    static let metadadosDidChange = Notification.Name("PreferenciasVisuaisDoArquivo.metadadosDidChange")
     private static let prefixoFavorito = "arquivoFavorito."
     private static let prefixoPasta = "arquivoPasta."
     private static let prefixoCapa = "arquivoCapa."
@@ -116,6 +120,7 @@ enum PreferenciasVisuaisDoArquivo {
     static func definirMetadados(_ metadados: MetadadosVisuaisDoArquivo, para id: ArquivoID) {
         guard let dados = try? JSONEncoder().encode(metadados) else { return }
         UserDefaults.standard.set(dados, forKey: prefixoMetadados + id.rawValue.uuidString)
+        NotificationCenter.default.post(name: metadadosDidChange, object: id.rawValue)
     }
 
     static func copiar(de origem: ArquivoID, para destino: ArquivoID) {

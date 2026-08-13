@@ -13,6 +13,9 @@ struct ArquivoDetalheView: View {
     /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
+    /// Veio de um arquivo escolhido pela pessoa, em vez de uma gravação feita
+    /// dentro do app.
+    let importado: Bool
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: EstadoDoArquivo
@@ -78,6 +81,10 @@ struct ArquivoDetalheView: View {
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var mostrandoFicha = false
     @State private var pairandoNaFicha = false
+    @State private var larguraDoDetalhe: CGFloat = .infinity
+    /// ScrollView que contém a aba de tarefas. Precisamos dele para a janela
+    /// acompanhar um card sendo arrastado entre seções empilhadas.
+    @State private var scrollViewDoDetalhe: NSScrollView?
     @State private var entrevistadoDaFicha = ""
     @State private var entrevistadoresDaFicha = ""
     @State private var formatoDaFicha = ""
@@ -146,6 +153,7 @@ struct ArquivoDetalheView: View {
         guard let reprodutor else { return false }
         return reprodutor.duracao <= 0
     }
+    private var playerCompacto: Bool { larguraDoDetalhe < 900 }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -156,22 +164,33 @@ struct ArquivoDetalheView: View {
 
                 seletorDeSecao
 
-                GeometryReader { _ in
-                    if exibindoEstadoVazio {
+                if exibindoEstadoVazio {
+                    conteudoDaSecao
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
                         conteudoDaSecao
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            conteudoDaSecao
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(.bottom, deveMostrarPlayer ? 116 : 0)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .padding(.bottom, deveMostrarPlayer ? 116 : 0)
+                    }
+                    .background(LeitorDeScrollView { scrollViewDoDetalhe = $0 })
+                    .overlay(alignment: .top) {
+                        if secaoSelecionada == .tarefas {
+                            ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoDetalhe, direcao: .cima)
                         }
                     }
+                    .overlay(alignment: .bottom) {
+                        if secaoSelecionada == .tarefas {
+                            ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoDetalhe, direcao: .baixo)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { larguraDoDetalhe = $0 }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if deveMostrarPlayer, audioIndisponivel {
@@ -192,7 +211,7 @@ struct ArquivoDetalheView: View {
         // Anuncia o espaço do player para quem posiciona o selo de gravação.
         // 116 é a altura da barra flutuante mais o respiro dela; zero quando o
         // player não está na tela, e aí o selo volta para o canto de baixo.
-        .alturaDoPlayerPapagaio(deveMostrarPlayer ? 116 : 0)
+        .alturaDoPlayerPapagaio(deveMostrarPlayer ? (playerCompacto ? 224 : 116) : 0)
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         // Piso baixo de propósito: acima disso o conteúdo era desenhado mais
@@ -219,6 +238,10 @@ struct ArquivoDetalheView: View {
             // A transcrição chega minutos depois de a tela abrir. Atualizar em
             // vez de recriar mantém a posição de escuta.
             reprodutor?.trechos = novos
+        }
+        .onReceive(NotificationCenter.default.publisher(for: PreferenciasVisuaisDoArquivo.metadadosDidChange)) { notificacao in
+            guard let id = notificacao.object as? UUID, id == arquivo.id.rawValue else { return }
+            versaoDaFicha &+= 1
         }
         .onDisappear {
             // Sem isto o observador periódico sobrevive à view — critério de
@@ -492,6 +515,10 @@ struct ArquivoDetalheView: View {
             // nomes acima, data e duração vêm do próprio áudio.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 dadoDaFicha(textoDeParticipantes, simbolo: participantesDaFicha > 1 ? "person.2" : "person")
+                dadoDaFicha(
+                    importado ? "Importado" : "Gravado",
+                    simbolo: importado ? "square.and.arrow.down" : "mic"
+                )
                 dadoDaFicha(
                     arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
                     simbolo: "calendar"
@@ -1064,11 +1091,17 @@ struct ArquivoDetalheView: View {
 
     private func moverTarefa(_ id: UUID, para destino: DestinoDeTarefa) {
         guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == id }) else { return }
-        if let prioridade = destino.prioridade {
-            tarefasDaConversa[indice].prioridade = prioridade
+        // Não herdar a animação longa do drag: o card deve trocar de seção
+        // assim que é solto, antes de persistirmos a alteração.
+        var transacao = Transaction()
+        transacao.disablesAnimations = true
+        withTransaction(transacao) {
+            if let prioridade = destino.prioridade {
+                tarefasDaConversa[indice].prioridade = prioridade
+            }
+            tarefasDaConversa[indice].status = destino.status
+            tarefasDaConversa[indice] = tarefaAjustadaPeloPrazo(tarefasDaConversa[indice])
         }
-        tarefasDaConversa[indice].status = destino.status
-        tarefasDaConversa[indice] = tarefaAjustadaPeloPrazo(tarefasDaConversa[indice])
         salvarTarefas()
         notificarPrazoSeNecessario(tarefasDaConversa[indice])
     }
@@ -1205,27 +1238,26 @@ struct ArquivoDetalheView: View {
             data: arquivo.criadoEm,
             reprodutor: reprodutor,
             tempoEmEdicao: $tempoEmEdicao,
-            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) }
+            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) },
+            compacto: playerCompacto
         )
     }
 
     // MARK: - Transcrição
 
     private var notasDaConversa: some View {
-        ScrollView {
-            PainelDeNotasDaConversa(
-                notas: $notasEditaveis,
-                estadoDeSalvamento: estadoDeSalvamentoDasNotas,
-                duracao: arquivo.duracao,
-                instanteAtual: { reprodutor?.tempo ?? 0 },
-                ditado: ditado,
-                aoTocar: tocar,
-                aoSalvar: agendarSalvamentoDasNotas,
-                aoAlternarDitado: alternarDitado
-            )
-            .padding(.bottom, PapagaioTema.Espaco.secao)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        PainelDeNotasDaConversa(
+            notas: $notasEditaveis,
+            estadoDeSalvamento: estadoDeSalvamentoDasNotas,
+            duracao: arquivo.duracao,
+            instanteAtual: { reprodutor?.tempo ?? 0 },
+            ditado: ditado,
+            aoTocar: tocar,
+            aoSalvar: agendarSalvamentoDasNotas,
+            aoAlternarDitado: alternarDitado
+        )
+        .padding(.bottom, PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Carrega as notas do arquivo. O bloco único que existia antes continua
