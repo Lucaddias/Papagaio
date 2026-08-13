@@ -81,11 +81,17 @@ final class ModelosViewModel {
 
         baixando = true
         erro = nil
+        amostrasDeVelocidade.removeAll()
+        ultimaLeitura = nil
+        restanteDoDownload = nil
         tarefa = Task {
             for peso in pesos {
                 do {
                     _ = try await download.baixar(peso) { andamento in
-                        Task { @MainActor in self.progresso = andamento }
+                        Task { @MainActor in
+                            self.registrarVelocidade(de: andamento)
+                            self.progresso = andamento
+                        }
                     }
                 } catch is CancellationError {
                     break
@@ -98,6 +104,40 @@ final class ModelosViewModel {
             baixando = false
             verificar()
         }
+    }
+
+    /// Quanto falta do download, em segundos, ou `nil` sem medida ainda.
+    ///
+    /// Mesma ideia da estimativa de transcrição: em vez de supor uma
+    /// velocidade, mede a que está acontecendo. A média móvel das últimas
+    /// amostras evita que uma oscilação momentânea de rede faça o tempo
+    /// restante pular de "2 min" para "40 min" e voltar.
+    private(set) var restanteDoDownload: TimeInterval?
+
+    /// Bytes por segundo das últimas leituras.
+    private var amostrasDeVelocidade: [Double] = []
+    private var ultimaLeitura: (bytes: Int64, quando: Date)?
+
+    private func registrarVelocidade(de andamento: ProgressoDownload) {
+        let agora = Date()
+        defer { ultimaLeitura = (andamento.bytesRecebidos, agora) }
+
+        guard let anterior = ultimaLeitura else { return }
+        // Retomada de download muda o total de bytes para trás; nesse caso a
+        // diferença é negativa e não descreve velocidade nenhuma.
+        let bytes = Double(andamento.bytesRecebidos - anterior.bytes)
+        let segundos = agora.timeIntervalSince(anterior.quando)
+        guard bytes > 0, segundos > 0.2 else { return }
+
+        amostrasDeVelocidade.append(bytes / segundos)
+        if amostrasDeVelocidade.count > 8 {
+            amostrasDeVelocidade.removeFirst(amostrasDeVelocidade.count - 8)
+        }
+
+        let media = amostrasDeVelocidade.reduce(0, +) / Double(amostrasDeVelocidade.count)
+        guard media > 0 else { return }
+        let faltam = Double(andamento.bytesTotais - andamento.bytesRecebidos)
+        restanteDoDownload = max(0, faltam / media)
     }
 
     func cancelar() {

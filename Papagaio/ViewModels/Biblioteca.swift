@@ -251,6 +251,31 @@ final class Biblioteca {
         }
     }
 
+    /// Remove permanentemente toda a biblioteca da conta atual. A execução do
+    /// pipeline é cancelada e aguardada antes de apagar o banco, impedindo que
+    /// um processamento tardio recrie um registro depois da exclusão.
+    func excluirDadosDaConta() async throws {
+        let tarefa = tarefaDeProcessamento
+        tarefa?.cancel()
+        tarefaDeProcessamento = nil
+        arquivoEmProcessamento = nil
+        identificadorDaExecucao = nil
+        filaDeProcessamento.removeAll()
+
+        if let tarefa { await tarefa.value }
+
+        try armazenamento.removerTodasAsGravacoes()
+        try await repositorio.apagarTodosOsDados(espaco: espaco)
+
+        arquivos.removeAll()
+        arquivosNaLixeira.removeAll()
+        fases.removeAll()
+        iniciadoEm.removeAll()
+        erros.removeAll()
+        operacoesDeLixeiraEmAndamento.removeAll()
+        erroDaLixeira = nil
+    }
+
     func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
         operacoesDeLixeiraEmAndamento.contains(arquivo.id)
     }
@@ -587,6 +612,17 @@ final class Biblioteca {
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
         guard identificadorDaExecucao == execucao else { return }
 
+        // Antes de esquecer o começo, aprende com ele: quanto este Mac levou
+        // por segundo de áudio. É esse número que a próxima estimativa usa.
+        if let inicio = iniciadoEm[chave],
+           let arquivo = arquivos.first(where: { $0.id.rawValue == chave }),
+           arquivo.duracao > 0 {
+            RitmoDeProcessamento.registrar(
+                decorrido: Date().timeIntervalSince(inicio),
+                paraAudioDe: arquivo.duracao
+            )
+        }
+
         fases[chave] = nil
         iniciadoEm[chave] = nil
         arquivoEmProcessamento = nil
@@ -633,7 +669,7 @@ final class Biblioteca {
         return !Self.existe(pasta.appendingPathComponent(Armazenamento.Nome.microfone))
     }
 
-    /// Canal do sistema tocado em paralelo ao microfone — `sistema.m4a`.
+    /// Canal do sistema tocado em paralelo ao microfone — `sistema.caf`.
     ///
     /// Só existe quando a gravação capturou os dois canais (o tap subiu).
     /// Importado e legado são canal único: `nil` aqui, e a reprodução toca
@@ -643,8 +679,11 @@ final class Biblioteca {
         guard Self.existe(pasta.appendingPathComponent(Armazenamento.Nome.microfone)) else {
             return nil
         }
-        let sistema = pasta.appendingPathComponent(Armazenamento.Nome.sistema)
-        return Self.existe(sistema) ? sistema : nil
+        for nome in [Armazenamento.Nome.sistema, Armazenamento.Nome.sistemaM4ALegado] {
+            let sistema = pasta.appendingPathComponent(nome)
+            if Self.existe(sistema) { return sistema }
+        }
+        return nil
     }
 
     private static func existe(_ url: URL) -> Bool {
@@ -675,18 +714,16 @@ final class Biblioteca {
     /// uma palavra em `Fase.descricao` quebrava a cor sem quebrar o build.
     /// Quanto do processamento já passou e quanto falta, em segundos.
     ///
-    /// É uma **estimativa por tempo decorrido**, não medição real: nem o
-    /// whisper nem o Qwen reportam percentual daqui. A referência é a duração
-    /// do áudio — na prática o large-v3 leva algo perto de metade dela para
-    /// transcrever, e o resumo some num punhado de segundos por minuto de
-    /// conversa. Erra, e por isso a interface fala em "cerca de".
+    /// Continua sendo **estimativa por tempo decorrido** — nem o whisper nem o
+    /// Qwen reportam percentual daqui —, mas agora calibrada por este Mac, e
+    /// não por um fator fixo. Ver `RitmoDeProcessamento`.
     ///
     /// A fração satura em 95% enquanto o trabalho não termina: barra parada em
     /// 100% com o app ainda pensando é pior que barra lenta.
     func progresso(de arquivo: Arquivo) -> (inicio: Date, estimativa: TimeInterval)? {
         let chave = arquivo.id.rawValue
         guard fases[chave] != nil, let inicio = iniciadoEm[chave] else { return nil }
-        return (inicio, max(20, arquivo.duracao * 0.75))
+        return (inicio, RitmoDeProcessamento.estimativa(paraAudioDe: arquivo.duracao))
     }
 
     func estado(de arquivo: Arquivo) -> EstadoDoArquivo {

@@ -162,7 +162,8 @@ struct ContentView: View {
                         equipes: equipes,
                         aoSelecionarEquipe: usarEquipe,
                         aoAdicionarEquipe: adicionarEquipe,
-                        aoSair: sairDoPerfil
+                        aoSair: sairDoPerfil,
+                        aoExcluirConta: excluirConta
                     )
                 case .equipe:
                     GestaoDeEquipeView(
@@ -204,13 +205,6 @@ struct ContentView: View {
                             await biblioteca.atualizarTrechos(trechos, de: arquivo)
                         },
                         aoDitar: { url in try await biblioteca.transcreverDitado(url) },
-                        // A conversa substitui a raiz do `NavigationStack`, e
-                        // com ela some a barra do app. Ajustes e lixeira
-                        // viajam junto para não ficarem inalcançáveis aqui.
-                        aoAbrirConfiguracoes: {
-                            conversaAberta.removeAll()
-                            telaSelecionada = .configuracoes
-                        }
                     )
                 }
             }
@@ -490,6 +484,40 @@ struct ContentView: View {
         perfil.sair()
         contextoDaConta = .perfil
         voltarParaBiblioteca()
+    }
+
+    /// Limpa apenas os dados que pertencem à conta local atual. Preferências
+    /// do app e modelos baixados são preservados para que uma nova conta não
+    /// precise reconfigurar a aparência nem baixar pesos novamente.
+    private func excluirConta() async throws {
+        if modelo.gravando {
+            await modelo.cancelar()
+        }
+
+        try await biblioteca?.excluirDadosDaConta()
+
+        for equipe in equipes {
+            MembrosDasEquipes.remover(equipeID: equipe.id)
+        }
+        EquipesDoUsuario.remover()
+        TarefasDaConversa.removerTodas()
+        MidiasDaConversa.removerTodas()
+        PreferenciasVisuaisDoArquivo.removerTodas()
+        LixeiraDeMidia.limparRegistros()
+        LixeiraDeTarefas.esvaziar()
+        UserDefaults.standard.removeObject(forKey: "espacoIndividual")
+
+        perfil.excluirDadosDaConta()
+        notificacoes.limpar()
+        equipes.removeAll()
+        equipeAtivaID = ""
+        contextoDaConta = .perfil
+        consulta = ""
+        conversaAberta.removeAll()
+        pastaDaBibliotecaSelecionada = nil
+        secaoDaBiblioteca = .todos
+        focoNaGravacao = false
+        telaSelecionada = .biblioteca
     }
 
     /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da

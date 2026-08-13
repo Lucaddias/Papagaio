@@ -37,7 +37,9 @@ public actor CicloDeVidaDeModelos {
         // mesmo lugar. Não há meio termo útil com um modelo de 10,7 GB — ou ele
         // está na memória, ou não está.
         fonte.setEventHandler { [weak self] in
-            Task { await self?.descarregarTudo() }
+            Task { [weak self] in
+                await self?.descarregarTudo()
+            }
         }
         fonte.resume()
         monitor = fonte

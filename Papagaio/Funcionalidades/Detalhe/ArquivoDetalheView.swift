@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 struct ArquivoDetalheView: View {
     let arquivo: Arquivo
     let audio: URL
-    /// Canal do sistema (`sistema.m4a`) para reprodução em paralelo ao
+    /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
@@ -27,7 +27,6 @@ struct ArquivoDetalheView: View {
     let aoAtualizarTranscricao: ([Trecho]) async -> Void
     /// Refina com o Whisper local o trecho ditado numa nota.
     let aoDitar: (URL) async throws -> String
-    let aoAbrirConfiguracoes: () -> Void
 
     @State private var reprodutor: ReprodutorDeArquivo?
     @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
@@ -78,11 +77,8 @@ struct ArquivoDetalheView: View {
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var mostrandoFicha = false
     @State private var pairandoNaFicha = false
-    @State private var editandoFicha = false
     @State private var entrevistadoDaFicha = ""
-    @State private var emailDoEntrevistadoDaFicha = ""
     @State private var entrevistadoresDaFicha = ""
-    @State private var emailDosEntrevistadoresDaFicha = ""
     @State private var formatoDaFicha = ""
     private var metadados: MetadadosVisuaisDoArquivo {
         _ = versaoDaFicha
@@ -340,14 +336,6 @@ struct ArquivoDetalheView: View {
             Spacer(minLength: PapagaioTema.Espaco.curto)
 
             BotaoCircularPapagaio(
-                simbolo: "gearshape",
-                ajuda: "Ajustes",
-                legendaAtiva: $legendaDaBarra
-            ) {
-                aoAbrirConfiguracoes()
-            }
-
-            BotaoCircularPapagaio(
                 simbolo: "square.and.arrow.up",
                 ajuda: arquivo.resumo == nil
                     ? "Disponível depois que o resumo estiver pronto"
@@ -420,11 +408,8 @@ struct ArquivoDetalheView: View {
     private var botaoDeFicha: some View {
         Button {
             entrevistadoDaFicha = metadados.entrevistado
-            emailDoEntrevistadoDaFicha = metadados.emailDoEntrevistado
             entrevistadoresDaFicha = metadados.entrevistadores
-            emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
             formatoDaFicha = metadados.formato
-            editandoFicha = false
             mostrandoFicha = true
         } label: {
             // `person.text.rectangle` em vez de `info.circle`: o conteúdo é a
@@ -470,98 +455,68 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    /// Ficha compacta por padrão, formulário só quando pedido.
+    /// A ficha só mostra. Quem edita é o formulário, no clique do título.
     ///
-    /// Aberta já em modo de edição, ela ocupava meia tela para responder a uma
-    /// pergunta que quase sempre é "quem participou disso mesmo?". Ler é o
-    /// caso comum; editar é a exceção, e exceção fica atrás de um botão.
+    /// Ter os dois caminhos de edição — o formulário completo e um modo de
+    /// edição aqui dentro — significava manter duas telas fazendo a mesma
+    /// coisa, com regras que precisavam concordar. E o popover crescia de 280
+    /// para 460pt no clique do "Editar", o que fazia a tela pular. Como espelho
+    /// do formulário, ele fica sempre do mesmo tamanho e sempre igual.
     private var fichaEmPopover: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            if editandoFicha {
-                PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistador(es)",
-                    nome: $entrevistadoresDaFicha,
-                    email: $emailDosEntrevistadoresDaFicha,
-                    placeholderNome: "Ex.: João Santos",
-                    placeholderEmail: "joao.santos@empresa.com"
-                )
-
-                PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistado(s)",
-                    nome: $entrevistadoDaFicha,
-                    email: $emailDoEntrevistadoDaFicha,
-                    placeholderNome: "Ex.: Ana Silva",
-                    placeholderEmail: "ana.silva@email.com"
-                )
-
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    Text("Modalidade")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                        .textCase(.uppercase)
-                    HStack(spacing: PapagaioTema.Espaco.curto) {
-                        modalidade("Presencial", simbolo: "mappin.and.ellipse")
-                        modalidade("Online", simbolo: "video")
-                    }
-                }
-            } else {
-                // Rótulo no plural quando há mais de um nome: "Entrevistado:
-                // Ana, João" lia errado, como se fosse uma pessoa só de nome
-                // composto.
-                linhaDaFicha(
-                    rotuloDePessoas("Entrevistador", "Entrevistadores", em: entrevistadoresDaFicha),
-                    valor: entrevistadoresDaFicha,
-                    simbolo: "person.crop.circle.badge.checkmark"
-                )
-                linhaDaFicha(
-                    rotuloDePessoas("Entrevistado", "Entrevistados", em: entrevistadoDaFicha),
-                    valor: entrevistadoDaFicha,
-                    simbolo: "person"
-                )
-                linhaDaFicha(
-                    "Modalidade",
-                    valor: formatoDaFicha,
-                    simbolo: simboloDaModalidade(formatoDaFicha)
-                )
-            }
+            // Rótulo no plural quando há mais de um nome: "Entrevistado: Ana,
+            // João" lia errado, como se fosse uma pessoa só de nome composto.
+            linhaDaFicha(
+                rotuloDePessoas("Entrevistador", "Entrevistadores", em: entrevistadoresDaFicha),
+                valor: entrevistadoresDaFicha,
+                simbolo: "person.crop.circle.badge.checkmark"
+            )
+            linhaDaFicha(
+                rotuloDePessoas("Entrevistado", "Entrevistados", em: entrevistadoDaFicha),
+                valor: entrevistadoDaFicha,
+                simbolo: "person"
+            )
+            linhaDaFicha(
+                "Modalidade",
+                valor: formatoDaFicha,
+                simbolo: simboloDaModalidade(formatoDaFicha)
+            )
 
             Divider()
 
             // Estes três são consequência, não escolha: participantes sai dos
-            // nomes acima, data e duração vêm do próprio áudio. Editáveis, só
-            // dariam à pessoa a chance de contradizer o arquivo.
+            // nomes acima, data e duração vêm do próprio áudio.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                dadoDaFicha(
-                    participantesDaFicha == 1
-                        ? "1 participante"
-                        : "\(participantesDaFicha) participantes",
-                    simbolo: participantesDaFicha == 1 ? "person" : "person.2"
-                )
+                dadoDaFicha(textoDeParticipantes, simbolo: participantesDaFicha > 1 ? "person.2" : "person")
                 dadoDaFicha(
                     arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
             }
-
-            Button {
-                withAnimation(.snappy(duration: 0.18)) { editandoFicha.toggle() }
-            } label: {
-                Label(
-                    editandoFicha ? "Concluir" : "Editar",
-                    systemImage: editandoFicha ? "checkmark" : "pencil"
-                )
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(PapagaioTema.destaqueEscuro)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(PapagaioTema.Espaco.largo)
-        .frame(width: editandoFicha ? 460 : 280)
-        // Salva ao fechar: um popover de ficha com botão "Salvar" faria a
-        // pessoa confirmar duas vezes — fechar já é a confirmação.
-        .onDisappear { salvarFichaRapida() }
+        .frame(width: 300)
+    }
+
+    /// Contado a partir dos nomes salvos, e não de um campo próprio: o número
+    /// é consequência de quem foi preenchido no formulário.
+    private var participantesDaFicha: Int {
+        nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha)
+    }
+
+    /// Ninguém preenchido é **zero**, não um.
+    ///
+    /// O piso em 1 vinha de supor que sempre há ao menos quem gravou. Mas a
+    /// ficha mostra quem foi *informado*, e afirmar "1 participante" para uma
+    /// conversa vazia é inventar um dado — ainda por cima um que a pessoa não
+    /// tem como corrigir, já que o número é calculado.
+    private var textoDeParticipantes: String {
+        switch participantesDaFicha {
+        case 0: "Participantes não informados"
+        case 1: "1 participante"
+        default: "\(participantesDaFicha) participantes"
+        }
     }
 
     /// Mesma coluna de ícone das linhas de cima — 18pt fixos.
@@ -608,56 +563,6 @@ struct ArquivoDetalheView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    /// Contado a partir dos nomes preenchidos **agora**, e não do que está
-    /// salvo: o número tem que acompanhar a digitação, senão parece travado.
-    private var participantesDaFicha: Int {
-        max(1, nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha))
-    }
-
-    private func modalidade(_ nome: String, simbolo: String) -> some View {
-        let ativa = formatoDaFicha == nome
-        return Button {
-            // Clicar de novo na modalidade ativa limpa: é como se desmarca sem
-            // precisar de um terceiro botão "não informada".
-            formatoDaFicha = ativa ? "" : nome
-        } label: {
-            Label(nome, systemImage: simbolo)
-                .font(PapagaioTema.Tipo.apoio.weight(.semibold))
-                .foregroundStyle(ativa ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                .padding(.horizontal, PapagaioTema.Espaco.medio)
-                .frame(height: PapagaioTema.Altura.compacta)
-                .background(
-                    ativa ? PapagaioTema.destaque.opacity(0.14) : .clear,
-                    in: Capsule()
-                )
-                .overlay {
-                    Capsule().stroke(
-                        ativa ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
-                        lineWidth: 1
-                    )
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func salvarFichaRapida() {
-        let atuais = metadados
-        PreferenciasVisuaisDoArquivo.definirMetadados(
-            MetadadosVisuaisDoArquivo(
-                entrevistado: entrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                emailDoEntrevistado: emailDoEntrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                entrevistadores: entrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                emailDosEntrevistadores: emailDosEntrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                descricao: atuais.descricao,
-                formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-                participantes: participantesDaFicha
-            ),
-            para: arquivo.id
-        )
-        aoAtualizarMetadados(titulo, arquivo.criadoEm, arquivo.duracao)
     }
 
     private var fichaDoCabecalho: some View {
@@ -1015,6 +920,9 @@ struct ArquivoDetalheView: View {
             try moverParaLixeira(anexo, daGravacao: false)
             try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
             anexosDeMidia = atualizados
+            // Sem isto o cartão apagado só apareceria na próxima abertura da
+            // aba: a lista de removidos é lida do disco, não deduzida daqui.
+            recarregarLixeiraDeMidia()
         } catch {
             erroDeMidia = "Não foi possível remover esse arquivo: \(error.localizedDescription)"
         }
@@ -1047,6 +955,7 @@ struct ArquivoDetalheView: View {
         do {
             try moverParaLixeira(anexo, daGravacao: true)
             anexosDaGravacao = gravacoesDaConversa()
+            recarregarLixeiraDeMidia()
         } catch {
             erroDeMidia = "Não foi possível mover o áudio da gravação para a lixeira: \(error.localizedDescription)"
         }

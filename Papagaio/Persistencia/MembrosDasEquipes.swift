@@ -18,4 +18,8 @@ enum MembrosDasEquipes {
         guard let dados = try? JSONEncoder().encode(membros) else { return }
         UserDefaults.standard.set(dados, forKey: chave(equipeID))
     }
+
+    static func remover(equipeID: String) {
+        UserDefaults.standard.removeObject(forKey: chave(equipeID))
+    }
 }

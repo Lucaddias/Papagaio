@@ -64,7 +64,10 @@ public struct WhisperEngine: TranscriptionEngine {
             let amostrasDaJanela = DetectorDeAtividadeDeVoz.amostras(de: amostras, na: janela)
             guard !amostrasDaJanela.isEmpty else { continue }
 
-            let segmentos = try await contexto.transcrever(amostras: amostrasDaJanela, initialPrompt: initialPrompt)
+            let segmentos = try await contexto.transcrever(
+                amostras: amostrasDaJanela,
+                initialPrompt: initialPrompt
+            )
             // O Whisper devolve t0/t1 relativos ao início da JANELA — soma o
             // deslocamento para voltar à linha do tempo do arquivo original.
             trechos.append(contentsOf: segmentos.map { segmento in

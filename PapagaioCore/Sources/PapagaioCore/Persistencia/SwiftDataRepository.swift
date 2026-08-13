@@ -242,6 +242,27 @@ public actor SwiftDataRepository: ArquivoRepository {
         try modelContext.save()
     }
 
+    /// Exclui todos os registros de um espaço, ativos e na lixeira. É usado
+    /// somente pela remoção da conta; por isso não aplica a regra de que o
+    /// arquivo precisa passar antes pela lixeira.
+    public func apagarTodosOsDados(espaco: EspacoID) throws {
+        let alvo = espaco.rawValue
+        let descritor = FetchDescriptor<ArquivoPersistido>(
+            predicate: #Predicate { $0.espaco?.id == alvo }
+        )
+        for arquivo in try modelContext.fetch(descritor) {
+            modelContext.delete(arquivo)
+        }
+
+        let descritorDoEspaco = FetchDescriptor<EspacoPersistido>(
+            predicate: #Predicate { $0.id == alvo }
+        )
+        for espacoPersistido in try modelContext.fetch(descritorDoEspaco) {
+            modelContext.delete(espacoPersistido)
+        }
+        try modelContext.save()
+    }
+
     // MARK: - Apoio
 
     private func buscarPersistido(id: ArquivoID) throws -> ArquivoPersistido? {
