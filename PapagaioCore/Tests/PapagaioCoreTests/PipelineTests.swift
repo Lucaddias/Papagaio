@@ -234,6 +234,78 @@ func pipelineDiarizaPorCanal() async throws {
     #expect(final.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "S1" })
 }
 
+@Test("A resolução contextual roda após a diarização, antes do resumo")
+func pipelineResolveFalantesDuvidosas() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: false, sistema: false, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    // "oi" dentro do segmento S1; "sim" num buraco cross-falante longe
+    // demais para a ponte curta — fica sem falante, caso da resolução.
+    let trecho = Trecho(
+        start: 0, end: 3, texto: "oi sim",
+        palavras: [
+            Palavra(start: 0, end: 1, texto: "oi"),
+            Palavra(start: 1.6, end: 1.9, texto: "sim"),
+        ]
+    )
+    let resolverChamado = Mutex(false)
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { _, _ in [trecho] },
+        resumir: { _ in resumoDeMentira },
+        diarizar: { _ in
+            [
+                SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 1),
+                SegmentoDeFalante(falanteId: "S2", inicio: 4, fim: 5),
+            ]
+        },
+        resolverFalantes: { arquivo in
+            // Espelho do ResolvedorDeFalantes: só palavras sem falante ganham
+            // rótulo; as confiantes da diarização ficam intactas.
+            resolverChamado.withLock { $0 = true }
+            let trechos = arquivo.trechos.map { umTrecho in
+                umTrecho.comPalavras(umTrecho.palavras.map { palavra in
+                    guard palavra.falanteAcustico == nil else { return palavra }
+                    return Palavra(
+                        id: palavra.id,
+                        start: palavra.start,
+                        end: palavra.end,
+                        texto: palavra.texto,
+                        falanteAcustico: "S2"
+                    )
+                })
+            }
+            return Arquivo(
+                id: arquivo.id,
+                titulo: arquivo.titulo,
+                criadoEm: arquivo.criadoEm,
+                duracao: arquivo.duracao,
+                pastaRelativa: arquivo.pastaRelativa,
+                espaco: arquivo.espaco,
+                trechos: trechos,
+                notas: arquivo.notas,
+                resumo: arquivo.resumo,
+                engineTranscricao: arquivo.engineTranscricao,
+                engineResumo: arquivo.engineResumo,
+                apagadoEm: arquivo.apagadoEm
+            )
+        }
+    )
+
+    let final = try await pipeline.processar(arquivo)
+
+    // A resolução viu o resultado da diarização (o "oi" veio rotulado S1) e
+    // o resumo veio depois, como sempre.
+    #expect(resolverChamado.withLock { $0 } == true)
+    #expect(final.trechos[0].palavras[0].falanteAcustico == "S1")
+    #expect(final.trechos[0].palavras[1].falanteAcustico == "S2")
+    #expect(final.resumo?.titulo == "Resumo")
+}
+
 @Test("Falha de diarização nunca derruba transcrição nem resumo")
 func pipelineIsolaFalhaDeDiarizacao() async throws {
     let (armazenamento, arquivo) = try montarGravacao(

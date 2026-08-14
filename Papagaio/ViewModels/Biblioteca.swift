@@ -577,6 +577,11 @@ final class Biblioteca {
             },
             diarizar: { [diarizacao] url in
                 try await diarizacao.diarizar(url)
+            },
+            resolverFalantes: { [motores] arquivo in
+                // Carrega o Qwen e o mantém residente: a fase de resumo
+                // reusa o mesmo contexto (MotoresLocais.troca mantém tal).
+                try await motores.resolverFalantes(arquivo)
             }
         )
 
