@@ -1,7 +1,7 @@
 import Foundation
 import LlamaRuntime
 
-/// A engine de sumarização do Papagaio. Não existe segunda (D-0.5).
+/// A engine de sumarização do Papagaio. Não existe segunda engine ativa.
 ///
 /// Passe único é o padrão: a janela de 32k do Qwen cabe uma reunião inteira de
 /// até ~3 h. Map-reduce só entra acima disso — e é o que permite o resumo
@@ -9,7 +9,7 @@ import LlamaRuntime
 /// que um modelo de 4k não faz.
 public struct QwenEngine: SummarizationEngine {
     /// Ver a nota em `WhisperEngine.identificador` — mesmo motivo.
-    public static let identificador = "qwen2.5-14b-instruct-q5_k_m"
+    public static let identificador = "qwen3.5-9b-q4_k_m"
 
     public let identifier = QwenEngine.identificador
 
@@ -164,6 +164,10 @@ public struct QwenEngine: SummarizationEngine {
         TRANSCRIÇÃO:
         \(transcricao)<|im_end|>
         <|im_start|>assistant
+        <think>
+
+        </think>\n
+
         """
     }
 
@@ -178,6 +182,10 @@ public struct QwenEngine: SummarizationEngine {
 
         \(transcricao)<|im_end|>
         <|im_start|>assistant
+        <think>
+
+        </think>\n
+
         """
     }
 
@@ -196,6 +204,10 @@ public struct QwenEngine: SummarizationEngine {
 
         \(parciais)<|im_end|>
         <|im_start|>assistant
+        <think>
+
+        </think>\n
+
         """
     }
 
@@ -212,6 +224,10 @@ public struct QwenEngine: SummarizationEngine {
         SAÍDA INVÁLIDA:
         \(saidaInvalida.prefix(4_000))<|im_end|>
         <|im_start|>assistant
+        <think>
+
+        </think>\n
+
         """
     }
 

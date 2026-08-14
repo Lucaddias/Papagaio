@@ -35,7 +35,7 @@ public enum ErroDownload: Error, CustomStringConvertible {
 ///
 /// **Os pesos nunca vão no bundle** — são dados baixados depois da instalação.
 /// É o que mantém o app dentro da guideline 2.5.2 da App Store (R-6) e o que
-/// permite um `.app` de tamanho normal para 13,6 GB de modelo.
+/// permite um `.app` de tamanho normal para modelos grandes.
 public actor DownloadDeModelos {
     private let pastaDeModelos: URL
     private let sessao: URLSession
@@ -49,7 +49,7 @@ public actor DownloadDeModelos {
     ///
     /// A retomada usa `Range:` HTTP sobre um arquivo `.parcial` no disco, e não
     /// `URLSessionDownloadTask.cancel(byProducingResumeData:)`: o resume data da
-    /// Apple não sobrevive a um encerramento do app, e 10,7 GB é grande demais
+    /// Apple não sobrevive a um encerramento do app, e um modelo de vários GB é grande demais
     /// para recomeçar do zero por causa disso.
     public func baixar(
         _ peso: PesoDeModelo,

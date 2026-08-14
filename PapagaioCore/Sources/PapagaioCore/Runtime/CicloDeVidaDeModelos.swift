@@ -5,10 +5,10 @@ import Foundation
 /// Mantém os modelos residentes em memória entre execuções e os descarrega sob
 /// pressão de memória.
 ///
-/// Por que residente: carregar 10,7 GB do disco leva 10–30 s. Fazer isso a cada
+/// Por que residente: carregar o modelo do disco leva vários segundos. Fazer isso a cada
 /// resumo transformaria uma operação de segundos numa de meio minuto.
 ///
-/// Por que descarregar: 10,7 GB num Mac de 18 GB é a maior parte da RAM. Sem
+/// Por que descarregar: um modelo grande num Mac de 18 GB consome uma parte relevante da RAM. Sem
 /// reagir à pressão, o app vira o candidato óbvio do jetsam — e é o processo do
 /// usuário que morre, não o modelo.
 public actor CicloDeVidaDeModelos {
@@ -34,7 +34,7 @@ public actor CicloDeVidaDeModelos {
             queue: .global(qos: .utility)
         )
         // O evento em si não é consultado: `.warning` e `.critical` levam ao
-        // mesmo lugar. Não há meio termo útil com um modelo de 10,7 GB — ou ele
+        // mesmo lugar. Não há meio termo útil com um modelo grande — ou ele
         // está na memória, ou não está.
         fonte.setEventHandler { [weak self] in
             Task { [weak self] in

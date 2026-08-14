@@ -36,7 +36,7 @@ final class ModelosViewModel {
 
     var pronto: Bool { resultado == .pronto || resultado == .termicoCritico }
 
-    /// Verificação barata: tamanho em disco, não SHA-256 de 13,6 GB (ver a nota
+    /// Verificação barata: tamanho em disco, não SHA-256 dos pesos (ver a nota
     /// em `Preflight.pesoValido`).
     func verificar() {
         resultado = Preflight(pastaDeModelos: pasta).avaliar()

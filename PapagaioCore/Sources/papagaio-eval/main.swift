@@ -9,6 +9,10 @@ import WhisperRuntime
 
 let versao = "0.1.0-passo1"
 
+func formatarBytes(_ bytes: Int64) -> String {
+    String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
+}
+
 func uso() {
     print("""
     papagaio-eval \(versao)
@@ -31,7 +35,7 @@ case "contratos":
         modelo: modelosPadrao.appendingPathComponent(Pesos.whisperLargeV3.nomeArquivo)
     )
     let resumo: any SummarizationEngine = QwenEngine(
-        modelo: modelosPadrao.appendingPathComponent(Pesos.qwen14B.nomeArquivo)
+        modelo: modelosPadrao.appendingPathComponent(Pesos.qwen35_9B.nomeArquivo)
     )
     print("TranscriptionEngine  -> \(transcricao.identifier)")
     print("SummarizationEngine  -> \(resumo.identifier)")
@@ -52,7 +56,7 @@ case "preflight":
     print("RAM instalada: \(Preflight.ramInstalada / 1_073_741_824) GB (piso \(Preflight.ramMinima / 1_073_741_824) GB)")
     let pf = Preflight(pastaDeModelos: pasta)
     print("disco livre:   \(pf.discoLivre / 1_073_741_824) GB (piso \(Preflight.discoMinimo / 1_073_741_824) GB)")
-    if verificar { print("verificando SHA-256 de 13,6 GB — leva um tempo…") }
+    if verificar { print("verificando SHA-256 dos pesos — leva um tempo…") }
     let r = pf.avaliar(verificarChecksum: verificar)
     print("resultado: \(r)")
     print("bloqueia:  \(r.bloqueia)")
@@ -131,12 +135,16 @@ case "resumir":
     await engineW.descarregar()
     print("transcrição: \(brutos.count) segmentos → \(trechosR.count) trechos")
 
-    let contextoQ = ContextoLlama(modelo: modelos.appendingPathComponent(Pesos.qwen14B.nomeArquivo))
+    let contextoQ = ContextoLlama(modelo: modelos.appendingPathComponent(Pesos.qwen35_9B.nomeArquivo))
     let engineQ = QwenEngine(contexto: contextoQ)
     let entrada = QwenEngine.formatar(trechosR)
+    let memoriaAntes = CicloDeVidaDeModelos.memoriaDoProcesso
     let nTokens = try await contextoQ.contarTokens(entrada)
+    let memoriaComModelo = CicloDeVidaDeModelos.memoriaDoProcesso
     print("entrada: \(nTokens) tokens (teto de passe único: \(ContextoLlama.tetoDeEntrada))")
     print("modo: \(nTokens <= ContextoLlama.tetoDeEntrada ? "passe único" : "map-reduce")")
+    print("memória antes do Qwen: \(formatarBytes(memoriaAntes))")
+    print("memória após carregar Qwen: \(formatarBytes(memoriaComModelo))")
 
     let relogioQ = ContinuousClock()
     let inicioQ = relogioQ.now
@@ -149,6 +157,7 @@ case "resumir":
         exit(3)
     }
     print("tempo de resumo: \(relogioQ.now - inicioQ)")
+    print("memória após resumo: \(formatarBytes(CicloDeVidaDeModelos.memoriaDoProcesso))")
     print("engine: \(engineQ.identifier)")
     print()
     print("# \(resumoFinal.titulo)")

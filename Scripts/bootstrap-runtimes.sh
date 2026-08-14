@@ -45,8 +45,9 @@ MANTER_DSYMS="${DSYMS:-0}"
 FATIA_MACOS="macos-arm64_x86_64"
 
 # Versões fixadas. Trocar aqui exige trocar o checksum junto.
-LLAMA_TAG="b10205"
-LLAMA_SHA="3bd855da902324c55e7894148e239365da1da3c54ced7c494df1012fb193bcef"
+# Qwen3.5 usa a arquitetura `qwen35`, suportada a partir deste runtime.
+LLAMA_TAG="b9222"
+LLAMA_SHA="39b5d476d5716249fa9fcb7796b89f1a7dc6bd8828531b825efd936cdd51d4f7"
 WHISPER_TAG="v1.9.1"
 WHISPER_SHA="8c3ecbe73f48b0cb9318fc3058264f951ab336fd530e82c4ccdd2298d1311a4c"
 # ONNX Runtime (M.1) e modelo do Silero VAD: pod archive oficial do

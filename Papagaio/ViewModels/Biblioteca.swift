@@ -23,7 +23,7 @@ final class Biblioteca {
     private(set) var iniciadoEm: [UUID: Date] = [:]
     private(set) var erros: [UUID: String] = [:]
 
-    /// O Whisper e o Qwen juntos podem ocupar 13,7 GB. A fila mantém os
+    /// Whisper e Qwen continuam pesados. A fila mantém os
     /// pedidos em ordem de chegada e permite que somente um deles carregue os
     /// modelos por vez.
     private var filaDeProcessamento: [ArquivoID] = []
@@ -453,7 +453,7 @@ final class Biblioteca {
     /// código que roda dentro. O whisper e o Qwen trabalham em blocos longos e
     /// síncronos, então continuam ocupando GPU e memória por bastante tempo
     /// depois do pedido — e o `iniciarProximoProcessamentoSeNecessario()` já
-    /// disparava o próximo em cima disso. Dois modelos de 13,7 GB carregados
+    /// disparava o próximo em cima disso. Dois modelos pesados carregados
     /// ao mesmo tempo é o que fazia o `AVAudioRecorder` recusar começar a
     /// gravar logo em seguida.
     ///
@@ -506,7 +506,7 @@ final class Biblioteca {
     /// Transcreve um trecho ditado e devolve o texto corrido.
     ///
     /// Mesmo Whisper das conversas, e descarrega no fim: uma nota ditada não
-    /// justifica deixar 13,7 GB residentes.
+    /// justifica deixar modelos pesados residentes.
     func transcreverDitado(_ audio: URL) async throws -> String {
         let preflight = Preflight(pastaDeModelos: pastaDeModelos).avaliar()
         if preflight != .pronto, preflight != .termicoCritico {
@@ -550,7 +550,7 @@ final class Biblioteca {
         let promptDeEntidades = await PromptDeEntidades.construir(para: arquivo)
 
         // Criado por execução, e descarregado no fim: os dois modelos somam
-        // 13,7 GB e não podem ficar residentes entre gravações num Mac de 18 GB.
+        // Eles não podem ficar residentes entre gravações num Mac de 18 GB.
         let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
 
         // Diarização acústica: mini modelos embutidos no bundle (~40 MB
@@ -620,7 +620,7 @@ final class Biblioteca {
             )
         }
 
-        // 13,7 GB não podem ficar residentes depois que o trabalho acabou.
+        // Os modelos não podem ficar residentes depois que o trabalho acabou.
         await motores.descarregarTudo()
         await diarizacao.descarregar()
         await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)

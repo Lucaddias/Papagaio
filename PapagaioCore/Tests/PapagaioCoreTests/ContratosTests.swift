@@ -35,7 +35,7 @@ func qwenEngineContrato() {
     let engine: any SummarizationEngine = QwenEngine(
         modelo: URL(fileURLWithPath: "/nao/existe/modelo.gguf")
     )
-    #expect(engine.identifier == "qwen2.5-14b-instruct-q5_k_m")
+    #expect(engine.identifier == "qwen3.5-9b-q4_k_m")
 }
 
 @Test("Resumo faz round-trip de JSON")

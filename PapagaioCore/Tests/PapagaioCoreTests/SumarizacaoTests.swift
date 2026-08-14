@@ -6,7 +6,7 @@ import Testing
 private var modeloQwen: URL? {
     let caminho = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent("Documents/InterviewLab/Models")
-        .appendingPathComponent(Pesos.qwen14B.nomeArquivo)
+        .appendingPathComponent(Pesos.qwen35_9B.nomeArquivo)
     return FileManager.default.fileExists(atPath: caminho.path) ? caminho : nil
 }
 
@@ -24,6 +24,12 @@ func formatacaoDaTranscricao() {
     #expect(texto.contains("[00:00] (eu) abertura"))
     #expect(texto.contains("[01:35] (interlocutor) resposta"))
     #expect(texto.contains("[03:20] (desconhecido) sem canal"))
+}
+
+@Test("Prompt do Qwen3.5 desativa thinking antes do JSON estruturado")
+func promptQwen35SemThinking() {
+    let prompt = QwenEngine.prompt(paraTranscricao: "[00:00] (eu) Vamos decidir hoje.")
+    #expect(prompt.contains("<|im_start|>assistant\n<think>\n\n</think>\n\n"))
 }
 
 // MARK: - Decodificação
@@ -141,8 +147,7 @@ func lotePrefill() {
 
 // MARK: - Real
 
-/// Testes que carregam os 10,7 GB do Qwen. Serializados pelo mesmo motivo
-/// dos testes do Whisper — ver `TestesComModeloWhisper`.
+/// Testes que carregam o Qwen. Serializados para não disputar a GPU com o Whisper.
 @Suite(.serialized)
 struct TestesComModeloQwen {
     @Test("Qwen produz Resumo tipado válido a partir de trechos reais",
