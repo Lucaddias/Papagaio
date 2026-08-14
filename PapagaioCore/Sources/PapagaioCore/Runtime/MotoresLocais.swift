@@ -59,6 +59,31 @@ public actor MotoresLocais {
         return try await QwenEngine(contexto: contexto).summarize(trechos)
     }
 
+    /// Resolve pelo contexto as falas que a diarização deixou sem falante.
+    ///
+    /// Usa o MESMO contexto do Qwen do resumo: se a fase de resumo vier logo
+    /// atrás (como no `PipelineDeArquivo`), o modelo já está residente e não há
+    /// carga dupla. Invariante de memória preservada: descarrega o Whisper
+    /// antes de carregar o Qwen, como o `resumir`.
+    public func resolverFalantes(_ arquivo: Arquivo) async throws -> Arquivo {
+        guard let falas = FalasDaConversa.agrupar(arquivo.trechos) else { return arquivo }
+        let casos = ResolvedorDeFalantes.casosElegiveis(falas: falas)
+        guard !casos.isEmpty else { return arquivo }
+
+        await descarregarTranscricao()
+        let contexto = contextoLlama ?? ContextoLlama(modelo: pesoDoResumo)
+        contextoLlama = contexto
+        await ciclo?.registrar(contexto)
+
+        let bruto = try await contexto.completar(
+            prompt: ResolvedorDeFalantes.prompt(para: casos),
+            gramatica: ResolvedorDeFalantes.gramatica(para: casos),
+            maxTokens: 1_024
+        )
+        let resolucoes = ResolvedorDeFalantes.decodificar(bruto, casos: casos)
+        return ResolvedorDeFalantes.aplicar(resolucoes, casos: casos, em: arquivo)
+    }
+
     // MARK: - Descarga
 
     public func descarregarTranscricao() async {

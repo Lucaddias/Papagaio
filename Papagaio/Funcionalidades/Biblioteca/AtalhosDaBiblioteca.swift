@@ -11,14 +11,16 @@ struct AtalhosDaBiblioteca: View {
     @Binding var selecionado: AtalhoDaBiblioteca?
     let aoSelecionarRecentes: () -> Void
     let aoSelecionarFavoritos: () -> Void
+    var compacto = false
 
     var body: some View {
-        HStack(spacing: PapagaioTema.Espaco.largo) {
+        HStack(spacing: compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.largo) {
             Button(action: aoSelecionarRecentes) {
                 BotaoTextualDeAtalhoDaBiblioteca(
                     titulo: "Recentes",
                     simbolo: "clock.arrow.circlepath",
-                    selecionado: selecionado == .recentes
+                    selecionado: selecionado == .recentes,
+                    compacto: compacto
                 )
             }
             .buttonStyle(.plain)
@@ -28,7 +30,8 @@ struct AtalhosDaBiblioteca: View {
                 BotaoTextualDeAtalhoDaBiblioteca(
                     titulo: "Favoritos",
                     simbolo: selecionado == .favoritos ? "star.fill" : "star",
-                    selecionado: selecionado == .favoritos
+                    selecionado: selecionado == .favoritos,
+                    compacto: compacto
                 )
             }
             .buttonStyle(.plain)
@@ -42,14 +45,15 @@ struct BotaoTextualDeAtalhoDaBiblioteca: View {
     let titulo: String
     let simbolo: String
     let selecionado: Bool
+    var compacto = false
     @State private var pairando = false
 
     var body: some View {
         Label(titulo, systemImage: simbolo)
-            .font(.callout.weight(.semibold))
+            .font((compacto ? Font.caption : Font.callout).weight(.semibold))
             .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-            .padding(.horizontal, PapagaioTema.Espaco.largo)
-            .frame(height: PapagaioTema.Altura.padrao)
+            .padding(.horizontal, compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.largo)
+            .frame(height: compacto ? 36 : PapagaioTema.Altura.padrao)
             .background(fundo, in: Capsule())
             .overlay {
                 Capsule()

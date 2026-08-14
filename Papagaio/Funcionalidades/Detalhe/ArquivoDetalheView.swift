@@ -13,6 +13,9 @@ struct ArquivoDetalheView: View {
     /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
+    /// Veio de um arquivo escolhido pela pessoa, em vez de uma gravação feita
+    /// dentro do app.
+    let importado: Bool
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: EstadoDoArquivo
@@ -166,6 +169,16 @@ struct ArquivoDetalheView: View {
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                                 .padding(.bottom, deveMostrarPlayer ? 116 : 0)
                         }
+                        // Barra de rolagem escondida nesta tela.
+                        //
+                        // Quem usa "Mostrar barras de rolagem: sempre" nos
+                        // Ajustes do Sistema recebe uma barra opaca desenhada
+                        // por cima do conteúdo — e aqui ela caía sobre os
+                        // botões das notas, escondendo o lápis e a lixeira e
+                        // roubando o clique deles. Como cada aba tem começo e
+                        // fim visíveis, a barra não estava informando nada que
+                        // a tela já não dissesse.
+                        .scrollIndicators(.hidden)
                     }
                 }
             }
@@ -493,7 +506,7 @@ struct ArquivoDetalheView: View {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                 dadoDaFicha(textoDeParticipantes, simbolo: participantesDaFicha > 1 ? "person.2" : "person")
                 dadoDaFicha(
-                    arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
+                    DataDigitada.textoComHora(de: arquivo.criadoEm),
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
@@ -596,7 +609,7 @@ struct ArquivoDetalheView: View {
                 simbolo: participantes == 1 ? "person" : "person.2"
             )
             metadadoDoCabecalho(
-                arquivo.criadoEm.formatted(.dateTime.day().month(.wide).year()),
+                DataDigitada.textoComHora(de: arquivo.criadoEm),
                 simbolo: "calendar"
             )
             metadadoDoCabecalho(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
@@ -908,7 +921,7 @@ struct ArquivoDetalheView: View {
     }
 
     private func abrirMidia(_ anexo: AnexoDeMidiaDaConversa) {
-        NSWorkspace.shared.open(anexo.url)
+        AberturaDeMidia.abrir(anexo.url)
     }
 
     private func removerMidia(_ anexo: AnexoDeMidiaDaConversa) {
@@ -1205,27 +1218,31 @@ struct ArquivoDetalheView: View {
             data: arquivo.criadoEm,
             reprodutor: reprodutor,
             tempoEmEdicao: $tempoEmEdicao,
-            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) }
+            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) },
+            compacto: true
         )
     }
 
     // MARK: - Transcrição
 
+    /// Sem `ScrollView` próprio: o conteúdo da seção já vive dentro de um.
+    ///
+    /// Duas rolagens empilhadas davam duas barras — uma delas caindo por cima
+    /// dos botões das notas — e faziam o bloco de escrita rolar para fora da
+    /// tela e ser cortado pela barra de abas. A de fora basta.
     private var notasDaConversa: some View {
-        ScrollView {
-            PainelDeNotasDaConversa(
-                notas: $notasEditaveis,
-                estadoDeSalvamento: estadoDeSalvamentoDasNotas,
-                duracao: arquivo.duracao,
-                instanteAtual: { reprodutor?.tempo ?? 0 },
-                ditado: ditado,
-                aoTocar: tocar,
-                aoSalvar: agendarSalvamentoDasNotas,
-                aoAlternarDitado: alternarDitado
-            )
-            .padding(.bottom, PapagaioTema.Espaco.secao)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        PainelDeNotasDaConversa(
+            notas: $notasEditaveis,
+            estadoDeSalvamento: estadoDeSalvamentoDasNotas,
+            duracao: arquivo.duracao,
+            instanteAtual: { reprodutor?.tempo ?? 0 },
+            ditado: ditado,
+            aoTocar: tocar,
+            aoSalvar: agendarSalvamentoDasNotas,
+            aoAlternarDitado: alternarDitado
+        )
+        .padding(.bottom, PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Carrega as notas do arquivo. O bloco único que existia antes continua

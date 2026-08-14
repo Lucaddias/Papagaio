@@ -238,6 +238,16 @@ enum DataDigitada {
     static func texto(de data: Date) -> String {
         data.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year())
     }
+
+    /// Data e hora da conversa: `13/08/2026, 14:32`.
+    ///
+    /// Numérico, e não "13 de agosto de 2026", pelo mesmo motivo que a leitura
+    /// acima aceita `15/08/2026`: é a forma que a pessoa escreve e lê no resto
+    /// do app. Mês por extenso ocupava três vezes mais largura, empurrava o
+    /// rodapé do cartão para uma segunda linha e desalinhava a fileira.
+    static func textoComHora(de data: Date) -> String {
+        data.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year().hour().minute())
+    }
 }
 
 /// Botão redondo de cromo — voltar, fechar, dispensar.
@@ -408,7 +418,7 @@ struct BotaoPrincipalPapagaio: ButtonStyle {
             .font(.body.weight(.semibold))
             .foregroundStyle(PapagaioTema.textoSobrePrimario)
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .minimumScaleFactor(0.82)
             .padding(.horizontal, PapagaioTema.Espaco.largo)
             .frame(minHeight: PapagaioTema.Altura.destaque)
             .background(
@@ -428,7 +438,7 @@ struct BotaoDeContornoPapagaio: ButtonStyle {
             .font(.body.weight(.medium))
             .foregroundStyle(habilitado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
             .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .minimumScaleFactor(0.82)
             .padding(.horizontal, PapagaioTema.Espaco.largo)
             .frame(minHeight: PapagaioTema.Altura.destaque)
             .background(PapagaioTema.superficie, in: Capsule())

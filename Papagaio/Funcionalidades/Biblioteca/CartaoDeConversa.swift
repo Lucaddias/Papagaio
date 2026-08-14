@@ -24,7 +24,13 @@ struct CartaoDeConversa: View {
     let aoAlterarPreferenciasVisuais: () -> Void
     let aoMoverParaLixeira: () -> Void
 
+    /// Preferência da grade inteira. `@AppStorage` porque um inteiro em
+    /// `UserDefaults` faz todos os cartões se redesenharem quando ela muda,
+    /// sem carregar um objeto observável por todo o caminho até aqui.
+    @AppStorage(CamposDoCartao.chave) private var camposBrutos = CamposDoCartao.padrao.rawValue
+
     @State private var editandoInformacoes = false
+    @State private var personalizando = false
     @State private var escolhendoPastaDestino = false
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
@@ -91,11 +97,16 @@ struct CartaoDeConversa: View {
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
 
-    /// Arquivos gravados antes da diarização existir têm palavras com
+/// Arquivos gravados antes da diarização existir têm palavras com
     /// timestamp, mas sem falante acústico: dá para distingui-los sem
     /// re-transcrever. Sem palavras não há o que alinhar.
     private var podeDiarizar: Bool {
         arquivo.trechos.contains { !$0.palavras.isEmpty }
+    }
+
+    private var campos: CamposDoCartao {
+        get { CamposDoCartao(rawValue: camposBrutos) }
+        nonmutating set { camposBrutos = newValue.rawValue }
     }
 
     /// Só as pessoas que foram realmente preenchidas.
@@ -163,7 +174,9 @@ struct CartaoDeConversa: View {
     var body: some View {
         NavigationLink(value: arquivo.id.rawValue) {
             VStack(alignment: .leading, spacing: 0) {
-                CapaDeConversa(arquivo: arquivo, capaURL: capaURL)
+                if campos.contains(.capa) {
+                    CapaDeConversa(arquivo: arquivo, capaURL: capaURL)
+                }
 
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                     Text(titulo)
@@ -187,16 +200,20 @@ struct CartaoDeConversa: View {
                     // um cartão com descrição e outro sem ficavam com o corpo
                     // deslocado na mesma fileira. Em itálico e sem negrito, o
                     // aviso se lê como lacuna, não como conteúdo.
-                    if metadados.descricao.isEmpty {
-                        Text("Sem descrição")
-                            .font(PapagaioTema.Tipo.apoio.italic())
-                            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.7))
-                            .lineLimit(1)
-                    } else {
-                        Text(metadados.descricao)
-                            .font(PapagaioTema.Tipo.apoio)
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                            .lineLimit(2)
+                    if campos.contains(.descricao) {
+                        if metadados.descricao.isEmpty {
+                            if campos.contains(.lacunas) {
+                                Text("Sem descrição")
+                                    .font(PapagaioTema.Tipo.apoio.italic())
+                                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.7))
+                                    .lineLimit(1)
+                            }
+                        } else {
+                            Text(metadados.descricao)
+                                .font(PapagaioTema.Tipo.apoio)
+                                .foregroundStyle(PapagaioTema.textoSecundario)
+                                .lineLimit(2)
+                        }
                     }
 
                     // O selo "Áudio local" saiu: era verdadeiro em 100% dos
@@ -230,19 +247,23 @@ struct CartaoDeConversa: View {
                         )
                     }
 
-                    if pessoasDoCard.isEmpty {
-                        Label("Participantes não informados", systemImage: "person.badge.plus")
-                            .font(PapagaioTema.Tipo.legenda)
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                            .lineLimit(1)
-                    } else {
-                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                            ForEach(pessoasDoCard, id: \.rotulo) { pessoa in
-                                MetadadoDoCard(
-                                    simbolo: pessoa.simbolo,
-                                    rotulo: pessoa.rotulo,
-                                    valor: pessoa.valor
-                                )
+                    if campos.contains(.pessoas) {
+                        if pessoasDoCard.isEmpty {
+                            if campos.contains(.lacunas) {
+                                Label("Participantes não informados", systemImage: "person.badge.plus")
+                                    .font(PapagaioTema.Tipo.legenda)
+                                    .foregroundStyle(PapagaioTema.textoSecundario)
+                                    .lineLimit(1)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                                ForEach(pessoasDoCard, id: \.rotulo) { pessoa in
+                                    MetadadoDoCard(
+                                        simbolo: pessoa.simbolo,
+                                        rotulo: pessoa.rotulo,
+                                        valor: pessoa.valor
+                                    )
+                                }
                             }
                         }
                     }
@@ -251,29 +272,39 @@ struct CartaoDeConversa: View {
                     // linha de rodapé em vez de três células de grade com
                     // rótulo em maiúscula competindo com o título.
                     LayoutDeFluxo(espacoHorizontal: PapagaioTema.Espaco.medio, espacoVertical: PapagaioTema.Espaco.minimo) {
-                        Label(
-                            arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated).year()),
-                            systemImage: "calendar"
-                        )
-                        Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
+                        // Com a hora: numa semana de pesquisa acontecem três
+                        // entrevistas no mesmo dia, e a data sozinha não
+                        // distingue a da manhã da que foi depois do almoço.
+                        if campos.contains(.data) {
+                            Label(
+                                DataDigitada.textoComHora(de: arquivo.criadoEm),
+                                systemImage: "calendar"
+                            )
+                        }
+
+                        if campos.contains(.duracao) {
+                            Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
+                        }
 
                         // Gravado e importado são conversas diferentes: uma tem
                         // dois canais e separa quem falou, a outra é um áudio
                         // só. Saber disso muda o que esperar da transcrição.
-                        Label(
-                            importado ? "Importado" : "Gravado",
-                            systemImage: importado ? "square.and.arrow.down" : "mic"
-                        )
+                        if campos.contains(.origem) {
+                            Label(
+                                importado ? "Importado" : "Gravado",
+                                systemImage: importado ? "square.and.arrow.down" : "mic"
+                            )
+                        }
 
                         // Participantes e modalidade só quando dizem algo: "1
                         // participante" e "modalidade não informada" apareciam
                         // em quase todo cartão, empurrando o rodapé para uma
                         // segunda linha e desalinhando a fileira.
-                        if participantes > 1 {
+                        if campos.contains(.participantes), participantes > 1 {
                             Label("\(participantes) participantes", systemImage: "person.2")
                         }
 
-                        if !metadados.formato.isEmpty {
+                        if campos.contains(.modalidade), !metadados.formato.isEmpty {
                             Label(
                                 metadados.formato,
                                 systemImage: simboloDaModalidade(metadados.formato)
@@ -304,7 +335,6 @@ struct CartaoDeConversa: View {
         .overlay(alignment: .topTrailing) {
             menuDoCard
         }
-        .zIndex(menuAberto ? 10 : 0)
         .onAppear(perform: sincronizarPreferenciasVisuais)
         .onChange(of: arquivo.id.rawValue) { _, _ in
             sincronizarPreferenciasVisuais()
@@ -324,6 +354,15 @@ struct CartaoDeConversa: View {
                 duracao: $duracaoEditada,
                 aoCancelar: { editandoInformacoes = false },
                 aoSalvar: salvarInformacoesDoCard
+            )
+        }
+        .sheet(isPresented: $personalizando) {
+            PersonalizacaoDoCartao(
+                campos: Binding(
+                    get: { CamposDoCartao(rawValue: camposBrutos) },
+                    set: { camposBrutos = $0.rawValue }
+                ),
+                aoFechar: { personalizando = false }
             )
         }
         .confirmationDialog("Mover para pasta", isPresented: $escolhendoPastaDestino) {
@@ -372,49 +411,64 @@ struct CartaoDeConversa: View {
         .opacity(emOperacaoDeLixeira ? 0.72 : 1)
     }
 
-    @ViewBuilder
+    /// O menu é um **popover**, e não uma camada dentro do cartão.
+    ///
+    /// Como overlay ele era desenhado dentro da árvore do cartão, e a grade
+    /// recorta cada fileira: o menu era cortado na borda de baixo — "Mover para
+    /// Lixeira" ficava pela metade — e passava por trás dos cartões vizinhos.
+    /// Nenhum `zIndex` resolve isso, porque o problema é o recorte, não a ordem.
+    ///
+    /// Popover vive numa janela própria do sistema: não tem como ser cortado
+    /// nem ficar atrás de nada, fecha sozinho ao clicar fora e some junto com a
+    /// rolagem. É o que o macOS já faz em todo menu de contexto.
     private var menuDoCard: some View {
-        ZStack(alignment: .topTrailing) {
-            Button {
-                if menuAberto {
-                    aoFecharMenu()
-                } else {
-                    aoAlternarMenu()
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(menuAberto ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                    .frame(width: 36, height: 36)
-                    .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
-                    .overlay {
-                        Circle().stroke(menuAberto ? PapagaioTema.destaque.opacity(0.45) : .clear, lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
-            .padding(PapagaioTema.Espaco.curto)
-            .accessibilityLabel("Ações de \(titulo)")
-
+        Button {
             if menuAberto {
-                MenuDeArquivoAberto(
-                    bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
-                    bloqueioDeLixeira: emOperacaoDeLixeira,
-                    podeDiarizar: podeDiarizar,
-                    aoDiarizar: executarMenu(aoDiarizar),
-                    aoReprocessar: executarMenu(aoReprocessar),
-                    aoEditarImagem: executarMenu(editarImagem),
-                    aoRenomear: executarMenu(abrirEditorDeInformacoes),
-                    aoMoverParaPasta: executarMenu(abrirMoverParaPasta),
-                    aoCompartilhar: executarMenu(compartilhar),
-                    aoDuplicar: executarMenu(aoDuplicar),
-                    aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
-                )
-                .padding(.top, PapagaioTema.Espaco.pagina)
-                .padding(.trailing, PapagaioTema.Espaco.curto)
-                .transition(.scale(scale: 0.94, anchor: .topTrailing).combined(with: .opacity))
-                .zIndex(2)
+                aoFecharMenu()
+            } else {
+                aoAlternarMenu()
             }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(menuAberto ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                .frame(width: 36, height: 36)
+                .background(PapagaioTema.superficie.opacity(0.92), in: Circle())
+                .overlay {
+                    Circle().stroke(menuAberto ? PapagaioTema.destaque.opacity(0.45) : .clear, lineWidth: 1)
+                }
         }
+        .buttonStyle(.plain)
+        .padding(PapagaioTema.Espaco.curto)
+        .accessibilityLabel("Ações de \(titulo)")
+        .popover(isPresented: menuVisivel, arrowEdge: .bottom) {
+            MenuDeArquivoAberto(
+                bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
+                bloqueioDeLixeira: emOperacaoDeLixeira,
+                podeDiarizar: podeDiarizar,
+                aoDiarizar: executarMenu(aoDiarizar),
+                aoReprocessar: executarMenu(aoReprocessar),
+                aoEditarImagem: executarMenu(editarImagem),
+                aoRenomear: executarMenu(abrirEditorDeInformacoes),
+                aoMoverParaPasta: executarMenu(abrirMoverParaPasta),
+                aoCompartilhar: executarMenu(compartilhar),
+                aoDuplicar: executarMenu(aoDuplicar),
+                aoPersonalizar: executarMenu { personalizando = true },
+                aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
+            )
+        }
+    }
+
+    /// O estado de aberto continua morando na biblioteca, que garante um menu
+    /// por vez; o popover só precisa saber avisar quando o próprio sistema o
+    /// fecha — clique fora, `Esc`, rolagem.
+    private var menuVisivel: Binding<Bool> {
+        Binding(
+            get: { menuAberto },
+            set: { aberto in
+                if !aberto, menuAberto { aoFecharMenu() }
+            }
+        )
     }
 
     private var botaoDeFavoritoDoCard: some View {
@@ -437,7 +491,11 @@ struct CartaoDeConversa: View {
     private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
         {
             aoFecharMenu()
-            acao()
+            // Um salto de runloop antes de agir: apresentar uma folha ou um
+            // painel no mesmo ciclo em que o popover se fecha faz o AppKit
+            // descartar uma das duas apresentações, e a folha simplesmente não
+            // abre. O atraso é invisível.
+            DispatchQueue.main.async(execute: acao)
         }
     }
 

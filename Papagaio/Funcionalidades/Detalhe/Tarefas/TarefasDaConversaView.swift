@@ -35,8 +35,9 @@ struct TarefasDaConversaView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
-            HStack(alignment: .center) {
-                HStack(spacing: PapagaioTema.Espaco.curto) {
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
                     ForEach(FiltroDeTarefas.allCases) { opcao in
                         Button {
                             withAnimation(.snappy(duration: 0.18)) {
@@ -45,6 +46,8 @@ struct TarefasDaConversaView: View {
                         } label: {
                             Text(opcao.rawValue)
                                 .font(.callout.weight(.semibold))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .foregroundStyle(filtro == opcao ? PapagaioTema.textoSobrePrimario : PapagaioTema.textoSecundario)
                                 .padding(.horizontal, PapagaioTema.Espaco.largo)
                                 .frame(height: PapagaioTema.Altura.padrao)
@@ -59,9 +62,14 @@ struct TarefasDaConversaView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    }
                 }
-
-                Spacer()
+                .scrollBounceBehavior(.basedOnSize)
+                // O conteúdo das tags tem largura intrínseca. Sem limitar o
+                // viewport, ele tomava o espaço do botão de criar e a última
+                // tag acabava cortada, em vez de poder ser rolada.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(0)
 
                 Button(action: aoAdicionar) {
                     Image(systemName: "plus")
@@ -72,7 +80,9 @@ struct TarefasDaConversaView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Adicionar tarefa")
+                .layoutPriority(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if tarefasFiltradas.isEmpty {
                 CartaoDeEstadoVazio(

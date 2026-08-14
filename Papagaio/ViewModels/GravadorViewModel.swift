@@ -251,29 +251,22 @@ final class GravadorViewModel {
         return "Gravação de \(Date().formatted(formato))"
     }
 
+    /// Cada nota da gravação continua sendo uma nota na conversa.
+    ///
+    /// Antes elas eram fundidas num bloco único ancorado em 0:00, com o tempo
+    /// virando prefixo de texto — "[0:23] fulano disse tal". O resultado é que
+    /// tudo o que a pessoa anotou ao vivo, em instantes diferentes, chegava na
+    /// conversa como um parágrafo só que apontava para o começo do áudio:
+    /// clicar no tempo levava sempre a 0:00, editar significava mexer num
+    /// bloco com cinco assuntos, e apagar uma anotação exigia editar texto.
+    ///
+    /// Preservando uma nota por anotação, o que foi escrito durante a gravação
+    /// aparece na aba Notas igual ao que se escreve depois — mesma linha, mesmo
+    /// instante clicável, mesmo lápis, mesma lixeira.
     private static func notasParaArquivo(_ notas: [NotaDaConversa]) -> [NotaDaConversa] {
-        var resultado = notas.filter { $0.tipo == .marcador }
-        let anotacoes = notas
-            .filter { $0.tipo == .nota }
-            .sorted { $0.start < $1.start }
-
-        if !anotacoes.isEmpty {
-            resultado.insert(
-                NotaDaConversa(
-                    texto: anotacoes.map { linhaDeNotaSalva($0) }.joined(separator: "\n"),
-                    start: 0,
-                    critica: anotacoes.contains { $0.critica },
-                    tipo: .nota
-                ),
-                at: 0
-            )
+        notas.sorted {
+            $0.start == $1.start ? $0.id.uuidString < $1.id.uuidString : $0.start < $1.start
         }
-
-        return resultado
-    }
-
-    private static func linhaDeNotaSalva(_ nota: NotaDaConversa) -> String {
-        "[\(nota.start.comoRelogio)] \(nota.texto)"
     }
 
     private func acrescentarAoWaveform(_ valor: Float) {
@@ -308,6 +301,30 @@ final class GravadorViewModel {
         )
         rascunhoDaNota = ""
         proximaNotaSeraCritica = false
+    }
+
+    /// Corrige o texto de uma nota já registrada.
+    ///
+    /// Anotar ao vivo produz erro de digitação e frase pela metade — a atenção
+    /// está na conversa, não no teclado. Sem corrigir na hora, o engano só sai
+    /// depois que a transcrição terminar, minutos ou dezenas de minutos depois.
+    ///
+    /// Texto vazio devolve a nota à condição de marcador: o instante continua
+    /// guardado, que é o que ela tinha de mais valioso.
+    func editarNota(_ nota: NotaDaConversa, texto: String) {
+        guard let indice = notasDaGravacao.firstIndex(where: { $0.id == nota.id }) else { return }
+        let limpo = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        notasDaGravacao[indice].texto = limpo
+        notasDaGravacao[indice].tipo = limpo.isEmpty ? .marcador : .nota
+    }
+
+    /// Apaga uma nota tomada durante a gravação.
+    ///
+    /// Existe porque anotar ao vivo erra: a pessoa aperta Enter sem querer, ou
+    /// registra algo que percebe em seguida ser irrelevante. Sem isso, o engano
+    /// só sairia depois de a transcrição terminar.
+    func removerNota(_ nota: NotaDaConversa) {
+        notasDaGravacao.removeAll { $0.id == nota.id }
     }
 
     /// Um marcador é uma nota sem texto livre que conserva o instante exato da

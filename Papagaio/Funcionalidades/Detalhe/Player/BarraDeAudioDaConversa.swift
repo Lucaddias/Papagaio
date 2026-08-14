@@ -10,6 +10,7 @@ struct BarraDeAudioDaConversa: View {
     let reprodutor: ReprodutorDeArquivo
     @Binding var tempoEmEdicao: TimeInterval?
     let aoConcluirEdicao: () -> Void
+    let compacto: Bool
 
     @State private var pairandoNoIcone = false
     @State private var pairandoNaRegua = false
@@ -20,36 +21,31 @@ struct BarraDeAudioDaConversa: View {
     @State private var volumeAntesDoMudo: Float = 1
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: PapagaioTema.Espaco.secao) {
-                blocoDoArquivo
-                controlesCentrais
-                progresso
-                volumeEVelocidade
-            }
-
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: PapagaioTema.Espaco.medio) {
-                        blocoDoArquivo
-                        Spacer(minLength: 0)
-                        controlesCentrais
-                    }
-
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-                        blocoDoArquivo
-                        controlesCentrais
-                    }
+        Group {
+            if compacto {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                    blocoDoArquivo
+                    controlesCentrais
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    progresso
+                    volumeEVelocidade
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
-
-                progresso
-
-                volumeEVelocidade
+            } else {
+                HStack(spacing: PapagaioTema.Espaco.secao) {
+                    blocoDoArquivo
+                    controlesCentrais
+                    progresso
+                    volumeEVelocidade
+                }
             }
         }
         .padding(.horizontal, PapagaioTema.Espaco.secao)
-        .padding(.vertical, PapagaioTema.Espaco.largo)
-        .frame(maxWidth: .infinity, minHeight: 88)
+        .padding(.vertical, compacto ? PapagaioTema.Espaco.medio : PapagaioTema.Espaco.largo)
+        // A tela estreita propõe toda a altura restante ao overlay. Com só um
+        // `minHeight`, o player aceitava essa proposta e virava uma faixa
+        // enorme. Em compacto ele tem a altura exata necessária aos controles.
+        .frame(maxWidth: .infinity, minHeight: compacto ? 208 : 88, maxHeight: compacto ? 208 : nil)
         .background(PapagaioTema.superficie)
         .overlay(alignment: .top) {
             Rectangle()
@@ -72,7 +68,7 @@ struct BarraDeAudioDaConversa: View {
                     .foregroundStyle(PapagaioTema.texto)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(data.formatted(.dateTime.day().month(.wide).year()))
+                Text(DataDigitada.textoComHora(de: data))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }

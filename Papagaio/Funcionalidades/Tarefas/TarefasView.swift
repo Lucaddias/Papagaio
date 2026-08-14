@@ -1,4 +1,5 @@
 import PapagaioCore
+import AppKit
 import SwiftUI
 
 struct TarefasView: View {
@@ -18,6 +19,7 @@ struct TarefasView: View {
     @State private var statusDoEditor: StatusDaTarefa = .emAndamento
     @State private var prazoDoEditor = Date()
     @State private var larguraDoQuadro: CGFloat?
+    @State private var scrollViewDoKanban: NSScrollView?
 
     private var conversas: [Arquivo] {
         biblioteca?.arquivos.sorted { $0.criadoEm > $1.criadoEm } ?? []
@@ -106,34 +108,48 @@ struct TarefasView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    Text("Painel de Tarefas")
-                        .font(PapagaioTema.Tipo.tituloDePagina)
-                        .foregroundStyle(PapagaioTema.texto)
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                        Text("Painel de Tarefas")
+                            .font(PapagaioTema.Tipo.tituloDePagina)
+                            .foregroundStyle(PapagaioTema.texto)
 
-                    Text("Gerencie as ações geradas a partir das suas conversas.")
-                        .font(.title3)
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                }
+                        Text("Gerencie as ações geradas a partir das suas conversas.")
+                            .font(.title3)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                    }
 
-                if tarefasPorConversa.isEmpty {
-                    CartaoDeEstadoVazio(
-                        simbolo: "list.clipboard",
-                        titulo: "Nenhuma tarefa ainda",
-                        mensagem: "Quando uma conversa tiver próximos passos ou tarefas criadas, elas ficarão reunidas nesta página."
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 300)
-                    .cartaoPapagaio()
-                } else {
-                    seletorDeConversas
-                    kanbanDeTarefas
+                    if tarefasPorConversa.isEmpty {
+                        CartaoDeEstadoVazio(
+                            simbolo: "list.clipboard",
+                            titulo: "Nenhuma tarefa ainda",
+                            mensagem: "Quando uma conversa tiver próximos passos ou tarefas criadas, elas ficarão reunidas nesta página."
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                        .cartaoPapagaio()
+                    } else {
+                        seletorDeConversas
+                        kanbanDeTarefas
+                    }
                 }
+                .larguraDeConteudoPapagaio()
+                .padding(.horizontal, PapagaioTema.espacamentoDePagina)
+                .padding(.vertical, PapagaioTema.espacamentoDePagina)
+                // O botão flutuante não pode cobrir o último card. Esta área
+                // também deixa uma faixa livre para levar o cursor até a
+                // borda e acionar a rolagem durante o arraste.
+                .padding(.bottom, 82)
             }
-            .larguraDeConteudoPapagaio()
-            .padding(.horizontal, PapagaioTema.espacamentoDePagina)
-            .padding(.vertical, PapagaioTema.espacamentoDePagina)
-        }
+            .background(LeitorDeScrollView { scrollViewDoKanban = $0 })
+            .overlay(alignment: .top) {
+                // Uma lista em colunas também pode ficar maior que a janela.
+                // Arrastar para o topo precisa acompanhar o card em qualquer
+                // largura, não apenas no Kanban vertical.
+                ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoKanban, direcao: .cima)
+            }
+            .overlay(alignment: .bottom) {
+                ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoKanban, direcao: .baixo)
+            }
         .background(PapagaioTema.fundo)
         .overlay(alignment: .bottomTrailing) {
             Button(action: abrirCriacaoDeTarefa) {
@@ -205,42 +221,7 @@ struct TarefasView: View {
 
     private var kanbanDeTarefas: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
-                Label(tituloDoKanban, systemImage: "bubble.left.and.text.bubble.right")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(PapagaioTema.texto)
-
-                Text("\(tarefasVisiveis.count) \(tarefasVisiveis.count == 1 ? "Tarefa" : "Tarefas")")
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .padding(.horizontal, PapagaioTema.Espaco.medio)
-                    .padding(.vertical, PapagaioTema.Espaco.minimo)
-                    .background(PapagaioTema.superficieSuave, in: Capsule())
-
-                Spacer()
-
-                Menu {
-                    Button("Todas") { prioridadeSelecionada = nil }
-                    ForEach(PrioridadeDaTarefa.allCases, id: \.self) { prioridade in
-                        Button(prioridade.rawValue) { prioridadeSelecionada = prioridade }
-                    }
-                } label: {
-                    Label(prioridadeSelecionada?.rawValue ?? "Prioridade", systemImage: "line.3.horizontal.decrease")
-                }
-                .buttonStyle(BotaoDeFiltroDeTarefaGeral(ativo: prioridadeSelecionada != nil))
-
-                Menu {
-                    Button("Todas") { filtroDeDeadline = .todas }
-                    Divider()
-                    ForEach(FiltroDeDeadlineTarefa.allCases.filter { $0 != .todas }, id: \.self) { filtro in
-                        Button(filtro.titulo) { filtroDeDeadline = filtro }
-                    }
-                } label: {
-                    Label(filtroDeDeadline.titulo, systemImage: filtroDeDeadline.simbolo)
-                }
-                .buttonStyle(BotaoDeFiltroDeTarefaGeral(ativo: filtroDeDeadline != .todas))
-
-            }
+            cabecalhoDoKanban
 
             if tarefasVisiveis.isEmpty {
                 CartaoDeEstadoVazio(
@@ -256,7 +237,7 @@ struct TarefasView: View {
                 // causa do texto que está dentro dele. Ver `cabeEmColunas`.
                 let arranjo = cabeEmColunas
                     ? AnyLayout(HStackLayout(alignment: .top, spacing: PapagaioTema.Espaco.largo))
-                    : AnyLayout(VStackLayout(alignment: .leading, spacing: PapagaioTema.Espaco.largo))
+                    : AnyLayout(VStackLayout(alignment: .leading, spacing: PapagaioTema.Espaco.medio))
 
                 arranjo {
                     coluna(titulo: "Prioridade alta", cor: PapagaioTema.perigo, tarefas: tarefasDePrioridadeAlta)
@@ -268,6 +249,70 @@ struct TarefasView: View {
         // Medido no bloco inteiro, que ocupa a mesma largura nos dois arranjos.
         // Medir o próprio quadro faria a escolha depender do que ela produziu.
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { larguraDoQuadro = $0 }
+    }
+
+    @ViewBuilder
+    private var cabecalhoDoKanban: some View {
+        if cabeCabecalhoEmUmaLinha {
+            HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+                resumoDoKanban
+                Spacer(minLength: PapagaioTema.Espaco.medio)
+                filtrosDoKanban
+            }
+        } else {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                resumoDoKanban
+                ScrollView(.horizontal, showsIndicators: false) {
+                    filtrosDoKanban
+                        .padding(.vertical, PapagaioTema.Espaco.minimo)
+                }
+            }
+        }
+    }
+
+    private var resumoDoKanban: some View {
+        HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            Label(tituloDoKanban, systemImage: "bubble.left.and.text.bubble.right")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(PapagaioTema.texto)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+
+            Text("\(tarefasVisiveis.count) \(tarefasVisiveis.count == 1 ? "Tarefa" : "Tarefas")")
+                .font(.callout.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
+                .background(PapagaioTema.superficieSuave, in: Capsule())
+                .fixedSize()
+        }
+    }
+
+    private var filtrosDoKanban: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            Menu {
+                Button("Todas") { prioridadeSelecionada = nil }
+                ForEach(PrioridadeDaTarefa.allCases, id: \.self) { prioridade in
+                    Button(prioridade.rawValue) { prioridadeSelecionada = prioridade }
+                }
+            } label: {
+                Label(prioridadeSelecionada?.rawValue ?? "Prioridade", systemImage: "line.3.horizontal.decrease")
+            }
+            .buttonStyle(BotaoDeFiltroDeTarefaGeral(ativo: prioridadeSelecionada != nil))
+
+            Menu {
+                Button("Todas") { filtroDeDeadline = .todas }
+                Divider()
+                ForEach(FiltroDeDeadlineTarefa.allCases.filter { $0 != .todas }, id: \.self) { filtro in
+                    Button(filtro.titulo) { filtroDeDeadline = filtro }
+                }
+            } label: {
+                Label(filtroDeDeadline.titulo, systemImage: filtroDeDeadline.simbolo)
+            }
+            .buttonStyle(BotaoDeFiltroDeTarefaGeral(ativo: filtroDeDeadline != .todas))
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     /// Largura mínima em que um cartão de tarefa ainda se lê: abaixo disso o
@@ -287,6 +332,13 @@ struct TarefasView: View {
         return larguraDoQuadro >= Self.larguraMinimaDaColuna * 3 + PapagaioTema.Espaco.largo * 2
     }
 
+    /// Abaixo desta largura, título e filtros recebem linhas separadas. Assim
+    /// o texto nunca é espremido entre os dois menus.
+    private var cabeCabecalhoEmUmaLinha: Bool {
+        guard let larguraDoQuadro else { return true }
+        return larguraDoQuadro >= 960
+    }
+
     private var tituloDoKanban: String {
         if conversasSelecionadas.count == 1,
            let selecionada = conversasVisiveis.first {
@@ -303,11 +355,96 @@ struct TarefasView: View {
             aoEditar: abrirEdicao,
             aoAlternarConclusao: alternarConclusao,
             aoExcluir: excluirTarefa,
-            aoMover: moverTarefa
+            aoMover: moverTarefa,
+            compacto: !cabeEmColunas
         )
             .frame(maxWidth: .infinity, alignment: .top)
+            .id("kanban-\(titulo == "Prioridade alta" ? "prioridade" : titulo == "Concluídas" ? "concluidas" : "andamento")")
     }
 
+}
+
+/// Borda de rolagem contínua: ela avança pequenos passos, em vez de saltar
+/// direto para outra coluna, preservando o controle durante o arrasto.
+struct ZonaDeRolagemDuranteArrasto: View {
+    enum Direcao { case cima, baixo }
+
+    let scrollView: NSScrollView?
+    let direcao: Direcao
+    @State private var tarefaDeRolagem: Task<Void, Never>?
+
+    var body: some View {
+        Color.clear
+            // A margem mais generosa permite começar a rolagem antes de o
+            // cursor encostar no limite físico da janela. É essencial quando
+            // o card arrastado cobre o ponteiro.
+            .frame(height: 128)
+            .contentShape(Rectangle())
+            .dropDestination(for: String.self) { _, _ in false } isTargeted: { ativo in
+                tarefaDeRolagem?.cancel()
+                guard ativo else { return }
+
+                tarefaDeRolagem = Task { @MainActor in
+                    // Um pequeno atraso evita disparos acidentais. Depois a
+                    // lista se move em passos curtos enquanto o card estiver
+                    // na borda, como a rolagem nativa de uma lista.
+                    try? await Task.sleep(for: .milliseconds(120))
+                    while !Task.isCancelled {
+                        guard let scrollView else { return }
+                        rolar(scrollView)
+                        try? await Task.sleep(for: .milliseconds(110))
+                    }
+                }
+            }
+            .onDisappear { tarefaDeRolagem?.cancel() }
+    }
+
+    @MainActor
+    private func rolar(_ scrollView: NSScrollView) {
+        let areaVisivel = scrollView.contentView.bounds
+        let alturaDoDocumento = scrollView.documentView?.bounds.height ?? areaVisivel.height
+        let limite = max(0, alturaDoDocumento - areaVisivel.height)
+        // Devagar o bastante para escolher o destino; contínuo o bastante
+        // para a página acompanhar o cartão arrastado.
+        let delta: CGFloat = direcao == .cima ? -18 : 18
+        let proximaPosicao = min(max(0, areaVisivel.origin.y + delta), limite)
+        scrollView.contentView.scroll(to: NSPoint(x: areaVisivel.origin.x, y: proximaPosicao))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+}
+
+struct LeitorDeScrollView: NSViewRepresentable {
+    let aoEncontrar: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { procurarScrollView(aPartirDe: view) }
+        // Em algumas composições de ScrollView o `background` entra na
+        // hierarquia um ciclo depois. Repetir uma vez evita que o leitor fique
+        // com `nil` e o auto-scroll simplesmente não tenha alvo.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            procurarScrollView(aPartirDe: view)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { procurarScrollView(aPartirDe: nsView) }
+    }
+
+    private func procurarScrollView(aPartirDe view: NSView) {
+        var ancestral: NSView? = view
+        while let atual = ancestral {
+            if let scrollView = atual as? NSScrollView {
+                aoEncontrar(scrollView)
+                return
+            }
+            ancestral = atual.superview
+        }
+    }
+}
+
+extension TarefasView {
     private func alternarSelecao(_ id: ArquivoID) {
         withAnimation(.snappy(duration: 0.18)) {
             if conversasSelecionadas.contains(id) {
@@ -412,7 +549,15 @@ struct TarefasView: View {
         guard let indice = tarefas.firstIndex(where: { $0.id == tarefa.tarefa.id }) else { return }
         alteracao(&tarefas[indice])
         TarefasGeraisStore.salvar(tarefas, para: tarefa.conversa.id)
-        versaoDasTarefas += 1
+        // O `dropDestination` entrega uma transação de arraste com animação
+        // implícita. Reaproveitá-la fazia o cartão antigo ficar ~1s visível
+        // depois de soltá-lo. A nova coluna passa a refletir o estado salvo
+        // no mesmo frame, sem essa transição pendurada.
+        var transacao = Transaction()
+        transacao.disablesAnimations = true
+        withTransaction(transacao) {
+            versaoDasTarefas += 1
+        }
     }
 
     private func ordenarPorDeadline(_ primeira: TarefaDaConversa, _ segunda: TarefaDaConversa) -> Bool {

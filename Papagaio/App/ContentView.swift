@@ -84,37 +84,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $conversaAberta) {
             VStack(spacing: 0) {
-                BarraSuperiorPapagaioView(
-                    consulta: $consulta,
-                    legendaAtiva: $legendaDaBarra,
-                    exibindoBotaoVoltar: !naTelaInicial,
-                    bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
-                    tarefasSelecionada: telaSelecionada == .tarefas,
-                    configuracoesSelecionada: telaSelecionada == .configuracoes,
-                    lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
-                    perfilConectado: perfil.conectado,
-                    perfilVerificando: perfil.verificando,
-                    avatarURL: perfil.avatarURL,
-                    contextoDaConta: contextoDaConta,
-                    equipeAtiva: equipeAtiva,
-                    gravando: modelo.gravando && focoNaGravacao,
-                    processandoBiblioteca: biblioteca?.processando ?? false,
-                    quantidadeDeAvisos: notificacoes.naoLidas,
-                    notificacoes: notificacoes.itens,
-                    aoEntrar: perfil.entrar,
-                    aoSair: sairDoPerfil,
-                    aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas,
-                    aoLimparNotificacoes: notificacoes.limpar,
-                    aoVoltar: voltar,
-                    aoAbrirBiblioteca: voltarParaBiblioteca,
-                    aoAbrirTarefas: abrirTarefas,
-                    aoAbrirConfiguracoes: { telaSelecionada = .configuracoes },
-                    aoAbrirLixeira: abrirLixeira,
-                    aoUsarPerfil: selecionarPerfilPessoal,
-                    aoUsarEquipe: selecionarEquipe,
-                    aoGerenciarPerfil: abrirPerfil,
-                    aoGerenciarEquipe: abrirEquipe
-                )
+                barraSuperior
 
                 if let falhaDeAbertura {
                     Label(falhaDeAbertura, systemImage: "xmark.octagon.fill")
@@ -125,54 +95,7 @@ struct ContentView: View {
                         .background(PapagaioTema.perigo.opacity(0.08))
                 }
 
-                switch telaSelecionada {
-                case .biblioteca:
-                    BibliotecaHomeView(
-                        gravador: modelo,
-                        biblioteca: biblioteca,
-                        modelos: modelos,
-                        consulta: $consulta,
-                        secaoSelecionada: $secaoDaBiblioteca,
-                        pastaSelecionada: $pastaDaBibliotecaSelecionada,
-                        mostrandoImportador: $mostrandoImportador,
-                        processamentoAutomatico: processamentoAutomatico,
-                        aoAlternarGravacao: aoAlternarGravacao,
-                        aoPausarGravacao: aoPausarGravacao,
-                        aoContinuarGravacao: aoContinuarGravacao,
-                        aoCancelarGravacao: aoCancelarGravacao,
-                        aoEscolherPastaDeModelos: escolherPastaDeModelos,
-                        aoUsarPastaDoApp: usarPastaDoApp,
-                        aoSoltarArquivos: importarArrastados,
-                        focoNaGravacao: $focoNaGravacao
-                    )
-                case .tarefas:
-                    TarefasView(
-                        biblioteca: biblioteca,
-                        consulta: consulta
-                    )
-                case .configuracoes:
-                    ConfiguracoesView(
-                        processamentoAutomatico: $processamentoAutomatico,
-                        aparencia: aparencia
-                    )
-                case .perfil:
-                    PerfilPessoalView(
-                        perfil: perfil,
-                        equipeAtiva: equipeAtiva,
-                        equipes: equipes,
-                        aoSelecionarEquipe: usarEquipe,
-                        aoAdicionarEquipe: adicionarEquipe,
-                        aoSair: sairDoPerfil,
-                        aoExcluirConta: excluirConta
-                    )
-                case .equipe:
-                    GestaoDeEquipeView(
-                        equipeAtiva: equipeAtiva,
-                        equipes: equipes,
-                        aoSelecionarEquipe: usarEquipe,
-                        aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros
-                    )
-                }
+                conteudoDaTela
             }
             .background(PapagaioTema.fundo.ignoresSafeArea())
         .toolbarBackground(.hidden, for: .windowToolbar)
@@ -183,13 +106,21 @@ struct ContentView: View {
             }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
+                    let audio = biblioteca.audio(de: arquivo)
+                    let audioSecundario = biblioteca.audioSecundario(de: arquivo)
+                    let importado = biblioteca.importado(arquivo)
+                    let estado = biblioteca.estado(de: arquivo)
+                    let processando = biblioteca.estaProcessando(arquivo)
+                    let naFila = biblioteca.estaNaFila(arquivo)
+
                     ArquivoDetalheView(
                         arquivo: arquivo,
-                        audio: biblioteca.audio(de: arquivo),
-                        audioSecundario: biblioteca.audioSecundario(de: arquivo),
-                        estado: biblioteca.estado(de: arquivo),
-                        processando: biblioteca.estaProcessando(arquivo),
-                        naFila: biblioteca.estaNaFila(arquivo),
+                        audio: audio,
+                        audioSecundario: audioSecundario,
+                        importado: importado,
+                        estado: estado,
+                        processando: processando,
+                        naFila: naFila,
                         responsaveisDisponiveis: responsaveisDaEquipeAtiva,
                         aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
                         aoAtualizarNotas: { notas in
@@ -283,6 +214,53 @@ struct ContentView: View {
             Button("OK", role: .cancel) { perfil.dispensarErro() }
         } message: {
             Text(perfil.erro ?? "")
+        }
+    }
+
+    private var barraSuperior: some View {
+        BarraSuperiorPapagaioView(
+            consulta: $consulta, legendaAtiva: $legendaDaBarra,
+            exibindoBotaoVoltar: !naTelaInicial,
+            bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
+            tarefasSelecionada: telaSelecionada == .tarefas,
+            configuracoesSelecionada: telaSelecionada == .configuracoes,
+            lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
+            perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
+            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva,
+            gravando: modelo.gravando && focoNaGravacao, processandoBiblioteca: biblioteca?.processando ?? false,
+            quantidadeDeAvisos: notificacoes.naoLidas, notificacoes: notificacoes.itens,
+            aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
+            aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas, aoLimparNotificacoes: notificacoes.limpar,
+            aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
+            aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
+            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
+            aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
+        )
+    }
+
+    @ViewBuilder
+    private var conteudoDaTela: some View {
+        switch telaSelecionada {
+        case .biblioteca:
+            BibliotecaHomeView(gravador: modelo, biblioteca: biblioteca, modelos: modelos, consulta: $consulta,
+                               secaoSelecionada: $secaoDaBiblioteca, pastaSelecionada: $pastaDaBibliotecaSelecionada,
+                               mostrandoImportador: $mostrandoImportador, processamentoAutomatico: processamentoAutomatico,
+                               aoAlternarGravacao: aoAlternarGravacao, aoPausarGravacao: aoPausarGravacao,
+                               aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
+                               aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
+                               aoSoltarArquivos: importarArrastados, focoNaGravacao: $focoNaGravacao)
+        case .tarefas:
+            TarefasView(biblioteca: biblioteca, consulta: consulta)
+        case .configuracoes:
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
+        case .perfil:
+            PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
+                               aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
+                               aoSair: sairDoPerfil, aoExcluirConta: excluirConta)
+        case .equipe:
+            GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
+                                aoSelecionarEquipe: usarEquipe,
+                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros)
         }
     }
 

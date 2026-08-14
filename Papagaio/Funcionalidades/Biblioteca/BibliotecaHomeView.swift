@@ -58,6 +58,20 @@ struct BibliotecaHomeView: View {
                     atalhosDaBiblioteca
                 }
 
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    FiltroDeConversas(
+                        selecionado: $filtroSelecionado,
+                        pastaSelecionada: $pastaSelecionada,
+                        atalhoSelecionado: $atalhoSelecionado,
+                        aoLimparAtalhoVisual: limparAtalhoVisual,
+                        compacto: true
+                    )
+
+                    Spacer(minLength: PapagaioTema.Espaco.curto)
+
+                    atalhosDaBibliotecaCompactos
+                }
+
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     FiltroDeConversas(
                         selecionado: $filtroSelecionado,
@@ -100,6 +114,29 @@ struct BibliotecaHomeView: View {
                     atalhoVisualSelecionado = .favoritos
                 }
             }
+        )
+    }
+
+    private var atalhosDaBibliotecaCompactos: some View {
+        AtalhosDaBiblioteca(
+            selecionado: $atalhoVisualSelecionado,
+            aoSelecionarRecentes: {
+                withAnimation(.snappy(duration: 0.18)) {
+                    filtroSelecionado = .todas
+                    pastaSelecionada = nil
+                    atalhoSelecionado = .recentes
+                    atalhoVisualSelecionado = .recentes
+                }
+            },
+            aoSelecionarFavoritos: {
+                withAnimation(.snappy(duration: 0.18)) {
+                    filtroSelecionado = .todas
+                    pastaSelecionada = nil
+                    atalhoSelecionado = .favoritos
+                    atalhoVisualSelecionado = .favoritos
+                }
+            },
+            compacto: true
         )
     }
 

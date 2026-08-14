@@ -5,6 +5,8 @@ import SwiftUI
 struct ConfiguracoesView: View {
     @Binding var processamentoAutomatico: Bool
     @Binding var aparencia: AparenciaDoApp
+    /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
+    @AppStorage("painelFlutuanteDuranteGravacao") private var painelFlutuante = true
 
     private var processamentoPausado: Binding<Bool> {
         Binding(
@@ -91,6 +93,20 @@ struct ConfiguracoesView: View {
                         .foregroundStyle(PapagaioTema.texto)
 
                     Text("Gravações e anexos ficarão prontos para transcrever. Você inicia o processamento pela aba Transcrição.")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+
+            Toggle(isOn: $painelFlutuante) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text("Mostrar painel flutuante durante a gravação")
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    Text("Uma janela pequena, sempre visível por cima dos outros apps, para anotar, pausar e finalizar sem voltar ao Papagaio.")
                         .font(PapagaioTema.Tipo.apoio)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .fixedSize(horizontal: false, vertical: true)
