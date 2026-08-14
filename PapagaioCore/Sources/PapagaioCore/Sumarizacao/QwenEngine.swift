@@ -69,7 +69,7 @@ public struct QwenEngine: SummarizationEngine {
         let bruto = try await contexto.completar(
             prompt: prompt,
             gramatica: GramaticaDoResumo.gbnf,
-            maxTokens: 2_048
+            maxTokens: 3_072
         )
 
         if let resumo = Self.decodificar(bruto) { return resumo }
@@ -77,7 +77,7 @@ public struct QwenEngine: SummarizationEngine {
         let corrigido = try await contexto.completar(
             prompt: Self.promptDeCorrecao(saidaInvalida: bruto),
             gramatica: GramaticaDoResumo.gbnf,
-            maxTokens: 2_048
+            maxTokens: 3_072
         )
         guard let resumo = Self.decodificar(corrigido) else {
             throw ErroLlama.gramaticaInvalida
@@ -97,7 +97,7 @@ public struct QwenEngine: SummarizationEngine {
             let parcial = try await contexto.completar(
                 prompt: Self.promptParcial(Self.formatar(chunk)),
                 gramatica: nil,
-                maxTokens: 1_024
+                maxTokens: 1_536
             )
             parciais.append(parcial)
         }
@@ -149,7 +149,9 @@ public struct QwenEngine: SummarizationEngine {
         Você resume reuniões em português do Brasil. Seja fiel à transcrição: \
         não invente números, nomes nem decisões.<|im_end|>
         <|im_start|>user
-        Resuma a reunião abaixo.
+        Resuma a reunião abaixo de forma detalhada. Organize cada tema com pontos \
+        principais e sub-pontos de contexto. Inclua dados concretos: valores, \
+        datas, nomes, prazos e decisões.
 
         \(GramaticaDoResumo.descricaoDoFormato)
 

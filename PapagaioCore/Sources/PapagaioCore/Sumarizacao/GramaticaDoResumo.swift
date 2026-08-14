@@ -30,14 +30,23 @@ public enum GramaticaDoResumo {
     /// isto orienta o **conteúdo**.
     public static let descricaoDoFormato = """
     Responda SOMENTE com um objeto JSON com exatamente estas chaves:
-    - "titulo": título curto da reunião
-    - "visaoGeral": parágrafo único resumindo a reunião inteira
-    - "temas": lista de {"titulo", "detalhe"}
-    - "citacoes": no máximo 3 falas MARCANTES, copiadas LITERALMENTE da     transcrição — {"texto", "speaker", "start"}, com "start" em segundos.
-      Marcante é a fala que carrega ideia, conselho, decisão, conclusão,     aprendizado ou posicionamento, e que se entende sozinha, fora do contexto.
-      Não sirvem: saudação, confirmação curta, pergunta solta, repetição e     transição de assunto.
-      Copie palavra por palavra, sem reescrever nem juntar frases distantes.     Entre 8 e 32 palavras. Prefira devolver menos, ou nenhuma, a inventar.
-    - "proximosPassos": lista de {"descricao", "responsavel"}
+    - "titulo": título descritivo da reunião com contexto (ex: "Orçamento e fornecedor — prazo de entrega e negociação")
+    - "visaoGeral": resumo geral da reunião em 3 a 5 frases, cobrindo os principais pontos discutidos
+    - "temas": lista de {"titulo", "detalhe"} para CADA assunto relevante discutido na reunião. \
+    Crie quantos temas forem necessários para cobrir todos os assuntos. Para cada tema:
+        - "titulo": nome claro e objetivo do tópico
+        - "detalhe": texto DETALHADO usando bullet points hierárquicos. Use este formato dentro da string: \
+    cada ponto principal começa com "• " e cada sub-ponto começa com "  ◦ " (com dois espaços antes). \
+    Separe os pontos com "\\n". Inclua dados concretos: valores, datas, nomes, prazos e decisões. \
+    Mínimo de 3 pontos principais por tema, cada um com pelo menos 1 sub-ponto de contexto ou detalhe.
+    - "citacoes": no máximo 3 falas MARCANTES, copiadas LITERALMENTE da transcrição — \
+    {"texto", "speaker", "start"}, com "start" em segundos. \
+    Marcante é a fala que carrega ideia, conselho, decisão, conclusão, aprendizado ou \
+    posicionamento, e que se entende sozinha, fora do contexto. \
+    Não sirvem: saudação, confirmação curta, pergunta solta, repetição e transição de assunto. \
+    Copie palavra por palavra, sem reescrever nem juntar frases distantes. Entre 8 e 32 palavras. \
+    Prefira devolver menos, ou nenhuma, a inventar.
+    - "proximosPassos": lista de {"descricao", "responsavel"} com todas as ações e compromissos mencionados.
     Use "null" quando não souber o falante ou o responsável.
     """
 }
