@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Luca <lucadiasferreira@gmail.com>
+Date: Fri, 14 Aug 2026 14:13:17 -0300
+Subject: [PATCH] Corrige projeto Loro no CI da PR
+
+O workflow da PR ainda invocava Papagaio.xcodeproj e o scheme Papagaio,
+que não existem nesta cabeça. Use o projeto e o scheme Loro presentes.
+---
+ .github/workflows/ci.yml | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -21,7 +21,7 @@
+         run: swift test
+ 
+   build-app:
+-    name: Build do app (Papagaio.xcodeproj)
++    name: Build do app (Loro.xcodeproj)
+     runs-on: macos-26
+     steps:
+       - uses: actions/checkout@v4
+@@ -32,8 +32,8 @@
+       - name: xcodebuild build
+         run: |
+           xcodebuild build \
+-            -project Papagaio.xcodeproj \
+-            -scheme Papagaio \
++            -project Loro.xcodeproj \
++            -scheme Loro \
+             -destination 'generic/platform=macOS' \
+             -skipPackagePluginValidation \
+             CODE_SIGNING_ALLOWED=NO
+-- 
+2.39.5

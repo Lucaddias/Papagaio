@@ -35,7 +35,7 @@ struct CartaoDeModelos: View {
 
                         if let restante = modelos.restanteDoDownload {
                             Spacer()
-                            // Baixar 13,7 GB sem previsão nenhuma é o tipo de
+                            // Baixar modelos grandes sem previsão nenhuma é o tipo de
                             // espera que faz a pessoa achar que travou.
                             Text(tempoRestante(restante))
                         }

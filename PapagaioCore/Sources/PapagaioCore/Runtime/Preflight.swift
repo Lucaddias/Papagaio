@@ -16,8 +16,8 @@ public struct PesoDeModelo: Sendable, Hashable {
     }
 }
 
-/// Os dois pesos do Papagaio. Não há terceiro, e não há alternativa mais leve —
-/// se o Mac não couber, o app bloqueia (D-0.7).
+/// Os dois pesos do Papagaio. A avaliação atual usa Qwen3.5 9B Q4_K_M para
+/// reduzir a memória do resumo sem criar uma segunda engine.
 public enum Pesos {
     public static let whisperLargeV3 = PesoDeModelo(
         nomeArquivo: "ggml-large-v3.bin",
@@ -26,14 +26,14 @@ public enum Pesos {
         url: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin")!
     )
 
-    public static let qwen14B = PesoDeModelo(
-        nomeArquivo: "Qwen2.5-14B-Instruct-Q5_K_M.gguf",
-        bytes: 10_508_873_856,
-        sha256: "48ad2dafedac636f62847f5338c356cd21f5cfa6b1e2c885360cb10c890b8cb2",
-        url: URL(string: "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q5_K_M.gguf")!
+    public static let qwen35_9B = PesoDeModelo(
+        nomeArquivo: "Qwen_Qwen3.5-9B-Q4_K_M.gguf",
+        bytes: 6_169_341_984,
+        sha256: "d784ce9eda1a5a7b51e8f705a9e6310844bf4f173654d115823c775fdea56d43",
+        url: URL(string: "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf")!
     )
 
-    public static var todos: [PesoDeModelo] { [whisperLargeV3, qwen14B] }
+    public static var todos: [PesoDeModelo] { [whisperLargeV3, qwen35_9B] }
 }
 
 /// Resultado do preflight de hardware, na ordem exata do Passo 3.
@@ -81,12 +81,13 @@ public enum ResultadoPreflight: Sendable, Equatable {
 
 /// Preflight de hardware e de pesos.
 ///
-/// A ordem é a do Passo 3 e importa: não faz sentido oferecer download de 13 GB
+/// A ordem é a do Passo 3 e importa: não faz sentido oferecer download de modelos
 /// para um Mac que nunca vai conseguir carregar os modelos.
 public struct Preflight: Sendable {
-    /// Qwen Q5_K_M ≈ 10,7 GB + KV cache. Piso de hardware, não degradação.
+    /// Mantido conservadoramente durante a avaliação do Qwen3.5: só uma
+    /// medição real pode autorizar reduzir o mínimo de hardware.
     public static let ramMinima: Int64 = 18 * 1_073_741_824
-    /// Whisper ≈ 3 GB + Qwen ≈ 10,7 GB + folga.
+    /// Whisper ≈ 3 GB + Qwen ≈ 6,2 GB + folga.
     public static let discoMinimo: Int64 = 20 * 1_073_741_824
 
     private let pastaDeModelos: URL
@@ -125,7 +126,7 @@ public struct Preflight: Sendable {
     }
 
     /// Um peso é válido se existe, tem o tamanho esperado e — quando pedido —
-    /// bate o SHA-256. Checar 13 GB de hash não é de graça: só na instalação e
+    /// bate o SHA-256. Checar os pesos em streaming não é de graça: só na instalação e
     /// quando o usuário pedir verificação, não a cada abertura.
     public func pesoValido(_ peso: PesoDeModelo, verificarChecksum: Bool) -> Bool {
         let caminho = pastaDeModelos.appendingPathComponent(peso.nomeArquivo)
@@ -160,7 +161,7 @@ public struct Preflight: Sendable {
         return Int64(deRaiz?.volumeAvailableCapacityForImportantUsage ?? 0)
     }
 
-    /// SHA-256 em streaming: um `Data(contentsOf:)` de 10,7 GB estoura a memória
+    /// SHA-256 em streaming: um `Data(contentsOf:)` de vários GB estoura a memória
     /// justamente na máquina que já está no limite.
     public static func sha256(de url: URL) throws -> String {
         let arquivo = try FileHandle(forReadingFrom: url)

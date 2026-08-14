@@ -5,8 +5,8 @@ import WhisperRuntime
 /// Os dois modelos locais, com a garantia de que **nunca ficam residentes ao
 /// mesmo tempo**.
 ///
-/// Whisper large-v3 ocupa ~3 GB e o Qwen Q5_K_M ~10,7 GB. Somados são 13,7 GB
-/// num Mac cujo piso é 18 GB (D-0.7): manter os dois carregados durante um
+/// Whisper large-v3 ocupa ~3 GB e o Qwen3.5 Q4_K_M ~6,2 GB. Mesmo assim,
+/// manter os dois carregados durante um
 /// processamento é o caminho mais curto para o jetsam matar o app no meio da
 /// transcrição. Por isso `resumir` descarrega o Whisper antes de carregar o
 /// Qwen, e `transcrever` faz o contrário.
@@ -30,7 +30,7 @@ public actor MotoresLocais {
     }
 
     public var pesoDoResumo: URL {
-        pastaDeModelos.appendingPathComponent(Pesos.qwen14B.nomeArquivo)
+        pastaDeModelos.appendingPathComponent(Pesos.qwen35_9B.nomeArquivo)
     }
 
     // MARK: - Uso

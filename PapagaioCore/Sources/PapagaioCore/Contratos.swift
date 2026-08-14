@@ -32,7 +32,7 @@ public protocol TranscriptionEngine: Sendable {
 
 // MARK: - Sumarização
 
-/// Contrato de sumarização. Uma engine só: Qwen2.5-14B-Instruct-Q5_K_M via
+/// Contrato de sumarização. Uma engine só: Qwen3.5-9B-Q4_K_M via
 /// `llama.cpp` linkado (D-0.5/D-0.6). Ver skill `papagaio-summarization`.
 public protocol SummarizationEngine: Sendable {
     var identifier: String { get }

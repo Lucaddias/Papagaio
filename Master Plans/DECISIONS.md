@@ -1475,6 +1475,29 @@ Xcode Cloud/App Store Connect.
 
 ---
 
+## D-3.7 — Candidato Qwen3.5 9B Q4_K_M em janela de 32k (2026-08-14)
+
+**Em avaliação na branch `codex/qwen35-9b-memory-evaluation`:** substituir o
+Qwen2.5-14B-Instruct-Q5_K_M pelo
+`Qwen_Qwen3.5-9B-Q4_K_M.gguf`, de 6.169.341.984 bytes, mantendo a janela
+operacional de 32.768 tokens e a saída JSON estruturada.
+
+**Por quê:** o peso atual tem 10,5 GB e o seu KV cache em FP16 cresce cerca de
+6 GB a 32k. O candidato reduz o peso para cerca de 6,2 GB e, pela arquitetura
+híbrida com menos camadas de atenção, o cache estimado para a mesma janela é
+cerca de 1 GB. A estimativa não substitui o `phys_footprint` real do processo.
+
+**Compatibilidade:** o peso requer `llama.cpp b9222` ou posterior. O template
+do Qwen3.5 entra em modo de raciocínio por padrão; o Papagaio fecha
+explicitamente `<think></think>` antes da gramática GBNF para gerar JSON direto.
+
+**Não decidido:** não reduzir o piso de 18 GB, não promover o candidato para
+`main` e não apagar o peso anterior antes de medir no Mac real: checksum,
+carregamento Metal, `phys_footprint`, velocidade e fidelidade das decisões,
+números e próximos passos num áudio já conhecido.
+
+---
+
 ## Riscos abertos
 
 | # | Risco | Estado |

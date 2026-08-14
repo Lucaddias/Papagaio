@@ -34,7 +34,7 @@ enum RitmoDeProcessamento {
 
     /// Piso de tempo, para áudios curtos.
     ///
-    /// Carregar 13,7 GB de modelo custa dezenas de segundos independentemente
+    /// Carregar os modelos locais custa dezenas de segundos independentemente
     /// do tamanho do áudio. Sem o piso, um áudio de 20 segundos prometeria
     /// terminar em 20 e ficaria travado em 95% durante um minuto.
     private static let pisoEmSegundos: TimeInterval = 45

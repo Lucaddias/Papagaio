@@ -1,31 +1,32 @@
 {
-  "last_main_sha": "7b36b55ec722ee1942ed0e46c3b61a2561c432d3",
-  "last_run_id": 31737208630,
-  "timestamp": "2026-08-13T20:27:51-03:00",
+  "last_main_sha": "1f7eeda6769a0198effc64b05c64e771ca96d109",
+  "last_run_id": 0,
+  "timestamp": "2026-08-14T16:28:45-0300",
   "problemas_abertos": [
     {
-      "run_id": 31737208630,
-      "sha": "7b36b55ec722ee1942ed0e46c3b61a2561c432d3",
-      "job": "Build do app (Papagaio.xcodeproj)",
-      "causa_raiz": "Confirmada estaticamente: o workflow referencia Papagaio.xcodeproj e o scheme Papagaio, mas o commit contém Loro.xcodeproj e o alvo/scheme Loro.",
-      "validacao": "Leitura do workflow, do project.pbxproj e do scheme Loro; o patch foi validado com git apply --check."
+      "tipo": "observabilidade_ci_indisponivel",
+      "detalhe": "gh não está instalado neste ambiente; não foi possível consultar runs, jobs, checks por SHA ou PRs abertos no GitHub."
     },
     {
-      "run_id": 31737208630,
-      "job": "Testes do PapagaioCore (SPM)",
-      "causa_raiz": "Não confirmada: o step swift test falhou, mas os logs públicos do Actions retornam 403 sem token.",
-      "validacao": "O commit não alterou o pacote PapagaioCore; não foi gerado patch para este job."
-    },
-    {
-      "pr": 14,
-      "run_id": 31741966192,
-      "sha": "193e2c7bd666f861271718374872242648b05e14",
-      "job": "Build do app (Papagaio.xcodeproj)",
-      "causa_raiz": "Confirmada estaticamente no commit-base main: o workflow referencia Papagaio.xcodeproj e o scheme Papagaio, mas o projeto e o scheme versionados são Loro.xcodeproj e Loro.",
-      "validacao": "Checks públicos do SHA da PR mostram o job de build falho e swift test verde; o patch existente aplica com git apply --check sobre origin/main."
+      "tipo": "branch_atrasada_com_arquivo_sensivel",
+      "branch": "luca/fix-ci-loro-pr14",
+      "detalhe": "Possui commits não integrados, está atrás de origin/main e altera .github/workflows/ci.yml; requer revisão humana."
     }
   ],
-  "patches_gerados": [
-    "fix-ci-loro-project-scheme-20260813-1725.patch"
+  "prs_criados": [],
+  "prs_integrados": [],
+  "branches_ignoradas": [
+    {
+      "branch": "fernanda/melhora-estrutura-resumo",
+      "motivo": "Prefixo não autorizado para integração automática e branch está atrás de origin/main."
+    },
+    {
+      "branch": "fernanda/melhora-resumo",
+      "motivo": "Prefixo não autorizado para integração automática e branch está atrás de origin/main."
+    },
+    {
+      "branch": "luca/fix-ci-loro-pr14",
+      "motivo": "Altera .github/workflows/ci.yml e está atrás de origin/main; não elegível para integração automática."
+    }
   ]
 }
