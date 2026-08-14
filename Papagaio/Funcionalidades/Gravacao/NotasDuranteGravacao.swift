@@ -8,138 +8,73 @@ import SwiftUI
 struct PainelDeNotasDuranteGravacao: View {
     @Bindable var gravador: GravadorViewModel
     @FocusState private var editorEstaFocado: Bool
+    /// Qual nota está aberta para correção. Uma por vez.
+    @State private var notaEmEdicao: UUID?
 
     private var rascunhoVazio: Bool {
         gravador.rascunhoDaNota.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var quantidadeDeNotas: Int {
-        gravador.notasDaGravacao.count + (rascunhoVazio ? 0 : 1)
+        gravador.notasDaGravacao.count
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-                Image(systemName: "note.text")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .frame(width: 44, height: 44)
-                    .background(PapagaioTema.destaqueSuave, in: Circle())
-
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    Text("Notas da conversa")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.texto)
-
-                    Text(
-                        "Registre observações em tempo real. Cada nota fica sincronizada com o ponto atual da gravação."
-                    )
-                    .font(.callout)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 12)
-
-                SeloDeStatus(
-                    texto: "\(quantidadeDeNotas) notas",
-                    simbolo: "bookmark",
-                    estilo: .neutro
-                )
-            }
-
-            HStack(spacing: PapagaioTema.Espaco.curto) {
-                Button("Inserir marcador", systemImage: "bookmark.badge.plus") {
-                    gravador.inserirMarcador()
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .accessibilityHint("Salva um marcador no tempo atual da gravação.")
-
-                Button {
-                    gravador.proximaNotaSeraCritica.toggle()
-                } label: {
-                    Label(
-                        gravador.proximaNotaSeraCritica ? "Próxima nota é crítica" : "Marcar como crítica",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .accessibilityValue(
-                    gravador.proximaNotaSeraCritica ? "Ativado" : "Desativado"
-                )
-
-                // Salvar a nota no instante em que ela foi pensada é o ponto
-                // inteiro do recurso — antes tudo virava um bloco só no fim.
-                Button("Salvar nota", systemImage: "return") {
-                    gravador.adicionarNota()
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .keyboardShortcut(.return, modifiers: [.command])
-                .disabled(rascunhoVazio)
-                .help("Salva a nota no instante atual (⌘↩)")
-
-                Spacer(minLength: 8)
-
-                Text("\(gravador.tempoDeGravacao.comoCronometro)")
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            // Mesma lógica da aba Notas: um bloco de escrita com o instante à
+            // vista, Enter fecha a nota, Enter vazio marca o ponto. Antes esta
+            // tela tinha três botões e um editor sem tempo visível, e a mesma
+            // ideia se aprendia duas vezes, de dois jeitos diferentes.
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
+                Text(gravador.tempoDeGravacao.comoCronometro)
                     .font(.system(.callout, design: .monospaced).weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
                     .monospacedDigit()
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .frame(width: 52, alignment: .leading)
+                    .padding(.top, 2)
                     .accessibilityLabel("Tempo atual da gravação")
-                    .accessibilityValue(gravador.tempoDeGravacao.faladoPorExtenso)
-            }
 
-            ZStack(alignment: .topLeading) {
-                EditorDeNotaAlinhado(texto: $gravador.rascunhoDaNota)
+                TextField("Escreva uma nota e pressione Enter…", text: $gravador.rascunhoDaNota, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(PapagaioTema.Tipo.corpo)
+                    .lineLimit(4...14)
+                    .frame(minHeight: 96, alignment: .topLeading)
                     .focused($editorEstaFocado)
-                    // Enter numa linha de tópico já abre o próximo item, como
-                    // em qualquer editor. Enter num tópico vazio sai da lista.
-                    .onChange(of: gravador.rascunhoDaNota) { anterior, novo in
-                        let ajustado = Self.continuandoTopico(de: anterior, para: novo)
-                        if ajustado != novo { gravador.rascunhoDaNota = ajustado }
-                    }
-                    .accessibilityLabel("Nova nota da conversa")
-                    .accessibilityHint(
-                        "O texto será salvo automaticamente quando a gravação finalizar."
-                    )
-
-                if rascunhoVazio {
-                    Text("Escreva uma observação, sentimento ou ponto importante…")
-                        .font(.body)
-                        .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.72))
-                        .padding(.leading, PapagaioTema.Espaco.largo)
-                        .padding(.top, PapagaioTema.Espaco.medio)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
+                    .onSubmit { salvar() }
             }
-            .frame(minHeight: 148, maxHeight: 230)
-            .background(
-                PapagaioTema.superficie,
-                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-            )
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(PapagaioTema.destaque)
-                    .frame(width: 4)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+            .padding(PapagaioTema.Espaco.medio)
+            .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                    .stroke(PapagaioTema.borda, lineWidth: 1)
+                    .stroke(
+                        editorEstaFocado ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
+                        lineWidth: 1
+                    )
             }
 
-            Text("⌘↩ salva a nota no instante atual. O que sobrar escrito é salvo ao finalizar a gravação.")
-                .font(.caption)
-                .foregroundStyle(PapagaioTema.textoSecundario)
+            HStack {
+                Text("Enter salva · Enter vazio marca o instante")
+                    .font(.caption)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+
+                Spacer()
+
+                Text(quantidadeDeNotas == 1 ? "1 nota" : "\(quantidadeDeNotas) notas")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
 
             if !gravador.notasDaGravacao.isEmpty {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    Text("Notas registradas")
-                        .font(.headline)
-                        .foregroundStyle(PapagaioTema.texto)
-
-                    ForEach(gravador.notasDaGravacao) { nota in
-                        LinhaDaNotaEmGravacao(nota: nota)
+                    // Mais recentes em cima: durante a gravação o que importa é
+                    // conferir o que acabou de ser anotado.
+                    ForEach(gravador.notasDaGravacao.reversed()) { nota in
+                        LinhaDaNotaEmGravacao(
+                            nota: nota,
+                            emEdicao: $notaEmEdicao,
+                            aoEditar: { texto in gravador.editarNota(nota, texto: texto) },
+                            aoRemover: { gravador.removerNota(nota) }
+                        )
                     }
                 }
                 .padding(.top, PapagaioTema.Espaco.minimo)
@@ -148,6 +83,18 @@ struct PainelDeNotasDuranteGravacao: View {
         .padding(PapagaioTema.Espaco.secao)
         .cartaoPapagaio()
         .accessibilityElement(children: .contain)
+    }
+
+    /// Enter com texto salva a nota; Enter vazio guarda só o instante.
+    private func salvar() {
+        if rascunhoVazio {
+            gravador.inserirMarcador()
+        } else {
+            gravador.adicionarNota()
+        }
+        // O foco volta para o campo: numa conversa ao vivo vem outra nota logo
+        // em seguida, e tirar a mão do teclado custa a frase seguinte.
+        editorEstaFocado = true
     }
 
     /// Continua a lista de tópicos ao apertar Enter; tópico vazio encerra.
@@ -228,11 +175,19 @@ private struct EditorDeNotaAlinhado: NSViewRepresentable {
 
 private struct LinhaDaNotaEmGravacao: View {
     let nota: NotaDaConversa
+    @Binding var emEdicao: UUID?
+    let aoEditar: (String) -> Void
+    let aoRemover: () -> Void
+
+    @State private var rascunho = ""
+    @FocusState private var focado: Bool
+
+    private var editando: Bool { emEdicao == nota.id }
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
             Image(systemName: nota.tipo == .marcador ? "bookmark.fill" : "text.quote")
-                .foregroundStyle(nota.critica ? PapagaioTema.perigo : PapagaioTema.destaqueEscuro)
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .frame(width: 18)
 
             Text(nota.start.comoCronometro)
@@ -240,20 +195,66 @@ private struct LinhaDaNotaEmGravacao: View {
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .monospacedDigit()
 
-            Text(nota.texto)
-                .font(.callout)
-                .foregroundStyle(PapagaioTema.texto)
-                .lineLimit(2)
+            if editando {
+                // Enter confirma, como no campo de escrever: o mesmo gesto
+                // fecha a nota nova e a correção.
+                TextField("Corrija a nota…", text: $rascunho, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.callout)
+                    .lineLimit(1...4)
+                    .focused($focado)
+                    .onSubmit { concluir() }
+            } else {
+                Text(nota.texto.isEmpty ? "Marcador" : nota.texto)
+                    .font(.callout)
+                    .foregroundStyle(
+                        nota.texto.isEmpty ? PapagaioTema.textoSecundario : PapagaioTema.texto
+                    )
+                    .lineLimit(2)
+            }
 
             Spacer(minLength: 8)
 
-            if nota.critica {
-                SeloDeStatus(texto: "Crítica", simbolo: "exclamationmark.triangle", estilo: .erro)
+            // Corrigir na hora: anotar ao vivo produz erro de digitação e frase
+            // pela metade, porque a atenção está na conversa.
+            Button {
+                if editando {
+                    concluir()
+                } else {
+                    rascunho = nota.texto
+                    emEdicao = nota.id
+                    focado = true
+                }
+            } label: {
+                Image(systemName: editando ? "checkmark" : "pencil")
+                    .font(.caption)
+                    .foregroundStyle(
+                        editando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario
+                    )
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help(editando ? "Concluir edição" : "Editar nota")
+
+            Button(action: aoRemover) {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Apagar nota")
         }
         .padding(PapagaioTema.Espaco.medio)
         .background(PapagaioTema.superficieSuave.opacity(0.68), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .accessibilityElement(children: .combine)
+    }
+
+    private func concluir() {
+        aoEditar(rascunho)
+        emEdicao = nil
     }
 
 }

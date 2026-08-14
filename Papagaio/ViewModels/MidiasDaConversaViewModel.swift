@@ -67,7 +67,7 @@ final class MidiasDaConversaViewModel {
     }
 
     func abrir(_ anexo: AnexoDeMidiaDaConversa) {
-        NSWorkspace.shared.open(anexo.url)
+        AberturaDeMidia.abrir(anexo.url)
     }
 
     func remover(_ anexo: AnexoDeMidiaDaConversa) {

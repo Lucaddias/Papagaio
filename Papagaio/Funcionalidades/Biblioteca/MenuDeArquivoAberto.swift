@@ -8,6 +8,7 @@ struct MenuDeArquivoAberto: View {
     let aoMoverParaPasta: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
+    let aoPersonalizar: () -> Void
     let aoMoverParaLixeira: () -> Void
 
     var body: some View {
@@ -24,6 +25,20 @@ struct MenuDeArquivoAberto: View {
                 .padding(.horizontal, PapagaioTema.Espaco.medio)
                 .padding(.vertical, PapagaioTema.Espaco.minimo)
 
+            // Separado das ações acima porque não age sobre esta conversa: as
+            // outras mexem neste arquivo, esta muda como toda a grade se
+            // apresenta. Juntas na mesma lista, pareceria que "Personalizar"
+            // personaliza só este cartão.
+            ItemDoMenuDeArquivo(
+                simbolo: "slider.horizontal.3",
+                titulo: "Personalizar cartões",
+                acao: aoPersonalizar
+            )
+
+            SeparadorPapagaio()
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
+
             ItemDoMenuDeArquivo(
                 simbolo: "trash",
                 titulo: "Mover para Lixeira",
@@ -34,13 +49,9 @@ struct MenuDeArquivoAberto: View {
         }
         .frame(width: 214)
         .padding(.vertical, PapagaioTema.Espaco.minimo)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 6)
-        .shadow(color: PapagaioTema.destaque.opacity(0.12), radius: 4, y: 1)
+        // Sem fundo, moldura e sombra próprios: agora isto vive dentro de um
+        // popover, que já traz os três do sistema. Somados, davam duas bordas
+        // e duas sombras — a aparência de um cartão colado em cima de outro.
     }
 }
 

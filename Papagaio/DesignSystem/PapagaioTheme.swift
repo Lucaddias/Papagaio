@@ -238,6 +238,16 @@ enum DataDigitada {
     static func texto(de data: Date) -> String {
         data.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year())
     }
+
+    /// Data e hora da conversa: `13/08/2026, 14:32`.
+    ///
+    /// Numérico, e não "13 de agosto de 2026", pelo mesmo motivo que a leitura
+    /// acima aceita `15/08/2026`: é a forma que a pessoa escreve e lê no resto
+    /// do app. Mês por extenso ocupava três vezes mais largura, empurrava o
+    /// rodapé do cartão para uma segunda linha e desalinhava a fileira.
+    static func textoComHora(de data: Date) -> String {
+        data.formatted(.dateTime.day(.twoDigits).month(.twoDigits).year().hour().minute())
+    }
 }
 
 /// Botão redondo de cromo — voltar, fechar, dispensar.

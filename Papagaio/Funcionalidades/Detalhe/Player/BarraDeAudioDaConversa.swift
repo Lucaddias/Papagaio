@@ -72,7 +72,7 @@ struct BarraDeAudioDaConversa: View {
                     .foregroundStyle(PapagaioTema.texto)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(data.formatted(.dateTime.day().month(.wide).year()))
+                Text(DataDigitada.textoComHora(de: data))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
