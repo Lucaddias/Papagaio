@@ -156,7 +156,8 @@ public struct QwenEngine: SummarizationEngine {
         detalhada, proporcional à duração da reunião.<|im_end|>
         <|im_start|>user
         Analise a reunião abaixo e produza uma ata profissional completa e detalhada. \
-        Não comprima: cubra todos os assuntos discutidos.
+        Não comprima: cubra todos os assuntos e organize os temas com pontos e subpontos, \
+        incluindo valores, datas, nomes, prazos e decisões quando estiverem na transcrição.
 
         \(GramaticaDoResumo.descricaoDoFormato)
 
