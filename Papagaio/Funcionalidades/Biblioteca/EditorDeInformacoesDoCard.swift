@@ -80,7 +80,7 @@ struct EditorDeInformacoesDoCard: View {
             // formulário nem da altura da janela.
             ScrollView {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
-                campo("Título da entrevista") {
+                campo("Título da entrevista", obrigatorio: true) {
                     TextField("Ex.: Entrevista com Stakeholders - UX Research", text: $titulo)
                         .textFieldStyle(.plain)
                         .campoPapagaio()
@@ -90,9 +90,9 @@ struct EditorDeInformacoesDoCard: View {
                 // é a continuação do "sobre o que é esta conversa". Em largura
                 // cheia e com várias linhas, porque uma linha só forçava a
                 // pessoa a resumir o resumo.
-                campo("Descrição (opcional)") {
+                campo("Descrição") {
                     TextField(
-                        "Adicione uma descrição opcional",
+                        "Adicione uma descrição",
                         text: $descricao,
                         axis: .vertical
                     )
@@ -266,11 +266,22 @@ struct EditorDeInformacoesDoCard: View {
         }
     }
 
-    private func campo<Conteudo: View>(_ titulo: String, @ViewBuilder conteudo: () -> Conteudo) -> some View {
+    private func campo<Conteudo: View>(
+        _ titulo: String,
+        obrigatorio: Bool = false,
+        @ViewBuilder conteudo: () -> Conteudo
+    ) -> some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-            Text(titulo)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
+            HStack(spacing: 2) {
+                Text(titulo)
+                if obrigatorio {
+                    Text("*")
+                        .foregroundStyle(PapagaioTema.perigo)
+                        .accessibilityLabel("obrigatório")
+                }
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(PapagaioTema.textoSecundario)
             conteudo()
         }
         .frame(maxWidth: .infinity, alignment: .leading)

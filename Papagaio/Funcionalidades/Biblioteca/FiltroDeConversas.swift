@@ -19,6 +19,7 @@ struct FiltroDeConversas: View {
     @Binding var pastaSelecionada: String?
     @Binding var atalhoSelecionado: AtalhoDaBiblioteca?
     let aoLimparAtalhoVisual: () -> Void
+    var compacto = false
 
     var body: some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
@@ -31,7 +32,7 @@ struct FiltroDeConversas: View {
                         aoLimparAtalhoVisual()
                     }
                 } label: {
-                    PastilhaDeFiltro(filtro: filtro, selecionada: selecionado == filtro)
+                    PastilhaDeFiltro(filtro: filtro, selecionada: selecionado == filtro, compacto: compacto)
                 }
                 .buttonStyle(.plain)
                 .help(filtro.rawValue)
@@ -48,14 +49,15 @@ struct FiltroDeConversas: View {
 private struct PastilhaDeFiltro: View {
     let filtro: FiltroDaBiblioteca
     let selecionada: Bool
+    let compacto: Bool
     @State private var pairando = false
 
     var body: some View {
         Label(filtro.rawValue, systemImage: filtro.simbolo)
-            .font(.callout.weight(.semibold))
+            .font((compacto ? Font.caption : Font.callout).weight(.semibold))
             .foregroundStyle(corDoTexto)
-            .padding(.horizontal, PapagaioTema.Espaco.medio)
-            .frame(height: PapagaioTema.Altura.compacta)
+            .padding(.horizontal, compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.medio)
+            .frame(height: compacto ? 36 : PapagaioTema.Altura.compacta)
             .background(fundo, in: Capsule())
             .overlay {
                 Capsule().stroke(

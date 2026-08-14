@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -6,6 +7,12 @@ struct PapagaioApp: App {
     /// barra de menus observe o mesmo objeto que a janela — sem isso seriam
     /// duas gravações independentes, cada uma com seu cronômetro.
     @State private var gravador = GravadorViewModel()
+
+    /// O painel flutuante que acompanha a gravação fora da janela do app.
+    @State private var painelFlutuante = JanelaFlutuanteDeGravacao()
+    /// Ligado por padrão: gravar com o app atrás de outro programa é o caso
+    /// comum aqui, e é justamente quando não há como pausar nem anotar.
+    @AppStorage("painelFlutuanteDuranteGravacao") private var painelHabilitado = true
 
     init() {
         // Modo de diagnóstico do R-11: roda a matriz de configurações do tap
@@ -23,6 +30,18 @@ struct PapagaioApp: App {
     var body: some Scene {
         WindowGroup("") {
             ContentView(gravador: gravador)
+                // O painel aparece e some junto com a gravação. Fica fora da
+                // `ContentView` para não depender da janela principal estar
+                // visível — ela pode estar minimizada, que é o caso de uso.
+                .onChange(of: gravador.gravando) { _, gravando in
+                    if gravando, painelHabilitado {
+                        painelFlutuante.exibir(gravador: gravador) {
+                            NSApp.activate(ignoringOtherApps: true)
+                        }
+                    } else {
+                        painelFlutuante.esconder()
+                    }
+                }
         }
         .defaultSize(width: 1_000, height: 700)
         // Barra de título transparente pela janela inteira, e não só pela
