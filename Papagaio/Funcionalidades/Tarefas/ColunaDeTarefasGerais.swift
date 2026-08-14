@@ -8,6 +8,7 @@ struct ColunaDeTarefasGerais: View {
     let aoAlternarConclusao: (TarefaGeral) -> Void
     let aoExcluir: (TarefaGeral) -> Void
     let aoMover: (String, DestinoDeTarefa) -> Void
+    let compacto: Bool
     @State private var recebendoDrop = false
 
     private var destino: DestinoDeTarefa {
@@ -39,12 +40,12 @@ struct ColunaDeTarefasGerais: View {
             .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
             .background(PapagaioTema.superficie.opacity(0.48), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
-            VStack(spacing: PapagaioTema.Espaco.medio) {
+            VStack(spacing: compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.medio) {
                 if tarefas.isEmpty {
                     Text("Solte uma tarefa aqui.")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
-                        .frame(maxWidth: .infinity, minHeight: 72)
+                        .frame(maxWidth: .infinity, minHeight: compacto ? 44 : 72)
                         .background(PapagaioTema.superficie.opacity(0.45), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 } else {
                     ForEach(tarefas) { tarefa in
@@ -58,14 +59,28 @@ struct ColunaDeTarefasGerais: View {
                     }
                 }
 
-                Spacer(minLength: 0)
+                if compacto {
+                    // Em modo vertical a coluna encolhe para a altura dos
+                    // cards. Sem esta faixa, só alguns poucos pixels viravam
+                    // destino de soltura e mover uma tarefa era impreciso.
+                    Label("Arraste uma tarefa para cá", systemImage: "arrow.down.to.line")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(
+                            recebendoDrop ? cor.opacity(0.12) : PapagaioTema.superficie.opacity(0.45),
+                            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        )
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 320, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 320, alignment: .top)
         }
-        .frame(maxWidth: .infinity, minHeight: 390, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 390, alignment: .top)
         // Padding fixo: alternar 0/10 no `isTargeted` remedia a coluna inteira a
         // cada entrada e saída do cursor, e era isso que travava o arrasto.
-        .padding(10)
+        .padding(compacto ? 4 : 10)
         .contentShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .background(
             recebendoDrop ? cor.opacity(0.10) : Color.clear,

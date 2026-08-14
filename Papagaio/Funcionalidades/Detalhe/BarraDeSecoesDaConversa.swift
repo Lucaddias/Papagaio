@@ -51,39 +51,17 @@ struct BarraDeSecoesDaConversa<Acessorio: View>: View {
     /// ~250pt entre "Resumo" e "Transcrição", e a barra deixava de ler como um
     /// grupo. Agora cada aba tem a largura do seu rótulo e o conjunto fica
     /// ancorado à esquerda, alinhado com o título da página.
-    // Numa janela estreita as abas não cabem lado a lado com a ficha. Em vez
-    // de transbordar para fora da tela, o conjunto desce e rola na horizontal.
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            // Mesmo espaçamento das abas entre si, e sem recuo inferior: o
-            // acessório agora traz o próprio filete de 3pt, então empurrá-lo
-            // para cima o descolava da linha de base das outras.
+        // Uma única régua rolável evita que abas sumam/cortem e elimina a
+        // segunda barra horizontal que aparecia em janelas compactas.
+        ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.secao) {
                 abas
-
-                // Encostado nas abas, e não na quina oposta: lá na ponta
-                // direita, a 1.500pt de distância em tela cheia, ele parecia
-                // pertencer à janela e não à conversa. Aqui, colado em
-                // "Tarefas", lê-se como o próximo item do mesmo grupo.
                 acessorio
                     .fixedSize(horizontal: true, vertical: false)
-
-                Spacer(minLength: PapagaioTema.Espaco.medio)
-            }
-
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    abas
-                }
-                .scrollBounceBehavior(.basedOnSize)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    acessorio
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .padding(.bottom, PapagaioTema.Espaco.curto)
             }
         }
+        .scrollBounceBehavior(.basedOnSize)
         .padding(.top, PapagaioTema.Espaco.minimo)
         .overlay(alignment: .bottom) {
             Rectangle()

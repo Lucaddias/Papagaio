@@ -13,6 +13,9 @@ struct ArquivoDetalheView: View {
     /// Canal do sistema (`sistema.caf`) para reprodução em paralelo ao
     /// microfone — `nil` para importado e gravação legada, que têm canal único.
     let audioSecundario: URL?
+    /// Veio de um arquivo escolhido pela pessoa, em vez de uma gravação feita
+    /// dentro do app.
+    let importado: Bool
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: EstadoDoArquivo
@@ -1215,7 +1218,8 @@ struct ArquivoDetalheView: View {
             data: arquivo.criadoEm,
             reprodutor: reprodutor,
             tempoEmEdicao: $tempoEmEdicao,
-            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) }
+            aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) },
+            compacto: true
         )
     }
 

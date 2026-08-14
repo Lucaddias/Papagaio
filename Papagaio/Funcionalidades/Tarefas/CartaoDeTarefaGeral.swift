@@ -7,9 +7,6 @@ struct CartaoDeTarefaGeral: View {
     let aoExcluir: () -> Void
 
     private var concluida: Bool { tarefa.tarefa.status == .concluida }
-    private var progresso: Double {
-        concluida ? 1 : 0
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
@@ -55,18 +52,11 @@ struct CartaoDeTarefaGeral: View {
                     .lineLimit(1)
             }
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                ProgressView(value: progresso)
-                    .progressViewStyle(.linear)
-                    .tint(concluida ? PapagaioTema.sucesso : PapagaioTema.destaqueEscuro)
-
-                Text(concluida ? "100% Concluído" : "Em andamento")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(concluida ? PapagaioTema.sucesso : PapagaioTema.destaqueEscuro)
-            }
         }
         .padding(PapagaioTema.Espaco.largo)
-        .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
+        // A grade fica muito mais fácil de varrer quando cada tarefa ocupa o
+        // mesmo retângulo; título longo é truncado nas duas linhas acima.
+        .frame(maxWidth: .infinity, minHeight: 156, maxHeight: 156, alignment: .topLeading)
         .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
