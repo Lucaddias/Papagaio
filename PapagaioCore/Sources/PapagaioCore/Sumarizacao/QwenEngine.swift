@@ -69,7 +69,7 @@ public struct QwenEngine: SummarizationEngine {
         let bruto = try await contexto.completar(
             prompt: prompt,
             gramatica: GramaticaDoResumo.gbnf,
-            maxTokens: 2_048
+            maxTokens: 4_096
         )
 
         if let resumo = Self.decodificar(bruto) { return resumo }
@@ -77,7 +77,7 @@ public struct QwenEngine: SummarizationEngine {
         let corrigido = try await contexto.completar(
             prompt: Self.promptDeCorrecao(saidaInvalida: bruto),
             gramatica: GramaticaDoResumo.gbnf,
-            maxTokens: 2_048
+            maxTokens: 4_096
         )
         guard let resumo = Self.decodificar(corrigido) else {
             throw ErroLlama.gramaticaInvalida
@@ -97,7 +97,7 @@ public struct QwenEngine: SummarizationEngine {
             let parcial = try await contexto.completar(
                 prompt: Self.promptParcial(Self.formatar(chunk)),
                 gramatica: nil,
-                maxTokens: 1_024
+                maxTokens: 2_048
             )
             parciais.append(parcial)
         }
@@ -146,10 +146,17 @@ public struct QwenEngine: SummarizationEngine {
     static func prompt(paraTranscricao transcricao: String) -> String {
         """
         <|im_start|>system
-        Você resume reuniões em português do Brasil. Seja fiel à transcrição: \
-        não invente números, nomes nem decisões.<|im_end|>
+        Você é o "Ateiro Profissa", um analista sênior que transforma diálogos \
+        caóticos e transcrições brutas em atas limpas, estratégicas e acionáveis \
+        em português do Brasil. Regras: (1) seja fiel à transcrição, não invente \
+        números, nomes nem decisões. (2) Sem termos corporativos vazios — nada de \
+        "sinergia", "disrupção" ou "com base em nossos aprendizados". Seja direto \
+        e realista. (3) Identifique TODOS os tópicos discutidos, classificando cada \
+        um como Ponto Principal ou Secundário. (4) Produza uma análise completa e \
+        detalhada, proporcional à duração da reunião.<|im_end|>
         <|im_start|>user
-        Resuma a reunião abaixo.
+        Analise a reunião abaixo e produza uma ata profissional completa e detalhada. \
+        Não comprima: cubra todos os assuntos discutidos.
 
         \(GramaticaDoResumo.descricaoDoFormato)
 
@@ -162,9 +169,11 @@ public struct QwenEngine: SummarizationEngine {
     static func promptParcial(_ transcricao: String) -> String {
         """
         <|im_start|>system
-        Você resume trechos de reunião em português do Brasil, de forma fiel.<|im_end|>
+        Você é o "Ateiro Profissa". Resume trechos de reunião de forma fiel, \
+        detalhada e sem floreios, em português do Brasil.<|im_end|>
         <|im_start|>user
-        Resuma este trecho em até 8 linhas, preservando números, nomes e decisões.
+        Resuma este trecho de forma completa e detalhada, preservando números, \
+        nomes, decisões e argumentos de cada lado. Não comprima.
 
         \(transcricao)<|im_end|>
         <|im_start|>assistant
@@ -174,10 +183,13 @@ public struct QwenEngine: SummarizationEngine {
     static func promptDeReducao(_ parciais: String) -> String {
         """
         <|im_start|>system
-        Você consolida resumos parciais de uma mesma reunião em português do Brasil.<|im_end|>
+        Você é o "Ateiro Profissa". Consolida resumos parciais de uma mesma \
+        reunião em português do Brasil, conectando assuntos e classificando \
+        cada tópico como Ponto Principal ou Secundário. Produza uma ata completa.<|im_end|>
         <|im_start|>user
         Os textos abaixo são resumos de partes consecutivas da MESMA reunião. \
-        Consolide num resumo único, conectando assuntos que aparecem em partes diferentes.
+        Consolide numa ata profissional completa e detalhada, conectando assuntos \
+        que aparecem em partes diferentes. Cubra todos os tópicos discutidos.
 
         \(GramaticaDoResumo.descricaoDoFormato)
 
