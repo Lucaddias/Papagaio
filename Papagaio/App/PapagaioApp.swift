@@ -25,6 +25,10 @@ struct PapagaioApp: App {
         // Antes de qualquer view ler UserDefaults: instalações antigas têm as
         // equipes e as pessoas de exemplo gravadas no disco.
         LimpezaDeDadosFabricados.executarUmaVez()
+
+        // Também antes das views: campos de cartão criados nesta versão nascem
+        // ligados para quem já tinha personalizado a grade.
+        CamposDoCartao.ligarCamposNovos()
     }
 
     var body: some Scene {

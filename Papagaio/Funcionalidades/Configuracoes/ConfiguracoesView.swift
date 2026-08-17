@@ -20,10 +20,12 @@ struct ConfiguracoesView: View {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                 CabecalhoDePagina(
                     titulo: "Configurações",
-                    subtitulo: "Aparência do app e quando as transcrições começam."
+                    subtitulo: "Aparência do app, os cartões da biblioteca e quando as transcrições começam."
                 )
 
                 secaoDeAparencia
+
+                SecaoDePersonalizacaoDosCartoes()
 
                 secaoDeTranscricao
             }
@@ -61,7 +63,11 @@ struct ConfiguracoesView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: 760, alignment: .leading)
+        // Largura cheia: os 760pt fixos deixavam metade da janela vazia à
+        // direita e faziam cada seção terminar num ponto diferente do painel
+        // de baixo. O limite de leitura já vem do `larguraDeConteudoPapagaio`
+        // da página.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cartaoPapagaio()
     }
 
@@ -119,7 +125,11 @@ struct ConfiguracoesView: View {
             )
         }
         .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: 760, alignment: .leading)
+        // Largura cheia: os 760pt fixos deixavam metade da janela vazia à
+        // direita e faziam cada seção terminar num ponto diferente do painel
+        // de baixo. O limite de leitura já vem do `larguraDeConteudoPapagaio`
+        // da página.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cartaoPapagaio()
     }
 }

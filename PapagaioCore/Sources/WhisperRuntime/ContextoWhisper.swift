@@ -206,27 +206,41 @@ public actor ContextoWhisper {
     ///
     /// `t0`/`t1` de cada token são medidos em centésimos: a palavra herda o
     /// início da primeira token e o fim da última.
+    ///
+    /// **Acumula bytes, não `String`.** O vocabulário do Whisper é BPE de
+    /// bytes: um caractere multibyte — `é`, `ç`, `ã` — pode ser partido entre
+    /// dois tokens, cada um carregando metade da sequência UTF-8. Decodificar
+    /// token a token com `String(cString:)` faz o Swift trocar cada metade
+    /// inválida por U+FFFD, e o caractere original se perde antes da junção:
+    /// a palavra virava `êêêêê…` na tela. O texto do **segmento** nunca teve o
+    /// problema porque o whisper.cpp o monta em C, byte a byte — era por isso
+    /// que a mesma fala aparecia certa na folha de correção e errada na
+    /// transcrição. Juntando os bytes e decodificando uma vez no fim, a
+    /// sequência chega inteira ao decoder.
     private func palavrasDoSegmento(_ indice: Int32) -> [PalavraWhisper] {
         let total = whisper_full_n_tokens(contexto, indice)
         guard total > 0 else { return [] }
 
         var palavras: [PalavraWhisper] = []
         palavras.reserveCapacity(Int(total))
-        var textoDaPalavra = ""
+        var bytesDaPalavra: [UInt8] = []
         var inicioDaPalavra: TimeInterval = 0
         var fimDaPalavra: TimeInterval = 0
 
         func fecharPalavra() {
-            guard !textoDaPalavra.isEmpty else { return }
+            guard !bytesDaPalavra.isEmpty else { return }
+            let texto = String(decoding: bytesDaPalavra, as: UTF8.self)
+                .trimmingCharacters(in: .whitespaces)
+            bytesDaPalavra.removeAll(keepingCapacity: true)
+            guard !texto.isEmpty else { return }
             palavras.append(PalavraWhisper(
                 start: inicioDaPalavra,
                 end: fimDaPalavra,
-                texto: textoDaPalavra
+                texto: texto
             ))
-            textoDaPalavra = ""
         }
 
-for token in 0..<total {
+        for token in 0..<total {
             let dados = whisper_full_get_token_data(contexto, indice, token)
 
             // Tokens especiais não são fala — timestamps, controle (`<|SOT|>`),
@@ -237,17 +251,25 @@ for token in 0..<total {
             guard dados.id < whisper_token_eot(contexto) else { continue }
 
             guard let cToken = whisper_full_get_token_text(contexto, indice, token) else { continue }
-            let textoDoToken = String(cString: cToken)
+            let bytesDoToken = Array(UnsafeBufferPointer(
+                start: UnsafeRawPointer(cToken).assumingMemoryBound(to: UInt8.self),
+                count: strlen(cToken)
+            ))
+            guard !bytesDoToken.isEmpty else { continue }
+
             let t0 = TimeInterval(dados.t0) / 100
             let t1 = TimeInterval(dados.t1) / 100
 
-            if textoDoToken.hasPrefix(" ") {
+            // O espaço é sempre 0x20 em UTF-8 e nunca aparece dentro de uma
+            // sequência multibyte, então testar o primeiro byte é seguro sem
+            // decodificar nada.
+            if bytesDoToken[0] == 0x20 {
                 fecharPalavra()
-                textoDaPalavra = textoDoToken.trimmingCharacters(in: .whitespaces)
+                bytesDaPalavra = Array(bytesDoToken.dropFirst())
                 inicioDaPalavra = t0
                 fimDaPalavra = t1
             } else {
-                textoDaPalavra += textoDoToken
+                bytesDaPalavra.append(contentsOf: bytesDoToken)
                 fimDaPalavra = t1
             }
         }

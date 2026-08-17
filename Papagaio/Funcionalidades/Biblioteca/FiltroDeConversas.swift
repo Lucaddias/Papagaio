@@ -35,6 +35,15 @@ struct FiltroDeConversas: View {
                     PastilhaDeFiltro(filtro: filtro, selecionada: selecionado == filtro, compacto: compacto)
                 }
                 .buttonStyle(.plain)
+                // Uma forma de clique só, e no botão.
+                //
+                // Antes havia duas: um `Capsule` dentro da pastilha e um
+                // `Rectangle` aqui fora. Quem vale nesse caso é a de dentro — a
+                // cápsula —, então os cantos da pastilha não respondiam, e o
+                // alvo real dependia da largura de cada rótulo. Com uma forma
+                // só, "Todas" e "Pastas" têm exatamente o mesmo comportamento:
+                // o retângulo inteiro que cada uma ocupa na linha.
+                .contentShape(Rectangle())
                 .help(filtro.rawValue)
                 .accessibilityLabel("Mostrar \(filtro.rawValue.localizedLowercase)")
             }
@@ -67,10 +76,9 @@ private struct PastilhaDeFiltro: View {
                     lineWidth: 1
                 )
             }
-            // Sem isto, o clique continuaria valendo só sobre o desenho: a
-            // forma define a área de toque, e é ela que faz a pastilha ser um
-            // botão de verdade.
-            .contentShape(Capsule())
+            // Sem forma de clique própria: quem define a área é o botão que
+            // envolve esta pastilha. Duas formas aninhadas faziam a de dentro
+            // vencer, e era ela que recortava os cantos do alvo.
             .onHover { pairando = $0 }
             .animation(.easeOut(duration: 0.14), value: pairando)
             .animation(.easeOut(duration: 0.14), value: selecionada)

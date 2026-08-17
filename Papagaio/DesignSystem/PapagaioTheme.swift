@@ -161,11 +161,19 @@ enum PapagaioTema {
 
 extension View {
     /// Superfície com a borda discreta e quente da identidade visual.
-    func cartaoPapagaio(raio: CGFloat = PapagaioTema.raioDeCard) -> some View {
+    ///
+    /// `borda` permite que um cartão com cor própria — o da conversa, que herda
+    /// a cor da faixa ou da capa — contorne a si mesmo na sua cor. Sem isso, um
+    /// cartão azul ficava emoldurado de laranja, e a moldura era a única parte
+    /// dele que ainda pertencia a outro lugar.
+    func cartaoPapagaio(
+        raio: CGFloat = PapagaioTema.raioDeCard,
+        borda: Color = PapagaioTema.borda
+    ) -> some View {
         background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: raio, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: raio, style: .continuous)
-                    .stroke(PapagaioTema.borda, lineWidth: 1)
+                    .stroke(borda, lineWidth: 1)
             }
     }
 

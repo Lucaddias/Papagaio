@@ -12,9 +12,17 @@ import SwiftUI
 /// é irmão da linha inteira, não do ícone. O popover vive numa janela própria,
 /// acima de tudo e sem recorte.
 ///
-/// Ele abre para baixo (`arrowEdge: .bottom`), portanto não cobre o ícone e o
-/// ponteiro continua "em cima" — sem isso o `onHover` viraria falso ao abrir e
-/// o balão entraria em pisca-pisca.
+/// Ele abre **para o lado** (`arrowEdge: .trailing`), e não para baixo.
+///
+/// Abrindo para baixo, o balão caía exatamente sobre a linha de filtros logo
+/// abaixo do título — e popover é uma janela do sistema, que engole todo
+/// clique embaixo dela. O sintoma era "o botão Todas parou de funcionar", sem
+/// nada visível explicando por quê: bastava o ponteiro roçar o "i" a caminho
+/// dos filtros para o balão abrir por cima deles.
+///
+/// Para o lado, ele não cobre o ícone nem o que vem abaixo, e o ponteiro
+/// continua "em cima" — sem isso o `onHover` viraria falso ao abrir e o balão
+/// entraria em pisca-pisca.
 struct BotaoDeAjudaPapagaio: View {
     let texto: String
     var ajuda: String = "Sobre esta tela"
@@ -32,7 +40,7 @@ struct BotaoDeAjudaPapagaio: View {
             .frame(width: 22, height: 22)
             .contentShape(Circle())
             .onHover { pairando = $0 }
-            .popover(isPresented: $pairando, arrowEdge: .bottom) {
+            .popover(isPresented: $pairando, arrowEdge: .trailing) {
                 Text(texto)
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.texto)

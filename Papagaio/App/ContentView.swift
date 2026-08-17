@@ -98,6 +98,17 @@ struct ContentView: View {
                 conteudoDaTela
             }
             .background(PapagaioTema.fundo.ignoresSafeArea())
+            // A seleção de texto **não** fica na raiz.
+            //
+            // `.textSelection(.enabled)` aqui vale para toda a árvore, e no
+            // macOS cada `Text` selecionável monta a máquina de seleção do
+            // AppKit. Numa grade de vinte cartões — cada um com título,
+            // descrição, datas e nomes — e numa transcrição de milhares de
+            // palavras, isso é o suficiente para a janela parar de responder.
+            //
+            // Ela vive onde a leitura acontece: no conteúdo da conversa, em
+            // `ArquivoDetalheView`. Cartão da biblioteca não é texto para
+            // copiar, é alvo de clique.
         .toolbarBackground(.hidden, for: .windowToolbar)
             .overlay(alignment: .top) {
                 // Sem padding: a legenda se ancora na base do próprio ícone,

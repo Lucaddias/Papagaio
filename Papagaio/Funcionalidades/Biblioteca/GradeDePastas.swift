@@ -1,10 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct InformacaoDaPasta: Identifiable {
     let nome: String
     let quantidade: Int
-    let duracaoTotal: TimeInterval
-    let ultimoArquivo: Date?
+    /// Quando a pasta foi criada. `nil` nas criadas antes desta versão.
+    let criadaEm: Date?
 
     var id: String { nome }
 }
@@ -13,35 +14,55 @@ struct GradeDePastas: View {
     let pastas: [InformacaoDaPasta]
     @Binding var selecionada: String?
     let aoCriarPasta: () -> Void
+    let aoApagarPasta: (String) -> Void
+    let aoRenomearPasta: (String, String) -> Void
+    let aoBaixarPasta: (String) -> Void
+    let aoCompartilharPasta: (String) -> Void
+    /// A grade está recortada pelo atalho Favoritos.
+    var apenasFavoritas = false
+    /// Esconde o botão "Nova pasta" — usado quando a grade aparece dentro de
+    /// um resultado de busca, onde criar pasta não é o que se procura.
+    var ocultarCriacao = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             // Sem o título "Pastas": o filtro logo acima já está marcado como
             // Pastas, e repetir a palavra a 40pt de distância não informa nada.
             // O botão herda a posição dele, à esquerda, onde a leitura começa.
-            HStack {
-                Button("Nova pasta", systemImage: "folder.badge.plus", action: aoCriarPasta)
-                    .buttonStyle(BotaoDeContornoPapagaio())
+            if !ocultarCriacao {
+                HStack {
+                    Button("Nova pasta", systemImage: "folder.badge.plus", action: aoCriarPasta)
+                        .buttonStyle(BotaoDeContornoPapagaio())
 
-                Spacer()
+                    Spacer()
+                }
             }
 
             if pastas.isEmpty {
                 CartaoDeEstadoVazio(
-                    simbolo: "folder",
-                    titulo: "Nenhuma pasta ainda",
-                    mensagem: "Crie uma pasta para organizar conversas por projeto, cliente ou tema."
+                    simbolo: apenasFavoritas ? "star" : "folder",
+                    titulo: apenasFavoritas ? "Nenhuma pasta favorita" : "Nenhuma pasta ainda",
+                    mensagem: apenasFavoritas
+                        ? "Toque na estrela de uma pasta para ela aparecer aqui."
+                        : "Crie uma pasta para organizar conversas por projeto, cliente ou tema."
                 )
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
-                let colunas = [GridItem(.adaptive(minimum: 250, maximum: 360), spacing: PapagaioTema.Espaco.largo, alignment: .top)]
+                // Colunas mais estreitas e espaçamento menor: são fileiras de
+                // 56pt, não cartões — com a grade antiga sobrariam vãos
+                // enormes entre elas.
+                let colunas = [GridItem(.adaptive(minimum: 220, maximum: 320), spacing: PapagaioTema.Espaco.medio, alignment: .top)]
 
-                LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.largo) {
+                LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.curto) {
                     ForEach(pastas) { pasta in
                         CartaoDePasta(
                             pasta: pasta,
-                            selecionado: selecionada == pasta.nome
+                            selecionado: selecionada == pasta.nome,
+                            aoApagar: { aoApagarPasta(pasta.nome) },
+                            aoRenomear: { novo in aoRenomearPasta(pasta.nome, novo) },
+                            aoBaixar: { aoBaixarPasta(pasta.nome) },
+                            aoCompartilhar: { aoCompartilharPasta(pasta.nome) }
                         ) {
                             withAnimation(.snappy(duration: 0.18)) {
                                 selecionada = pasta.nome
@@ -58,65 +79,548 @@ struct GradeDePastas: View {
 struct CartaoDePasta: View {
     let pasta: InformacaoDaPasta
     let selecionado: Bool
+    let aoApagar: () -> Void
+    let aoRenomear: (String) -> Void
+    let aoBaixar: () -> Void
+    let aoCompartilhar: () -> Void
     let acao: () -> Void
+
+    @State private var cor: Color = PapagaioTema.destaque
+    @State private var semCor = false
+    @State private var capa: URL?
+    @State private var favorita = false
+    @State private var escolhendoAparencia = false
+    @State private var confirmandoExclusao = false
+    @State private var menuAberto = false
+    @State private var ajuste: AjusteDeImagem = .preencher
+
+    private var imagem: NSImage? {
+        guard capa != nil else { return nil }
+        return AparenciaDasPastas.imagem(de: pasta.nome)
+    }
+
+    /// A cor do texto da fileira.
+    ///
+    /// Sem cor, a fileira é a própria superfície do tema — que já é escura no
+    /// modo escuro. `textoLegivel` mede uma cor fixa e não enxerga a troca de
+    /// aparência; aqui o certo é a cor de texto do tema.
+    private var corDoTexto: Color {
+        semCor ? PapagaioTema.texto : cor.textoLegivel
+    }
 
     var body: some View {
         Button(action: acao) {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-                HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-                    Image(systemName: "folder")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                        .frame(width: 58, height: 58)
-                        .background(
-                            selecionado ? PapagaioTema.destaqueSuave : PapagaioTema.superficieSuave,
-                            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                        )
+            // Uma fileira, e não um cartão alto.
+            //
+            // Pasta é um rótulo: nome, cor e um menu. O cartão grande dedicava
+            // 168pt de altura a mostrar duas linhas de texto, e a grade de
+            // vinte pastas virava três telas de rolagem. Na fileira cabem
+            // quatro por linha e a lista inteira fica visível de uma vez —
+            // que é o que se quer de um índice.
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                marca
 
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                        Text(pasta.nome)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.texto)
-                            .lineLimit(2)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(pasta.nome)
+                        .font(.callout.weight(.semibold))
+                        // Com imagem no fundo, o texto é sempre claro: o véu
+                        // escuro garante o contraste, e a cor da pasta não diz
+                        // mais nada sobre o que está atrás do nome.
+                        .foregroundStyle(imagem == nil ? corDoTexto : .white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
-                        Text("Abrir pasta")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 0)
+                    // A contagem de volta à face da fileira: escondida só no
+                    // hover, ela obrigava a apontar o mouse em cada pasta para
+                    // responder "vale a pena abrir esta?".
+                    Text(textoDaQuantidade)
+                        .font(.caption)
+                        .foregroundStyle((imagem == nil ? corDoTexto : .white).opacity(0.8))
+                        .lineLimit(1)
                 }
 
-                HStack(spacing: PapagaioTema.Espaco.medio) {
-                    Label(textoDaQuantidade, systemImage: "doc.text")
-                    Label(pasta.duracaoTotal.comoDuracaoPorExtenso, systemImage: "clock")
+                Spacer(minLength: PapagaioTema.Espaco.curto)
 
-                    if let ultimoArquivo = pasta.ultimoArquivo {
-                        Label(ultimoArquivo.formatted(.dateTime.day().month(.abbreviated)), systemImage: "calendar")
-                    }
-                }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .lineLimit(1)
+                menuDaPasta
             }
-            .padding(PapagaioTema.Espaco.largo)
-            .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
-            .background(
-                selecionado ? PapagaioTema.destaqueSuave.opacity(0.58) : PapagaioTema.superficie,
-                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-            )
+            .padding(.horizontal, PapagaioTema.Espaco.medio)
+            .frame(height: 56)
+            .frame(maxWidth: .infinity)
+            // A fileira **é** a cor da pasta.
+            //
+            // Com a cor presa ao quadradinho de 34pt, era preciso caçar o
+            // ícone para saber de quem era a linha; pintada, a pasta se
+            // reconhece de longe, que é o motivo de existir cor aqui.
+            // `background { }` com `clipShape`, e não `background(_:in:)`: a
+            // versão com forma só aceita `ShapeStyle`, e aqui o fundo pode ser
+            // uma imagem — que é uma View.
+            .background { fundo }
+            .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-                    .stroke(selecionado ? PapagaioTema.destaque.opacity(0.55) : PapagaioTema.borda, lineWidth: 1)
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                    .stroke(
+                        selecionado
+                            ? corDoTexto.opacity(0.7)
+                            // Sem cor e sem imagem, a fileira é quase a cor do
+                            // painel atrás dela: sem um contorno, some.
+                            : (semCor && imagem == nil ? PapagaioTema.borda : .clear),
+                        lineWidth: selecionado ? 2 : 1
+                    )
             }
         }
         .buttonStyle(.plain)
-        .help("Abrir pasta \(pasta.nome)")
+        .help("\(pasta.nome) · \(textoDaQuantidade)")
+        // Botão direito, e não mais um ícone no cartão: personalizar é raro
+        // perto de abrir, e um segundo alvo clicável dentro de um cartão que
+        // inteiro já é um botão confunde quem só quer entrar na pasta.
+        .contextMenu {
+            Button("Editar…", systemImage: "pencil") {
+                escolhendoAparencia = true
+            }
+
+            Button("Apagar pasta", systemImage: "trash", role: .destructive) {
+                confirmandoExclusao = true
+            }
+        }
+        .confirmationDialog(
+            "Apagar a pasta \(pasta.nome)?",
+            isPresented: $confirmandoExclusao,
+            titleVisibility: .visible
+        ) {
+            Button("Apagar pasta", role: .destructive, action: aoApagar)
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            // O texto tira o susto: a palavra "apagar" ao lado de um número de
+            // conversas faz qualquer um imaginar que elas vão junto.
+            Text(
+                pasta.quantidade == 0
+                    ? "A pasta é só um rótulo. Nada mais será removido."
+                    : "As \(pasta.quantidade) conversas continuam na biblioteca — só deixam de estar nesta pasta."
+            )
+        }
+        .popover(isPresented: $escolhendoAparencia, arrowEdge: .bottom) {
+            AparenciaDaPastaPopover(
+                pasta: pasta.nome,
+                cor: $cor,
+                semCor: $semCor,
+                capa: $capa,
+                ajuste: $ajuste,
+                aoRenomear: aoRenomear
+            )
+        }
+        .onAppear(perform: sincronizar)
+        .onChange(of: pasta.nome) { _, _ in sincronizar() }
+    }
+
+    /// Os três pontos da direita, com tudo o que dá para fazer com a pasta.
+    ///
+    /// Um menu no lugar de ícones soltos: favoritar, baixar, renomear,
+    /// compartilhar, cor e imagem e lixeira não caberiam numa fileira de 56pt,
+    /// e três pontos é o mesmo gesto que o cartão de conversa já pede.
+    private var menuDaPasta: some View {
+            Button {
+                menuAberto = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .rotationEffect(.degrees(90))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle((imagem == nil ? corDoTexto : .white).opacity(0.85))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Ações da pasta")
+            .popover(isPresented: $menuAberto, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ItemDoMenuDeArquivo(
+                        simbolo: favorita ? "star.slash" : "star",
+                        titulo: favorita ? "Desfavoritar" : "Favoritar"
+                    ) {
+                        menuAberto = false
+                        favorita.toggle()
+                        AparenciaDasPastas.definirFavorita(favorita, para: pasta.nome)
+                    }
+
+                    ItemDoMenuDeArquivo(simbolo: "arrow.down.circle", titulo: "Baixar") {
+                        menuAberto = false
+                        DispatchQueue.main.async { aoBaixar() }
+                    }
+                    // Um "Editar" só: o popover que ele abre já tem o nome, a
+                    // cor e a imagem. Dois itens abrindo exatamente a mesma
+                    // tela obrigavam a escolher entre eles sem diferença.
+                    ItemDoMenuDeArquivo(simbolo: "pencil", titulo: "Editar") {
+                        menuAberto = false
+                        DispatchQueue.main.async { escolhendoAparencia = true }
+                    }
+                    // Separador entre "o que faço com o arquivo" e "com quem
+                    // compartilho", como no menu do Drive.
+                    SeparadorPapagaio()
+                        .padding(.horizontal, PapagaioTema.Espaco.medio)
+                        .padding(.vertical, PapagaioTema.Espaco.minimo)
+
+                    ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar") {
+                        menuAberto = false
+                        DispatchQueue.main.async { aoCompartilhar() }
+                    }
+                    SeparadorPapagaio()
+                        .padding(.horizontal, PapagaioTema.Espaco.medio)
+                        .padding(.vertical, PapagaioTema.Espaco.minimo)
+
+                    ItemDoMenuDeArquivo(
+                        simbolo: "trash",
+                        titulo: "Mover para Lixeira",
+                        destrutivo: true
+                    ) {
+                        menuAberto = false
+                        DispatchQueue.main.async { confirmandoExclusao = true }
+                    }
+                }
+                .frame(width: 214)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
+            }
+    }
+
+    /// A imagem, quando há; senão, a cor da pasta.
+    /// A imagem quando há; senão, a cor.
+    ///
+    /// Ela aparece nos dois lugares de propósito: no fundo, para a fileira ser
+    /// reconhecível de longe como qualquer outra; e no quadradinho, limpa, sem
+    /// o véu que o fundo precisa para o nome sobreviver por cima.
+    @ViewBuilder
+    private var fundo: some View {
+        if let imagem {
+            ImagemDeFundo(imagem: imagem, ajuste: ajuste, corDeFundo: cor)
+        } else {
+            cor
+        }
+    }
+
+    /// O quadradinho da esquerda: a imagem da pasta, quando há.
+    ///
+    /// Fica sempre visível — inclusive com imagem. Deixar a foto só no fundo
+    /// da fileira, atrás do véu escuro que o texto exige, é o mesmo que não
+    /// ter foto: ela vira uma textura irreconhecível. No quadradinho ela
+    /// aparece limpa, e o fundo continua sendo a cor da pasta.
+    private var marca: some View {
+        ZStack {
+            if let imagem {
+                ImagemDeFundo(
+                    imagem: imagem,
+                    ajuste: ajuste,
+                    corDeFundo: corDoTexto.opacity(0.18),
+                    comVeu: false
+                )
+            } else {
+                // Sobre a cor da fileira, o quadradinho é um véu do próprio
+                // texto: cor sobre cor sumiria, e branco fixo brigaria com as
+                // cores claras.
+                corDoTexto.opacity(0.18)
+
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(corDoTexto)
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        // A estrela vira um selo no canto do ícone: na fileira não há linha de
+        // rodapé onde ela caberia, e favoritar é frequente demais para virar
+        // item de menu.
+        .overlay(alignment: .topTrailing) {
+            if favorita {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(cor)
+                    .padding(2)
+                    .background(corDoTexto, in: Circle())
+                    .offset(x: 4, y: -4)
+            }
+        }
     }
 
     private var textoDaQuantidade: String {
         pasta.quantidade == 1 ? "1 conversa" : "\(pasta.quantidade) conversas"
     }
 
+    private func sincronizar() {
+        cor = AparenciaDasPastas.corResolvida(de: pasta.nome)
+        semCor = AparenciaDasPastas.semCor(de: pasta.nome)
+        capa = AparenciaDasPastas.capa(de: pasta.nome)
+        favorita = AparenciaDasPastas.favorita(pasta.nome)
+        ajuste = AparenciaDasPastas.ajuste(de: pasta.nome)
+    }
+}
+
+/// A faixa que aparece no lugar da grade quando uma pasta está aberta.
+///
+/// Sem ela, entrar numa pasta era uma viagem sem sinalização: a grade sumia,
+/// as conversas trocavam e nada na tela dizia onde você estava nem como sair.
+/// A única saída era clicar de novo em "Pastas" — o que ninguém adivinha,
+/// porque essa pastilha parece já estar selecionada.
+struct CabecalhoDaPastaAberta: View {
+    let nome: String
+    let quantidade: Int
+    let aoVoltar: () -> Void
+
+    @State private var cor: Color = PapagaioTema.destaque
+    @State private var semCor = false
+    @State private var capa: URL?
+    @State private var ajuste: AjusteDeImagem = .preencher
+
+    private var imagem: NSImage? {
+        guard capa != nil else { return nil }
+        return AparenciaDasPastas.imagem(de: nome)
+    }
+
+    /// O que identifica a pasta aqui: a imagem dela, se houver; senão o ícone.
+    ///
+    /// A imagem vem antes da cor porque quem escolheu foto trocou a cor por
+    /// ela — e sem isto uma pasta sem cor chegava neste cabeçalho como um
+    /// ícone cinza-claro sobre fundo claro, que é o mesmo que não ter marca
+    /// nenhuma. É a mesma regra da fileira da grade e da pastilha do cartão.
+    @ViewBuilder
+    private var marca: some View {
+        if let imagem {
+            ImagemDeFundo(
+                imagem: imagem,
+                ajuste: ajuste,
+                corDeFundo: PapagaioTema.superficieSuave,
+                comVeu: false
+            )
+            .frame(width: 22, height: 22)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        } else {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 15, weight: .semibold))
+                // Sem cor, o ícone é a própria superfície do tema e sumiria
+                // contra o fundo: aí ele vira texto secundário, como qualquer
+                // outro ícone neutro do app.
+                .foregroundStyle(semCor ? PapagaioTema.textoSecundario : cor)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            // Seta à esquerda, como em qualquer navegação: é o gesto que a
+            // pessoa já tem no dedo antes de aprender esta tela.
+            Button(action: aoVoltar) {
+                Label("Pastas", systemImage: "chevron.left")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .padding(.horizontal, PapagaioTema.Espaco.medio)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.destaque.opacity(0.12), in: Capsule())
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Voltar para todas as pastas")
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                marca
+
+                Text(nome)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(1)
+
+                Text(quantidade == 1 ? "1 conversa" : "\(quantidade) conversas")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .onAppear(perform: sincronizar)
+        .onChange(of: nome) { _, _ in sincronizar() }
+    }
+
+    private func sincronizar() {
+        cor = AparenciaDasPastas.corResolvida(de: nome)
+        semCor = AparenciaDasPastas.semCor(de: nome)
+        capa = AparenciaDasPastas.capa(de: nome)
+        ajuste = AparenciaDasPastas.ajuste(de: nome)
+    }
+}
+
+/// Cor e imagem de uma pasta, num popover ancorado ao próprio cartão.
+///
+/// Popover e não folha: é uma escolha pequena, e ver o cartão mudar atrás
+/// enquanto se escolhe vale mais do que qualquer prévia dentro de um modal.
+struct AparenciaDaPastaPopover: View {
+    let pasta: String
+    @Binding var cor: Color
+    @Binding var semCor: Bool
+    @Binding var capa: URL?
+    @Binding var ajuste: AjusteDeImagem
+    let aoRenomear: (String) -> Void
+
+    @State private var nomeDigitado = ""
+
+    @State private var hexDigitado = ""
+    @FocusState private var editandoHex: Bool
+
+    private let colunas = [GridItem(.adaptive(minimum: 30), spacing: PapagaioTema.Espaco.curto)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Text("Nome")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .textCase(.uppercase)
+
+            // Renomear mora aqui, e não num diálogo próprio: trocar o nome e
+            // trocar a cor são a mesma tarefa — "arrumar esta pasta".
+            TextField("Nome da pasta", text: $nomeDigitado)
+                .textFieldStyle(.plain)
+                .font(.callout)
+                .onSubmit { aoRenomear(nomeDigitado) }
+                .padding(.horizontal, PapagaioTema.Espaco.curto)
+                .frame(height: PapagaioTema.Altura.compacta)
+                .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+
+            SeparadorPapagaio()
+
+            Text("Cor")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .textCase(.uppercase)
+
+            LazyVGrid(columns: colunas, spacing: PapagaioTema.Espaco.curto) {
+                // "Sem cor" entre as cores, e não como um interruptor à parte:
+                // é uma alternativa a elas, e é entre elas que se procura.
+                BotaoSemCor(ativo: semCor, acao: aplicarSemCor)
+
+                ForEach(AparenciaDasPastas.Cor.allCases) { opcao in
+                    Button {
+                        aplicar(opcao.cor)
+                    } label: {
+                        Circle()
+                            .fill(opcao.cor)
+                            .frame(width: 26, height: 26)
+                            .overlay {
+                                Circle().stroke(
+                                    !semCor && cor == opcao.cor ? PapagaioTema.texto : PapagaioTema.borda,
+                                    lineWidth: !semCor && cor == opcao.cor ? 2 : 1
+                                )
+                            }
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(opcao.titulo)
+                }
+            }
+
+            // Mesmos três caminhos do cartão de conversa: paleta para resolver
+            // num clique, roda do sistema (com conta-gotas) para escolher no
+            // olho, e hexadecimal para casar com a cor exata de uma marca.
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                ColorPicker("", selection: Binding(
+                    get: { cor },
+                    set: { aplicar($0) }
+                ), supportsOpacity: false)
+                .labelsHidden()
+
+                TextField("#RRGGBB", text: $hexDigitado)
+                    .textFieldStyle(.plain)
+                    .font(.system(.callout, design: .monospaced))
+                    .focused($editandoHex)
+                    .onSubmit(aplicarHexDigitado)
+                    .padding(.horizontal, PapagaioTema.Espaco.curto)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                            .stroke(editandoHex ? PapagaioTema.destaque.opacity(0.6) : PapagaioTema.borda, lineWidth: 1)
+                    }
+            }
+
+            SeparadorPapagaio()
+
+            Text("Imagem")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .textCase(.uppercase)
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Button(capa == nil ? "Escolher imagem…" : "Trocar imagem…", action: escolherImagem)
+                    .buttonStyle(BotaoDeContornoPapagaio())
+
+                if capa != nil {
+                    Button("Remover", systemImage: "trash") {
+                        AparenciaDasPastas.removerCapa(de: pasta)
+                        capa = nil
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.perigo)
+                }
+            }
+
+            if capa != nil {
+                SeletorDeAjusteDeImagem(ajuste: Binding(
+                    get: { ajuste },
+                    set: {
+                        ajuste = $0
+                        AparenciaDasPastas.definirAjuste($0, para: pasta)
+                    }
+                ))
+            }
+        }
+        .padding(PapagaioTema.Espaco.largo)
+        .frame(width: 280)
+        .onAppear {
+            hexDigitado = cor.hexadecimal ?? ""
+            nomeDigitado = pasta
+        }
+    }
+
+    /// Deixa a pasta sem cor nenhuma: ela passa a usar a superfície neutra do
+    /// tema, do mesmo jeito que uma pasta do Finder sem etiqueta.
+    private func aplicarSemCor() {
+        semCor = true
+        AparenciaDasPastas.definirSemCor(true, para: pasta)
+        cor = AparenciaDasPastas.corResolvida(de: pasta)
+        hexDigitado = cor.hexadecimal ?? ""
+    }
+
+    private func aplicar(_ nova: Color) {
+        semCor = false
+        AparenciaDasPastas.definirSemCor(false, para: pasta)
+        cor = nova
+        AparenciaDasPastas.definirCorLivre(nova, para: pasta)
+        hexDigitado = nova.hexadecimal ?? ""
+    }
+
+    /// Texto inválido não apaga a cor: volta a mostrar a atual, senão a pasta
+    /// piscaria a cada caractere incompleto.
+    private func aplicarHexDigitado() {
+        guard let nova = Color(hexadecimal: hexDigitado) else {
+            hexDigitado = cor.hexadecimal ?? ""
+            return
+        }
+        aplicar(nova)
+    }
+
+    private func escolherImagem() {
+        let painel = NSOpenPanel()
+        painel.title = "Escolha uma imagem para a pasta"
+        painel.prompt = "Usar imagem"
+        painel.canChooseFiles = true
+        painel.canChooseDirectories = false
+        painel.allowsMultipleSelection = false
+        painel.allowedContentTypes = [.image]
+
+        guard painel.runModal() == .OK,
+              let url = painel.url,
+              url.startAccessingSecurityScopedResource()
+        else { return }
+        defer { url.stopAccessingSecurityScopedResource() }
+
+        try? AparenciaDasPastas.definirCapa(url, para: pasta)
+        capa = AparenciaDasPastas.capa(de: pasta)
+    }
 }

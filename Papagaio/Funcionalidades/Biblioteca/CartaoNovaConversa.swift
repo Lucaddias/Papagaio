@@ -106,10 +106,15 @@ struct CartaoNovaConversa: View {
         } isTargeted: { pairando in
             withAnimation(.snappy(duration: 0.16)) { recebendoArraste = pairando }
         }
-        // `maxHeight: .infinity` faz o cartão acompanhar a altura da linha da
-        // grade. Sem isso ele parava no conteúdo e ficava mais baixo que os
-        // cartões de conversa ao lado, que têm capa, selo e ficha.
-        .frame(maxWidth: .infinity, minHeight: 260, maxHeight: .infinity)
+        // A mesma altura dos cartões de conversa, e não `maxHeight: .infinity`:
+        // como este cartão é o mais alto por conteúdo próprio, deixá-lo esticar
+        // fazia a primeira fileira ficar mais alta que as de baixo sempre que
+        // os cartões vizinhos encolhiam.
+        .frame(
+            maxWidth: .infinity,
+            minHeight: CartaoDeConversa.alturaDoCartao,
+            maxHeight: CartaoDeConversa.alturaDoCartao
+        )
         .background(
             recebendoArraste
                 ? PapagaioTema.destaque.opacity(0.12)

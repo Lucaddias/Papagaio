@@ -1,0 +1,146 @@
+import PapagaioCore
+import SwiftUI
+
+/// Uma pasta apagada, no mesmo formato dos outros itens da lixeira.
+///
+/// A descrição insiste num ponto que o resto da tela pode sugerir errado: aqui
+/// não há arquivo nenhum guardado. Pasta é rótulo, as conversas continuam na
+/// biblioteca, e restaurar apenas recoloca o rótulo em quem o tinha.
+struct CartaoDePastaNaLixeira: View {
+    let item: PastaNaLixeira
+    /// As conversas que foram para a lixeira junto com a pasta, na ordem em
+    /// que estavam nela.
+    let conversas: [Arquivo]
+    let aoRestaurar: () -> Void
+    let aoRestaurarConversa: (Arquivo) -> Void
+    let aoApagarDefinitivamente: () -> Void
+
+    private var prazoDeExclusao: String {
+        guard let limite = Calendar.current.date(byAdding: .day, value: 30, to: item.apagadaEm) else {
+            return "Exclui em 30 dias"
+        }
+        let dias = Calendar.current.dateComponents([.day], from: Date(), to: limite).day ?? 0
+        if dias <= 0 { return "Exclui hoje" }
+        if dias == 1 { return "Exclui em 1 dia" }
+        return "Exclui em \(dias) dias"
+    }
+
+    private var quantidade: String {
+        item.conversas.count == 1 ? "1 conversa" : "\(item.conversas.count) conversas"
+    }
+
+    private var dataCurta: String {
+        item.apagadaEm
+            .formatted(.dateTime.day().month(.abbreviated))
+            .uppercased()
+            .replacingOccurrences(of: ".", with: "")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+            HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+                Label("PASTA", systemImage: "folder.fill")
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSobrePrimario)
+                    .padding(.horizontal, PapagaioTema.Espaco.medio)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: PapagaioTema.Espaco.largo) {
+                    Button(action: aoRestaurar) {
+                        Image(systemName: "arrow.uturn.backward.circle")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    .help("Restaurar pasta")
+                    .accessibilityLabel("Restaurar a pasta \(item.nome)")
+
+                    Button(role: .destructive, action: aoApagarDefinitivamente) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 18, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .help("Apagar definitivamente")
+                    .accessibilityLabel("Apagar definitivamente a pasta \(item.nome)")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text(item.nome)
+                    .font(.title.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
+                    .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(
+                    item.conversas.isEmpty
+                        ? "A pasta estava vazia. Restaure para tê-la de volta com a cor e a imagem que tinha."
+                        : "Restaure a pasta inteira, com a cor e a imagem que tinha, ou traga de volta só uma conversa."
+                )
+                .font(.body)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .lineSpacing(3)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // A lista existe para dar a escolha por arquivo. Sem ela, restaurar
+            // seria tudo ou nada — e quem apagou uma pasta de doze conversas
+            // muitas vezes quer só uma de volta.
+            if !conversas.isEmpty {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(conversas) { arquivo in
+                            HStack(spacing: PapagaioTema.Espaco.curto) {
+                                Text(arquivo.resumo?.titulo ?? arquivo.titulo)
+                                    .font(.callout)
+                                    .foregroundStyle(PapagaioTema.textoSecundario)
+                                    .lineLimit(1)
+
+                                Spacer(minLength: PapagaioTema.Espaco.curto)
+
+                                Button("Restaurar") { aoRestaurarConversa(arquivo) }
+                                    .buttonStyle(.plain)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                            }
+                            .padding(.vertical, PapagaioTema.Espaco.curto)
+
+                            if arquivo.id != conversas.last?.id {
+                                SeparadorPapagaio()
+                            }
+                        }
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: 120)
+            }
+
+            Spacer(minLength: 0)
+
+            SeparadorPapagaio()
+
+            HStack(spacing: PapagaioTema.Espaco.largo) {
+                Label(dataCurta, systemImage: "calendar")
+                Label(quantidade, systemImage: "doc.text")
+
+                Spacer(minLength: 8)
+
+                Text(prazoDeExclusao)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)
+        .cartaoPapagaio()
+        .accessibilityElement(children: .contain)
+    }
+}
