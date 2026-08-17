@@ -3,37 +3,22 @@ import SwiftUI
 struct MenuDeArquivoAberto: View {
     let bloqueioDeEdicao: Bool
     let bloqueioDeLixeira: Bool
-    let aoEditarImagem: () -> Void
+    let aoEditarAparencia: () -> Void
     let aoRenomear: () -> Void
-    let aoMoverParaPasta: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
-    let aoPersonalizar: () -> Void
     let aoMoverParaLixeira: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ItemDoMenuDeArquivo(simbolo: "pencil.and.outline", titulo: "Editar imagem", acao: aoEditarImagem)
+            ItemDoMenuDeArquivo(simbolo: "paintpalette", titulo: "Cor e imagem", acao: aoEditarAparencia)
             ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
-            ItemDoMenuDeArquivo(simbolo: "folder", titulo: "Mover para pasta", acao: aoMoverParaPasta)
             ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
             ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
-            // Favoritar sai daqui: a estrela no canto do card já faz isso, e
-            // repetir a ação no menu só alongava a lista.
-
-            SeparadorPapagaio()
-                .padding(.horizontal, PapagaioTema.Espaco.medio)
-                .padding(.vertical, PapagaioTema.Espaco.minimo)
-
-            // Separado das ações acima porque não age sobre esta conversa: as
-            // outras mexem neste arquivo, esta muda como toda a grade se
-            // apresenta. Juntas na mesma lista, pareceria que "Personalizar"
-            // personaliza só este cartão.
-            ItemDoMenuDeArquivo(
-                simbolo: "slider.horizontal.3",
-                titulo: "Personalizar cartões",
-                acao: aoPersonalizar
-            )
+            // Favoritar, mover para pasta e personalizar saem daqui: os dois
+            // primeiros são botões no rodapé do cartão e o último mora nas
+            // Configurações. Repetir a ação no menu só alonga a lista e faz a
+            // pessoa procurar em dois lugares o mesmo comando.
 
             SeparadorPapagaio()
                 .padding(.horizontal, PapagaioTema.Espaco.medio)

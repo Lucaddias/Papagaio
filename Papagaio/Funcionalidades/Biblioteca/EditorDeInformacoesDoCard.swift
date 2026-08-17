@@ -288,6 +288,53 @@ struct EditorDeInformacoesDoCard: View {
     }
 }
 
+/// O avatar clicável do formulário: troca ou remove a foto da pessoa.
+///
+/// Guardado pelo **nome**, então a foto escolhida aqui vale para todas as
+/// conversas com aquela pessoa — que é o que se espera de quem entrevista a
+/// mesma equipe várias vezes.
+struct BotaoDeFotoDaPessoa: View {
+    let nome: String
+
+    /// Força o redesenho depois de escolher: o avatar lê de um cache, e sem
+    /// esta mudança de estado a nova foto só apareceria ao reabrir a folha.
+    @State private var versao = 0
+
+    private var nomeLimpo: String {
+        nome.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        HStack(spacing: PapagaioTema.Espaco.curto) {
+            AvatarDePessoa(nome: nomeLimpo.isEmpty ? "?" : nomeLimpo, diametro: 42)
+                .id(versao)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Button(FotosDePessoas.url(de: nomeLimpo) == nil ? "Escolher…" : "Trocar…") {
+                    guard !nomeLimpo.isEmpty else { return }
+                    if FotosDePessoas.escolherImagem(para: nomeLimpo) { versao += 1 }
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                if FotosDePessoas.url(de: nomeLimpo) != nil {
+                    Button("Remover") {
+                        FotosDePessoas.remover(de: nomeLimpo)
+                        versao += 1
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(PapagaioTema.perigo)
+                }
+            }
+        }
+        // Sem nome não há onde guardar a foto — a chave é o próprio nome.
+        .opacity(nomeLimpo.isEmpty ? 0.45 : 1)
+        .help(nomeLimpo.isEmpty ? "Escreva o nome primeiro" : "Foto de \(nomeLimpo)")
+    }
+}
+
 struct PessoasDaFichaDaEntrevista: View {
     let titulo: String
     @Binding var nome: String
@@ -332,6 +379,14 @@ struct PessoasDaFichaDaEntrevista: View {
 
     private func camposDaPessoa(_ indice: Int) -> some View {
         Group {
+            // A foto vive ao lado do nome, e não numa tela à parte: é aqui que
+            // a pessoa está pensando naquele participante. O avatar já mostra
+            // as iniciais, então o botão nunca é um vazio — é uma troca.
+            campo("Foto") {
+                BotaoDeFotoDaPessoa(nome: valorDaLinha(nome, indice: indice))
+            }
+            .fixedSize()
+
             campo("Nome") {
                 TextField(placeholderNome, text: bindingLinha($nome, indice: indice))
                     .textFieldStyle(.plain)
