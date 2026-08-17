@@ -28,7 +28,7 @@ public enum ErroLlama: Error, CustomStringConvertible {
 /// Envolve um `llama_context` num ator.
 ///
 /// **`llama_context` não é thread-safe** — mesmo cuidado do `ContextoWhisper`.
-/// O modelo fica residente entre resumos: são ~10,7 GB, e recarregar leva
+/// O modelo fica residente entre resumos: são ~6,2 GB, e recarregar leva
 /// 10–30 s.
 public actor ContextoLlama {
     /// Caixa em volta dos ponteiros C, pelo mesmo motivo do `ContextoWhisper`:
@@ -46,7 +46,7 @@ public actor ContextoLlama {
     private let caminhoDoModelo: URL
     private let janela: UInt32
 
-    /// Janela do Qwen2.5-14B. Passe único é o padrão até ~28k de entrada,
+    /// Janela operacional de 32k do Qwen3.5-9B. Passe único é o padrão até ~28k de entrada,
     /// deixando margem para a saída dentro dos 32k.
     public static let janelaPadrao: UInt32 = 32_768
     public static let tetoDeEntrada = 28_000

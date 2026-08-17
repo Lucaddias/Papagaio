@@ -3,7 +3,7 @@ import Foundation
 /// Uma pasta de modelos escolhida pelo usuário, lembrada entre execuções.
 ///
 /// Existe por um motivo prático: quem já usa `llama.cpp` ou `whisper.cpp` tem
-/// esses mesmos GGUF no disco. Obrigar um segundo download de 13,6 GB para
+/// esses mesmos GGUF no disco. Obrigar um segundo download de modelos grandes para
 /// colocar cópias idênticas dentro do container é desperdício de banda e de
 /// disco.
 ///

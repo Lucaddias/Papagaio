@@ -15,40 +15,18 @@ import Foundation
 /// separados por pausas) —
 /// - palavra de duração zero (artefato do Whisper) com seu instante dentro de
 ///   um único segmento → o falante dele (o ponto, não o intervalo, decide);
-/// - palavra num buraco pequeno (≤ `ponteMaxima` do segmento contíguo mais
-///   próximo) → o falante do segmento mais próximo, quando **todos os
-///   segmentos por perto são do mesmo falante** (o turno foi dividido em
-///   pedaços pelo diarizador e a costura é segura);
-/// - buraco **entre falantes diferentes** é fronteira de turno, não costura:
-///   só é atribuído quando o segmento mais próximo está a ≤ `ponteCrossFalante`
-///   (reação à resposta começando logo após a pergunta); dois segmentos a
-///   distâncias parecidas (segunda ≤ 125% da primeira) seguem sem falante.
-///
-/// Por fim, o overlap germinal:
-/// - palavra cujo segmento vencedor cobre **menos da metade** da sua duração
-///   fica sem falante — a franja é imprecisão de timestamp do Whisper ou de
-///   fronteira do diarizador, e chutar ali é inventar atribuição.
-///
-/// Tudo que aqui fica sem falante alimenta a resolução contextual (ver
-/// `ResolvedorDeFalantes`): a marca de "não confio nesta fronteira" é o que
-/// permite ao modelo de linguagem decidir pelo contexto em vez de errar.
+/// - palavra num buraco pequeno (≤ 2s do segmento contíguo mais próximo) →
+///   o falante do segmento mais próximo; dois segmentos a distâncias
+///   parecidas (segunda ≤ 125% da primeira) seguem sem falante quando são
+///   falantes diferentes.
 ///
 /// Não altera nada do trecho além de `Palavra.falanteAcustico`.
 public enum AlinhamentoDeFalantes {
-    /// Maior buraco entre segmentos que a palavra atravessa por proximidade,
-    /// quando todos os segmentos por perto são do **mesmo falante**. Abaixo
-    /// disso a fala é continuação; acima é pausa real. Medido nos áudios
-    /// reais: a mediana dos buracos que o Whisper transcreve está em ~1,3s, e
-    /// 91% deles ficam em ≤ 2s.
+    /// Maior buraco entre segmentos que a palavra atravessa por proximidade.
+    /// Abaixo disso a fala é continuação; acima é pausa real. Medido nos
+    /// áudios reais: a mediana dos buracos que o Whisper transcreve está em
+    /// ~1,3s, e 91% deles ficam em ≤ 2s.
     static let ponteMaxima: TimeInterval = 2.0
-
-    /// Maior buraco entre segmentos de **falantes diferentes** que a palavra
-    /// atravessa por proximidade. Fronteira de turno: a resposta começa logo
-    /// depois da pergunta, mas o diarizador começa o segmento dela com atraso
-    /// — costurar com a ponte de 2s colaria o começo da fala nova na cauda da
-    /// fala anterior. O que sobra vira "sem falante" e segue para a resolução
-    /// contextual (`ResolvedorDeFalantes`).
-    static let ponteCrossFalante: TimeInterval = 0.5
 
     /// Segundos de sobreposição entre a palavra e o segmento. Não negativo.
     static func overlap(_ palavra: Palavra, _ segmento: SegmentoDeFalante) -> TimeInterval {
@@ -93,13 +71,6 @@ public enum AlinhamentoDeFalantes {
                segundo.segmento.falanteId != primeiro.segmento.falanteId {
                 return palavra
             }
-            // Overlap germinal: o vencedor cobre menos da metade da palavra —
-            // a franja é imprecisão de fronteira, não evidência. Fica sem
-            // falante para a resolução contextual decidir.
-            let duracao = palavra.end - palavra.start
-            if duracao > 0, primeiro.overlap < duracao / 2 {
-                return palavra
-            }
             return comFalante(palavra, primeiro.segmento.falanteId)
         }
 
@@ -115,11 +86,10 @@ public enum AlinhamentoDeFalantes {
             return palavra
         }
 
-        // Buraco: costura até o segmento contíguo mais próximo, se pequeno —
-        // mas o tamanho da ponte depende de quem está dos lados. Todos do
-        // MESMO falante é continuação de turno (ponte de 2s); falantes
-        // diferentes é fronteira de turno: só costura perto (< 1s), e
-        // distâncias parecidas (2º ≤ 125% do 1º) é empate — nada de chute.
+        // Buraco: costura até o segmento contíguo mais próximo, se pequeno.
+        // Distâncias parecidas (2º ≤ 125% do 1º) é empate do mesmo tipo do
+        // overlap — nada de chute quando os dois lados são falantes diferentes.
+        // Com o mesmo falante dos dois lados o empate não é ambíguo: costura.
         let distancias = segmentos
             .map { (segmento: $0, distancia: distancia(palavra, $0)) }
             .sorted { $0.distancia < $1.distancia }
@@ -128,13 +98,9 @@ public enum AlinhamentoDeFalantes {
             return palavra
         }
         if let segundo = distancias.dropFirst().first,
+           segundo.distancia <= maisProximo.distancia * 1.25,
            segundo.segmento.falanteId != maisProximo.segmento.falanteId {
-            guard maisProximo.distancia <= ponteCrossFalante else {
-                return palavra
-            }
-            if segundo.distancia <= maisProximo.distancia * 1.25 {
-                return palavra
-            }
+            return palavra
         }
         return comFalante(palavra, maisProximo.segmento.falanteId)
     }

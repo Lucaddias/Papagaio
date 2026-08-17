@@ -134,7 +134,7 @@ func pesosDeclarados() {
         #expect(peso.url.scheme == "https")
     }
     #expect(Pesos.whisperLargeV3.bytes == 3_095_033_483)
-    #expect(Pesos.qwen14B.bytes == 10_508_873_856)
+    #expect(Pesos.qwen35_9B.bytes == 6_169_341_984)
 }
 
 // MARK: - Ciclo de vida

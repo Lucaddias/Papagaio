@@ -163,64 +163,6 @@ func alinhamentoPonteComDuracaoZero() {
     #expect(atribuidas[0].falanteAcustico == "S2")
 }
 
-@Test("Buraco entre falantes diferentes longe demais é fronteira de turno, sem costura")
-func alinhamentoPonteEntreFalantesLongaFicaDesconhecida() {
-    // A resposta começa ~1s depois da pergunta, mas o diarizador só abre o
-    // segmento de S2 em 14s. A palavra 11.5–12.0 está a 1,5s do fim de S1 e a
-    // 2s do início de S2: costurar com a ponte de 2s colaria o começo da
-    // resposta na cauda da pergunta — o bug reportado.
-    let palavras = [palavra("sim", 11.5, 12.0)]
-    let segmentos = [
-        SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 10),
-        SegmentoDeFalante(falanteId: "S2", inicio: 14, fim: 20),
-    ]
-
-    let atribuidas = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)
-    #expect(atribuidas[0].falanteAcustico == nil)
-}
-
-@Test("Ponte curta entre falantes diferentes segue o segmento quase colado")
-func alinhamentoPonteEntreFalantesCurtaCostura() {
-    // Resposta começa 0,2s depois do fim da pergunta e 0,1s antes do
-    // segmento dela: o mais próximo é S2, sem empate que justifique chute.
-    let palavras = [palavra("sim", 10.4, 10.6)]
-    let segmentos = [
-        SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 10.2),
-        SegmentoDeFalante(falanteId: "S2", inicio: 10.7, fim: 14),
-    ]
-
-    let atribuidas = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)
-    #expect(atribuidas[0].falanteAcustico == "S2")
-}
-
-@Test("Overlap germinal (menos da metade da palavra) fica desconhecido")
-func alinhamentoOverlapGerminalFicaDesconhecido() {
-    // Palavra de 0,1s; S1 cobre só 0,04s (40%): a franja é imprecisão de
-    // timestamp ou de fronteira, não evidência. Fica sem falante para a
-    // resolução contextual decidir.
-    let palavras = [palavra("é", 1.96, 2.06)]
-    let segmentos = [
-        SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 2),
-    ]
-
-    let atribuidas = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)
-    #expect(atribuidas[0].falanteAcustico == nil)
-}
-
-@Test("Vencedor cobrindo mais da metade da palavra atribui mesmo na fronteira")
-func alinhamentoVencedorComMaisDaMetadeAtribui() {
-    // Franja de 0,2s no segmento anterior não incomoda: 0,8s dentro de S2 é
-    // evidência clara.
-    let palavras = [palavra("resposta", 1.8, 2.8)]
-    let segmentos = [
-        SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 2),
-        SegmentoDeFalante(falanteId: "S2", inicio: 2, fim: 4),
-    ]
-
-    let atribuidas = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)
-    #expect(atribuidas[0].falanteAcustico == "S2")
-}
-
 @Test("Sem segmentos, nenhuma palavra muda")
 func alinhamentoSemSegmentosNaoMudaNada() {
     let palavras = [palavra("oi", 0, 1)]
