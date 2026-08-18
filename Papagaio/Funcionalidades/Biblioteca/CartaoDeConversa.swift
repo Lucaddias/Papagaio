@@ -194,10 +194,13 @@ struct CartaoDeConversa: View {
             VStack(alignment: .leading, spacing: 0) {
                 faixaDoTopo
 
-                // Espaçamento largo entre as linhas: o corpo tem altura de
+                // Espaçamento elástico entre as linhas: o corpo tem altura de
                 // sobra e três dados só; apertados no topo, deixavam metade do
                 // cartão em branco e a leitura ficava concentrada num canto.
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                // Com `spacing: 0` e um `vao` entre as linhas, a sobra vai para
+                // os intervalos — as linhas se espalham pelo corpo em vez de se
+                // empilharem no alto dele.
+                VStack(alignment: .leading, spacing: 0) {
                     // O selo só aparece quando há algo a dizer. "Transcrito e
                     // resumido" é o estado de repouso de toda conversa madura:
                     // estaria em quase todos os cartões, o tempo todo, gastando
@@ -209,6 +212,7 @@ struct CartaoDeConversa: View {
                             simbolo: estado.simbolo,
                             estilo: estado.estilo
                         )
+                        vao
                     }
 
                     if let progresso {
@@ -216,6 +220,7 @@ struct CartaoDeConversa: View {
                             inicio: progresso.inicio,
                             estimativa: progresso.estimativa
                         )
+                        vao
                     }
 
                     // Uma linha por dado, na ordem em que se pergunta: quando
@@ -224,17 +229,28 @@ struct CartaoDeConversa: View {
                     // onde quebravam — e o cartão tem altura de sobra.
                     if campos.contains(.data) {
                         linhaDoCorpo("calendar", DataDigitada.textoComHora(de: arquivo.criadoEm))
+                        vao
                     }
 
                     if campos.contains(.duracao) {
                         linhaDoCorpo("clock", arquivo.duracao.comoDuracaoPorExtenso)
+                        vao
                     }
 
                     if campos.contains(.participantes) {
                         botaoDeParticipantes
                     }
 
+                    // Uma folga fixa no fim, e não um `Spacer` elástico.
+                    //
+                    // O elástico engolia toda a sobra de altura e empurrava as
+                    // três linhas para o topo: elas ficavam coladas umas nas
+                    // outras com um vazio grande embaixo. Agora a sobra é
+                    // dividida entre as linhas pelos `vao`, e aqui fica só o
+                    // respiro que o rótulo dos participantes precisa para
+                    // aparecer sob os rostos sem ser cortado.
                     Spacer(minLength: 0)
+                        .frame(height: PapagaioTema.Espaco.medio)
                 }
                 .padding(PapagaioTema.Espaco.largo)
                 // A barra de atalhos é uma camada sobre o rodapé; sem esta
@@ -455,6 +471,17 @@ struct CartaoDeConversa: View {
         } else if campos.contains(.lacunas) && !emProcessamento {
             linhaDoCorpo("person.badge.plus", "Participantes não informados")
         }
+    }
+
+    /// O intervalo entre duas linhas do corpo.
+    ///
+    /// Tem um piso — as linhas nunca encostam — e cresce até um teto quando há
+    /// altura sobrando. O teto existe porque sem ele, num cartão com um campo
+    /// só ligado, o intervalo viraria metade do cartão e a linha solitária
+    /// flutuaria no meio do nada.
+    private var vao: some View {
+        Spacer(minLength: PapagaioTema.Espaco.medio)
+            .frame(maxHeight: 34)
     }
 
     /// O cartão está ocupado: fila, transcrição ou resumo em andamento.
@@ -754,6 +781,7 @@ struct CartaoDeConversa: View {
                 bloqueioDeLixeira: emOperacaoDeLixeira,
                 aoEditarAparencia: executarMenu { editandoAparencia = true },
                 aoRenomear: executarMenu(abrirEditorDeInformacoes),
+                aoBaixar: executarMenu(baixar),
                 aoCompartilhar: executarMenu(compartilhar),
                 aoDuplicar: executarMenu(aoDuplicar),
                 aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
@@ -951,6 +979,38 @@ struct CartaoDeConversa: View {
         metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
     }
 
+    /// Salva o dossiê da conversa numa pasta escolhida pela pessoa.
+    ///
+    /// O mesmo pacote do compartilhamento — documento e áudio juntos —, mas
+    /// indo para o disco em vez de para o painel do sistema. São coisas
+    /// diferentes: compartilhar é mandar para alguém, baixar é ficar com uma
+    /// cópia, e o menu da pasta já oferecia as duas.
+    private func baixar() {
+        #if os(macOS)
+        guard let pacote = try? DossieDaConversa.pacoteComAudio(
+            arquivo: arquivo,
+            audioPrincipal: urlDeAudio
+        ) else { return }
+
+        let painel = NSOpenPanel()
+        painel.title = "Escolha onde salvar \(titulo)"
+        painel.prompt = "Salvar aqui"
+        painel.canChooseFiles = false
+        painel.canChooseDirectories = true
+        painel.canCreateDirectories = true
+
+        guard painel.runModal() == .OK,
+              let destino = painel.url,
+              destino.startAccessingSecurityScopedResource()
+        else { return }
+        defer { destino.stopAccessingSecurityScopedResource() }
+
+        let alvo = destino.appendingPathComponent(pacote.lastPathComponent)
+        try? FileManager.default.removeItem(at: alvo)
+        try? FileManager.default.copyItem(at: pacote, to: alvo)
+        #endif
+    }
+
     private func compartilhar() {
         #if os(macOS)
         // Uma ação só: documento e áudio juntos, e no mesmo painel a opção de
@@ -1048,7 +1108,9 @@ struct PilhaDeParticipantes: View {
     private func legenda(_ nome: String) -> some View {
         Text(nome)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(PapagaioTema.texto)
+            // O nome na cor do próprio rosto: é o que amarra o rótulo ao
+            // círculo de onde ele saiu quando há quatro deles lado a lado.
+            .foregroundStyle(AvatarDePessoa.corDeAcento(de: nome))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: true)
             .padding(.horizontal, PapagaioTema.Espaco.curto)

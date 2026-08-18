@@ -15,9 +15,32 @@ struct AvatarDePessoa: View {
     /// Cor derivada do nome, e não aleatória: a mesma pessoa recebe sempre o
     /// mesmo tom, em todas as conversas, e isso é metade do reconhecimento.
     private var cor: Color {
+        Self.corDoNome(nome)
+    }
+
+    static func corDoNome(_ nome: String) -> Color {
         let paleta = AparenciaDasPastas.Cor.allCases.filter { $0 != .padrao }
         let soma = nome.unicodeScalars.reduce(0) { $0 + Int($1.value) }
         return paleta[soma % paleta.count].cor
+    }
+
+    /// A cor que representa esta pessoa fora do círculo — hoje, o nome que
+    /// aparece ao passar o mouse.
+    ///
+    /// Com foto, a cor sai da própria foto, exatamente como a faixa do cartão
+    /// resolve a cor de uma conversa com capa: quem tem rosto não tem tom
+    /// sorteado por nome, e um nome pintado de um verde que não aparece em
+    /// lugar nenhum do avatar não liga uma coisa à outra.
+    ///
+    /// Sempre passando por `acentoSobreSuperficie`, porque este nome é lido
+    /// sobre o cartão branco e não sobre o círculo.
+    @MainActor
+    static func corDeAcento(de nome: String) -> Color {
+        if let foto = FotosDePessoas.imagem(de: nome),
+           let dominante = CorDominanteDeImagem.cor(de: foto, chave: "pessoa." + FotosDePessoas.chave(de: nome)) {
+            return dominante.acentoSobreSuperficie
+        }
+        return corDoNome(nome).acentoSobreSuperficie
     }
 
     private var foto: NSImage? { FotosDePessoas.imagem(de: nome) }

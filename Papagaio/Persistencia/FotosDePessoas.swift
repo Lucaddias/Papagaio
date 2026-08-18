@@ -63,6 +63,7 @@ enum FotosDePessoas {
         UserDefaults.standard.set(dados, forKey: prefixo + chave(de: nome))
         urlsResolvidas[prefixo + chave(de: nome)] = nil
         decodificadas.removeObject(forKey: chave(de: nome) as NSString)
+        CorDominanteDeImagem.esquecer("pessoa." + chave(de: nome))
     }
 
     @MainActor
@@ -70,6 +71,7 @@ enum FotosDePessoas {
         UserDefaults.standard.removeObject(forKey: prefixo + chave(de: nome))
         urlsResolvidas[prefixo + chave(de: nome)] = nil
         decodificadas.removeObject(forKey: chave(de: nome) as NSString)
+        CorDominanteDeImagem.esquecer("pessoa." + chave(de: nome))
     }
 
     /// Imagem pronta para desenhar, decodificada no máximo uma vez.

@@ -48,86 +48,92 @@ struct BibliotecaHomeView: View {
             // Filtros e atalhos na mesma linha: são a mesma decisão — qual
             // recorte da biblioteca estou vendo. Separados, "Recentes" e
             // "Favoritos" pareciam ações do título, e não filtros.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: PapagaioTema.Espaco.largo) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual
-                    )
+            // Uma linha só, e não um `ViewThatFits` com três arranjos.
+            //
+            // O `ViewThatFits` monta **todos** os candidatos para medi-los e
+            // descarta os que não couberem. Os três traziam um `FiltroDeConversas`
+            // próprio, e os três posicionavam esse filtro no mesmo canto — o
+            // superior esquerdo, que é justamente onde fica "Todas". Bastava um
+            // candidato descartado continuar recebendo o clique para a pastilha
+            // da esquerda parar de responder enquanto a da direita, mais para
+            // dentro da linha, seguia funcionando. Era exatamente o sintoma.
+            //
+            // Com uma instância só não existe a quem confundir. As pastilhas são
+            // pequenas e o `Spacer` cede primeiro, então a linha aguenta janela
+            // estreita sem precisar de arranjo alternativo.
+            HStack(spacing: PapagaioTema.Espaco.largo) {
+                FiltroDeConversas(
+                    selecionado: $filtroSelecionado,
+                    pastaSelecionada: $pastaSelecionada,
+                    atalhoSelecionado: $atalhoSelecionado,
+                    aoLimparAtalhoVisual: limparAtalhoVisual
+                )
 
+                Spacer(minLength: PapagaioTema.Espaco.curto)
 
-                    Spacer(minLength: PapagaioTema.Espaco.medio)
-
-                    atalhosDaBiblioteca
-                }
-
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual,
-                        compacto: true
-                    )
-
-
-                    Spacer(minLength: PapagaioTema.Espaco.curto)
-
-                    atalhosDaBibliotecaCompactos
-                }
-
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual
-                    )
-
-
-                    atalhosDaBiblioteca
-                }
+                atalhosDaBiblioteca
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Acima do que vem depois — inclusive da grade de pastas, que é
+            // irmã desta linha dentro do mesmo `if`.
+            //
+            // O `.zIndex(1)` já existiu, mas no `filtrosEPastas` inteiro, do
+            // lado de fora. Um `@ViewBuilder` com duas visões em sequência —
+            // esta `HStack` e o `if filtroSelecionado == .pastas` logo abaixo
+            // — vira uma só `TupleView` quando entra na `VStack` de fora, e um
+            // modificador aplicado a ela se distribui igual para as duas
+            // partes. Pastilhas e grade acabavam com o mesmo `zIndex`, e numa
+            // `VStack` quem desenha por cima em caso de empate é o irmão
+            // seguinte — a grade —, então bastava ela invadir a borda de baixo
+            // das pastilhas (uma sombra, um cartão com moldura maior que o
+            // conteúdo visível) para roubar o clique bem ali. O `zIndex` tem
+            // que estar aqui dentro, só nesta linha, pra valer só para ela.
+            .zIndex(1)
 
-            if filtroSelecionado == .pastas {
-                if let pastaAberta = pastaSelecionada {
-                    CabecalhoDaPastaAberta(
-                        nome: pastaAberta,
-                        // Contado direto, e não pela lista de pastas: com o
-                        // atalho Favoritos ativo aquela lista está recortada, e
-                        // uma pasta aberta que não é favorita apareceria como
-                        // "0 conversas".
-                        quantidade: biblioteca?.arquivos.count {
-                            PreferenciasVisuaisDoArquivo.pasta($0.id) == pastaAberta
-                        } ?? 0
-                    ) {
-                        withAnimation(.snappy(duration: 0.18)) {
-                            pastaSelecionada = nil
-                        }
+            // A pasta aberta manda no cabeçalho, não a aba.
+            //
+            // Uma pasta também se abre pelos resultados de busca em "Todas" —
+            // é a grade de "Pastas" logo abaixo, quando o termo casa com
+            // alguma. Prender este cabeçalho a `filtroSelecionado == .pastas`
+            // deixava quem entrou por ali sem nome de pasta, sem contagem e
+            // sem botão de voltar: a única saída era lembrar de clicar em
+            // "Todas" de novo. `pastaSelecionada` já é a mesma verdade nos
+            // dois casos — é ela quem deve decidir se o cabeçalho aparece.
+            if let pastaAberta = pastaSelecionada {
+                CabecalhoDaPastaAberta(
+                    nome: pastaAberta,
+                    // Contado direto, e não pela lista de pastas: com o
+                    // atalho Favoritos ativo aquela lista está recortada, e
+                    // uma pasta aberta que não é favorita apareceria como
+                    // "0 conversas".
+                    quantidade: biblioteca?.arquivos.count {
+                        PreferenciasVisuaisDoArquivo.pasta($0.id) == pastaAberta
+                    } ?? 0
+                ) {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        pastaSelecionada = nil
                     }
-                } else {
-                    GradeDePastas(
-                        pastas: informacoesDasPastas,
-                        selecionada: $pastaSelecionada,
-                        aoCriarPasta: abrirCriacaoDePasta,
-                        aoApagarPasta: apagarPasta,
-                        aoRenomearPasta: { antigo, novo in
-                            withAnimation(.snappy(duration: 0.2)) {
-                                PreferenciasVisuaisDoArquivo.renomearPasta(antigo, para: novo)
-                                if pastaSelecionada == antigo {
-                                    pastaSelecionada = novo.trimmingCharacters(in: .whitespacesAndNewlines)
-                                }
-                                atualizarPreferenciasVisuais()
-                            }
-                        },
-                        aoBaixarPasta: baixarPasta,
-                        aoCompartilharPasta: compartilharPasta,
-                        apenasFavoritas: atalhoSelecionado == .favoritos
-                    )
-                    .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
                 }
+            } else if filtroSelecionado == .pastas {
+                GradeDePastas(
+                    pastas: informacoesDasPastas,
+                    selecionada: $pastaSelecionada,
+                    aoCriarPasta: abrirCriacaoDePasta,
+                    aoApagarPasta: apagarPasta,
+                    aoRenomearPasta: { antigo, novo in
+                        withAnimation(.snappy(duration: 0.2)) {
+                            PreferenciasVisuaisDoArquivo.renomearPasta(antigo, para: novo)
+                            if pastaSelecionada == antigo {
+                                pastaSelecionada = novo.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                            atualizarPreferenciasVisuais()
+                        }
+                    },
+                    aoBaixarPasta: baixarPasta,
+                    aoCompartilharPasta: compartilharPasta,
+                    apenasFavoritas: atalhoSelecionado == .favoritos
+                )
+                .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
             }
         }
     }
@@ -173,38 +179,6 @@ struct BibliotecaHomeView: View {
                     atalhoVisualSelecionado = .favoritos
                 }
             }
-        )
-    }
-
-    private var atalhosDaBibliotecaCompactos: some View {
-        AtalhosDaBiblioteca(
-            selecionado: $atalhoVisualSelecionado,
-            aoSelecionarRecentes: {
-                withAnimation(.snappy(duration: 0.18)) {
-                    // Mesma regra do Favoritos: em Pastas, o atalho reordena as
-                    // pastas em vez de trocar o que está sendo mostrado.
-                    if filtroSelecionado != .pastas {
-                        filtroSelecionado = .todas
-                        pastaSelecionada = nil
-                    }
-                    atalhoSelecionado = .recentes
-                    atalhoVisualSelecionado = .recentes
-                }
-            },
-            aoSelecionarFavoritos: {
-                withAnimation(.snappy(duration: 0.18)) {
-                    // Em Pastas, "Favoritos" filtra pastas favoritas; forçar
-                    // .todas jogava a pessoa de volta para as conversas e
-                    // desfazia o recorte que ela tinha acabado de escolher.
-                    if filtroSelecionado != .pastas {
-                        filtroSelecionado = .todas
-                        pastaSelecionada = nil
-                    }
-                    atalhoSelecionado = .favoritos
-                    atalhoVisualSelecionado = .favoritos
-                }
-            },
-            compacto: true
         )
     }
 
@@ -565,19 +539,16 @@ struct BibliotecaHomeView: View {
             }
 
             filtrosEPastas
-                // Acima de tudo o que vem depois na pilha.
-                //
-                // Numa `VStack` o irmão seguinte desenha por cima, e basta uma
-                // sombra ou uma folga negativa da grade para a fileira de
-                // filtros ficar coberta na borda — que é como um botão passa a
-                // só responder "numa área específica".
-                .zIndex(1)
 
             // Buscando em "Todas", as pastas que casam com o termo aparecem
             // antes das conversas. Sem isto, procurar por um projeto só
             // encontrava as conversas dentro dele — e uma pasta recém-criada,
             // ainda vazia, não aparecia em lugar nenhum.
-            if filtroSelecionado != .pastas, !pastasEncontradas.isEmpty {
+            //
+            // `pastaSelecionada == nil`: com uma pasta já aberta esta grade de
+            // resultados perdia sentido — ela reaparecia por cima da conversa
+            // filtrada, com o mesmo termo ainda casando o nome da pasta aberta.
+            if pastaSelecionada == nil, filtroSelecionado != .pastas, !pastasEncontradas.isEmpty {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
                     Text("Pastas")
                         .font(.caption.weight(.bold))
@@ -714,6 +685,18 @@ struct BibliotecaHomeView: View {
         .simultaneousGesture(TapGesture().onEnded {
             fecharMenu()
         })
+        // Apagar a busca devolve a tela inicial inteira, pasta aberta
+        // inclusa. Sem isto, quem entrou numa pasta a partir de um resultado
+        // de busca via campo de texto continuava "dentro" dela depois de
+        // limpar o termo — via de volta que só o botão do cabeçalho oferecia.
+        .onChange(of: consulta) { _, novoValor in
+            guard novoValor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  pastaSelecionada != nil
+            else { return }
+            withAnimation(.snappy(duration: 0.18)) {
+                pastaSelecionada = nil
+            }
+        }
         .confirmationDialog(
             "Apagar definitivamente?",
             isPresented: apresentandoConfirmacaoDeExclusao,
