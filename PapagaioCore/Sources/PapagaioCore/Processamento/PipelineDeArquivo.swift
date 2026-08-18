@@ -15,6 +15,7 @@ public struct PipelineDeArquivo: Sendable {
     public enum Fase: Sendable, Equatable {
         case transcrevendo
         case diarizando
+        case resolvendoFalantes
         case resumindo
         case salvando
 
@@ -22,6 +23,7 @@ public struct PipelineDeArquivo: Sendable {
             switch self {
             case .transcrevendo: "transcrevendo…"
             case .diarizando: "distinguindo falantes…"
+            case .resolvendoFalantes: "resolvendo falantes pelo contexto…"
             case .resumindo: "resumindo…"
             case .salvando: "salvando…"
             }
@@ -33,10 +35,18 @@ public struct PipelineDeArquivo: Sendable {
     /// Diariza **um canal** de áudio e devolve quem falou quando.
     public typealias Diarizar = @Sendable (URL) async throws -> [SegmentoDeFalante]
 
+    /// Resolve pelo contexto as falas que a diarização deixou sem falante.
+    ///
+    /// É o passo que carrega o modelo de linguagem (o mesmo do resumo): recebe
+    /// o arquivo com as palavras marcadas e devolve o arquivo com os rótulos
+    /// que o modelo conseguiu decidir — `nil` para pular.
+    public typealias ResolverFalantes = @Sendable (Arquivo) async throws -> Arquivo
+
     private let armazenamento: Armazenamento
     private let transcrever: Transcrever
     private let resumir: Resumir
     private let diarizar: Diarizar?
+    private let resolverFalantes: ResolverFalantes?
     private let repositorio: any ArquivoRepository
     private let idTranscricao: String
     private let idResumo: String
@@ -48,7 +58,8 @@ public struct PipelineDeArquivo: Sendable {
         idResumo: String,
         transcrever: @escaping Transcrever,
         resumir: @escaping Resumir,
-        diarizar: Diarizar? = nil
+        diarizar: Diarizar? = nil,
+        resolverFalantes: ResolverFalantes? = nil
     ) {
         self.armazenamento = armazenamento
         self.repositorio = repositorio
@@ -57,6 +68,7 @@ public struct PipelineDeArquivo: Sendable {
         self.transcrever = transcrever
         self.resumir = resumir
         self.diarizar = diarizar
+        self.resolverFalantes = resolverFalantes
     }
 
     /// Processa e salva. Devolve o `Arquivo` atualizado.
@@ -93,6 +105,17 @@ public struct PipelineDeArquivo: Sendable {
         aoProgredir(.diarizando)
         atualizado = await aplicarDiarizacao(atualizado)
 
+        // Resolução contextual das falas que ficaram sem falante. Carrega o
+        // Qwen — o mesmo do resumo; a closure é do app (via MotoresLocais) e
+        // mantém o contexto residente para a fase de resumo reusar.
+        // Decorativa como a diarização: uma falha aqui não joga fora a
+        // transcrição que já deu certo — as falas ficam "Voz desconhecida".
+        if let resolverFalantes {
+            try Task.checkCancellation()
+            aoProgredir(.resolvendoFalantes)
+            atualizado = (try? await resolverFalantes(atualizado)) ?? atualizado
+        }
+
         aoProgredir(.salvando)
         try await repositorio.salvar(atualizado)
 
@@ -119,9 +142,16 @@ public struct PipelineDeArquivo: Sendable {
     /// Nunca lança: mesma filosofia da diarização decorativa do `processar`.
     /// Sem modelos, sem fala ou sem palavras com timestamp, o arquivo volta
     /// como estava.
+    ///
+    /// A costura de vozes iguais entra sempre (sem custo). A resolução pelo
+    /// contexto (Qwen) entra quando a closure `resolverFalantes` foi provida —
+    /// é o caminho dos arquivos antigos no app: só então as falas entre
+    /// vozes diferentes ganham falante.
     @discardableResult
     public func diarizarExistente(_ arquivo: Arquivo) async -> Arquivo {
-        await aplicarDiarizacao(arquivo)
+        let diarizado = await aplicarDiarizacao(arquivo)
+        guard let resolverFalantes else { return diarizado }
+        return (try? await resolverFalantes(diarizado)) ?? diarizado
     }
 
     // MARK: - Escolha do insumo
@@ -211,7 +241,7 @@ public struct PipelineDeArquivo: Sendable {
                 AlinhamentoDeFalantes.atribuir(palavras: trecho.palavras, a: segmentos)
             )
         }
-        return Arquivo(
+        let diarizado = Arquivo(
             id: arquivo.id,
             titulo: arquivo.titulo,
             criadoEm: arquivo.criadoEm,
@@ -225,6 +255,13 @@ public struct PipelineDeArquivo: Sendable {
             engineResumo: arquivo.engineResumo,
             apagadoEm: arquivo.apagadoEm
         )
+        // Costura de vozes iguais: fala duvidosa entre dois pedaços da MESMA
+        // voz recebe o rótulo dela sem custo de modelo — é a leitura acústica
+        // mais provável, e sem ela o "Voz desconhecida" aparecia entre dois
+        // trechos da mesma voz. Sempre, em qualquer caminho: quem ficar entre
+        // falantes diferentes segue para a resolução contextual (Qwen), que é
+        // opcional e mora na closure `resolverFalantes`.
+        return ResolvedorDeFalantes.costurarVozesIguais(diarizado)
     }
 
     /// Os caminhos dos canais separados com conteúdo, na convenção nova

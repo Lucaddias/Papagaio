@@ -15,7 +15,7 @@ Por quê:
 1. **`git lfs pull`** — os frameworks em `PapagaioCore/Frameworks/` (whisper, llama, onnxruntime, ~1 GB) são versionados via Git LFS. Sem este passo, cada `.xcframework` chega como um ponteiro de texto de 129 bytes, e o Xcode falha com `"Failed to decode XCFramework Info.plist"`.
 2. **`bootstrap-runtimes.sh`** — baixa o modelo do Silero VAD (2,3 MB), que fica fora do git (ver `.gitignore`). Sem ele, a resolução de pacotes falha com `"The file 'Resources' couldn't be opened"`.
 
-Depois disso, abra `Papagaio.xcworkspace` normalmente.
+Depois disso, abra `Loro.xcworkspace` normalmente.
 
 ## Rodando os testes
 

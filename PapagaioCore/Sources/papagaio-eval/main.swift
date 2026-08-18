@@ -20,6 +20,9 @@ func uso() {
     USO:
       papagaio-eval contratos    imprime os contratos disponíveis
       papagaio-eval run          harness de medição — chega no Passo 6
+      papagaio-eval resolver     diagnóstico da atribuição de falantes:
+                                <audio> (ou --fixture <json>), --modelos <dir>,
+                                --pasta <dir de diarização>, --sem-modelo
 
     Nesta fase o binário só confirma que PapagaioCore linka fora do app.
     """)
@@ -210,6 +213,49 @@ case "diarizar":
         print(String(format: "  [%7.2f → %7.2f · %5.2fs] %@",
                      s.inicio, s.fim, s.fim - s.inicio, s.falanteId))
     }
+
+case "resolver":
+    var opcoes = DiagnosticoDeResolucao.Opcoes(
+        audio: nil,
+        fixture: nil,
+        pastaDeModelos: URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Containers/com.papagaio.Papagaio/Data/Library/Application Support/Papagaio/Models"),
+        pastaDeDiarizacao: nil,
+        semModelo: false
+    )
+    var restantes = Array(argumentos.dropFirst())
+    if restantes.first == "--fixture" {
+        guard restantes.count > 1 else {
+            print("uso: papagaio-eval resolver --fixture <json> [--modelos <dir>] [--sem-modelo]")
+            exit(2)
+        }
+        opcoes.fixture = URL(fileURLWithPath: restantes[1])
+        restantes.removeFirst(2)
+    } else if let primeiro = restantes.first, !primeiro.hasPrefix("--") {
+        opcoes.audio = URL(fileURLWithPath: primeiro)
+        restantes.removeFirst()
+    } else {
+        print("uso: papagaio-eval resolver <audio> [--pasta <dir>] [--modelos <dir>] [--sem-modelo]")
+        exit(2)
+    }
+    while let flag = restantes.first {
+        switch flag {
+        case "--modelos":
+            guard restantes.count > 1 else { exit(2) }
+            opcoes.pastaDeModelos = URL(fileURLWithPath: restantes[1])
+            restantes.removeFirst(2)
+        case "--pasta" where opcoes.audio != nil:
+            guard restantes.count > 1 else { exit(2) }
+            opcoes.pastaDeDiarizacao = URL(fileURLWithPath: restantes[1])
+            restantes.removeFirst(2)
+        case "--sem-modelo":
+            opcoes.semModelo = true
+            restantes.removeFirst()
+        default:
+            exit(2)
+        }
+    }
+    await DiagnosticoDeResolucao.rodar(opcoes)
 
 case "run":
     FileHandle.standardError.write(

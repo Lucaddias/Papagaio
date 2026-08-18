@@ -623,8 +623,11 @@ final class Biblioteca {
 
     /// Aplica a diarização às palavras de uma transcrição já salva, sem
     /// re-transcrever nem resumir — para arquivos de antes da diarização
-    /// existir. Leve: só os modelos pequenos de diarização (~40 MB) entram,
-    /// nunca o Whisper nem o Qwen.
+    /// existir. Os modelos pequenos de diarização (~40 MB) entram sempre; o
+    /// Whisper nunca. O Qwen entra SÓ se sobrarem falas curtas entre vozes
+    /// DIFERENTES para a resolução contextual — se a costura de vozes iguais
+    /// resolver tudo, o modelo nem carrega (ver `MotoresLocais
+    /// .resolverFalantes`).
     func diarizarTranscricao(_ arquivo: Arquivo) async {
         guard arquivoEmProcessamento != arquivo.id,
               !filaDeProcessamento.contains(arquivo.id),
@@ -649,7 +652,9 @@ final class Biblioteca {
         }
 
         // Os motores são apenas o contrato do pipeline; o caminho leve nunca
-        // chama transcrever/resumir, então nada de 13,7 GB entra em memória.
+        // chama transcrever/resumir, então o Whisper não entra em memória. A
+        // resolução contextual usa o Qwen quando há caso entre vozes
+        // diferentes (o mesmo modelo do resumo, carregado e descarregado aqui).
         let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
         let pipeline = PipelineDeArquivo(
             armazenamento: armazenamento,
@@ -664,6 +669,9 @@ final class Biblioteca {
             },
             diarizar: { [diarizacao] url in
                 try await diarizacao.diarizar(url)
+            },
+            resolverFalantes: { [motores] arquivo in
+                try await motores.resolverFalantes(arquivo)
             }
         )
 
