@@ -163,6 +163,14 @@ private struct AmostraDeAparencia: View {
                         lineWidth: selecionada ? 2 : 1
                     )
             }
+            // A forma vai **dentro** do rótulo, e não no botão.
+            //
+            // Fora, ela descreve o botão para quem o contém — o botão continua
+            // decidindo o próprio alvo pelo desenho do rótulo, que aqui é a
+            // miniatura e o texto. Na opção não selecionada, cujo fundo é
+            // transparente, sobrava só isso de clicável e o resto do cartão era
+            // buraco. Dentro, ela é o alvo.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(opcao.descricao)

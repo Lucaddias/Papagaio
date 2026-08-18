@@ -5,16 +5,28 @@ struct MenuDeArquivoAberto: View {
     let bloqueioDeLixeira: Bool
     let aoEditarAparencia: () -> Void
     let aoRenomear: () -> Void
+    let aoBaixar: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
     let aoMoverParaLixeira: () -> Void
 
+    /// A ordem é por frequência, com a aparência no fim.
+    ///
+    /// "Cor e imagem" estava no topo por ser a mais nova, não por ser a mais
+    /// usada — e ocupava o primeiro item, que é onde o olho cai e onde deveria
+    /// estar o que se faz todo dia. Ela é decisão de arrumação: escolhe-se uma
+    /// vez e não se volta. Vai para o fim da lista, encostada no separador que
+    /// a distingue da lixeira.
+    ///
+    /// Mesmo desenho do menu da pasta, que já tinha Baixar antes de
+    /// Compartilhar — "guardar comigo" antes de "mandar para alguém".
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ItemDoMenuDeArquivo(simbolo: "paintpalette", titulo: "Cor e imagem", acao: aoEditarAparencia)
             ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
+            ItemDoMenuDeArquivo(simbolo: "arrow.down.circle", titulo: "Baixar", acao: aoBaixar)
             ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
             ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
+            ItemDoMenuDeArquivo(simbolo: "paintpalette", titulo: "Cor e imagem", acao: aoEditarAparencia)
             // Favoritar, mover para pasta e personalizar saem daqui: os dois
             // primeiros são botões no rodapé do cartão e o último mora nas
             // Configurações. Repetir a ação no menu só alonga a lista e faz a
