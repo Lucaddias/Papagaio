@@ -121,8 +121,17 @@ final class SystemAudioTap {
         }
         aggregateDeviceID = newAggregateID
 
-        // Formato real do tap — lido depois de criado, não assumido.
-        let format = try tapFormat()
+        // Formato real do tap — lido depois de criado, não assumido. Falhar
+        // aqui precisa do `cleanupAll`: neste ponto o process tap e o
+        // aggregate device já existem, e propagar o erro sem destruí-los os
+        // vazava no Core Audio (a classe não tem `deinit`).
+        let format: AudioStreamBasicDescription
+        do {
+            format = try tapFormat()
+        } catch {
+            cleanupAll()
+            throw error
+        }
 
         let trackWriter: SystemTrackWriter
         do {
