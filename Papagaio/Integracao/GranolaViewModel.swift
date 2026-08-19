@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 import PapagaioCore
 
 /// Estado da conexão com a conta do Granola.
@@ -37,6 +38,7 @@ final class GranolaViewModel {
     private let cofre = CofreDeTokens(servico: "papagaio:granola")
     private var sessao: SessaoOAuth?
     private var fonte: FonteGranola?
+    private let registro = Logger(subsystem: "Papagaio", category: "Granola")
 
     init(servidorMCP: URL = URL(string: "https://mcp.granola.ai/mcp")!) {
         self.servidorMCP = servidorMCP
@@ -47,6 +49,7 @@ final class GranolaViewModel {
     func conectar() async {
         guard !estado.conectado, !(estado == .conectando) else { return }
         estado = .conectando
+        registro.info("Iniciando conexão com o Granola")
 
         let sessao = SessaoOAuth(
             servidorMCP: servidorMCP,
@@ -63,11 +66,13 @@ final class GranolaViewModel {
             let conta = try await fonte.conta()
             self.fonte = fonte
             estado = .conectado(conta)
+            registro.info("Conectado: \(conta.email, privacy: .public)")
             await carregarReunioes()
         } catch {
             self.sessao = nil
             self.fonte = nil
             estado = .falhou(ErroDaConexao.descricao(do: error))
+            registro.error("Conexão falhou: \(ErroDaConexao.descricao(do: error), privacy: .public)")
         }
     }
 
@@ -92,8 +97,10 @@ final class GranolaViewModel {
         defer { carregandoReunioes = false }
         do {
             reunioes = try await fonte.listarReunioes()
+            registro.info("\(self.reunioes.count) reuniões carregadas da conta")
         } catch {
             falhaDeImportacao = ErroDaConexao.descricao(do: error)
+            registro.error("Falha ao carregar reuniões: \(ErroDaConexao.descricao(do: error), privacy: .public)")
         }
     }
 
@@ -107,6 +114,7 @@ final class GranolaViewModel {
         importando = true
         falhaDeImportacao = nil
         defer { importando = false }
+        registro.info("Importando \(ids.count) reunião(ns)")
 
         var salvas = 0
         var importadas: [ReuniaoExterna] = []
@@ -123,6 +131,7 @@ final class GranolaViewModel {
             }
         }
         if salvas > 0 {
+            registro.info("\(salvas) reunião(ns) importada(s)")
             aoNotificar?(
                 "Reuniões importadas",
                 "\(salvas) reunião(ns) do Granola na biblioteca.",

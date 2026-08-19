@@ -186,6 +186,11 @@ struct ContentView: View {
             perfil.iniciar()
             await abrir()
         }
+        // Retorno do navegador quando a autorização do Granola roda no
+        // navegador padrão do sistema (fallback da sessão gerenciada).
+        .onOpenURL { url in
+            GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
+        }
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor
         }

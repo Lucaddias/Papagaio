@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import os
 import PapagaioCore
 
 /// Erros do fluxo OAuth de uma fonte externa (Granola hoje).
@@ -16,6 +17,11 @@ enum ErroOAuth: LocalizedError, Equatable {
     case servidor(mensagem: String)
     /// Refresh sem refresh token disponível no Keychain.
     case semRefreshToken
+    /// O navegador gerenciado do macOS não abriu e o fallback também não
+    /// chegou a entregar um código.
+    case navegadorNaoAbriu
+    /// A autorização ficou quieta por tempo demais.
+    case tempoEsgotado
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +37,10 @@ enum ErroOAuth: LocalizedError, Equatable {
             "O servidor respondeu: \(mensagem)."
         case .semRefreshToken:
             "A sessão expirou e o Papagaio não tem como renová-la. Conecte de novo."
+        case .navegadorNaoAbriu:
+            "O navegador não abriu — confira se o Papagaio pode abrir janelas e tente de novo."
+        case .tempoEsgotado:
+            "Tempo esgotado aguardando sua autorização no navegador. Tente de novo."
         }
     }
 }
@@ -52,6 +62,7 @@ final class SessaoOAuth: Sendable {
     private let cofre: CofreDeTokens
     private let apresentador: ApresentadorDeAutorizacaoOAuth
     private let sessao = URLSession(configuration: .ephemeral)
+    private let registro = Logger(subsystem: "Papagaio", category: "Granola")
 
     init(
         servidorMCP: URL,
@@ -95,6 +106,7 @@ final class SessaoOAuth: Sendable {
            !refresh.isEmpty {
             try? await revogar(refresh)
         }
+        registro.info("Sessão encerrada — credenciais apagadas do Keychain")
         cofre.apagar(conta: "access_token")
         cofre.apagar(conta: "access_token_expires")
         cofre.apagar(conta: "refresh_token")
@@ -117,7 +129,7 @@ final class SessaoOAuth: Sendable {
         )
 
         let descubravel = base.appendingPathComponent(".well-known/oauth-authorization-server")
-        guard let (dados, resposta) = try? await sessao.data(from: descubravel),
+        guard let (dados, resposta) = try? await sessao.data(for: pedido(descubravel)),
               let http = resposta as? HTTPURLResponse, http.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: dados) as? [String: Any]
         else { return configuracao }
@@ -135,6 +147,9 @@ final class SessaoOAuth: Sendable {
             configuracao.revogacao = url
         }
         configuracao.escoposApresentados = json["scopes_supported"] as? [String]
+        registro.info(
+            "Metadados OAuth: registro=\(configuracao.registracao, privacy: .public) autorização=\(configuracao.autorizacao, privacy: .public) token=\(configuracao.token, privacy: .public)"
+        )
         return configuracao
     }
 
@@ -153,6 +168,15 @@ final class SessaoOAuth: Sendable {
             throw ErroOAuth.respostaInvalida
         }
         return json
+    }
+
+    /// Pedidos curtos: um servidor de autorização precisa responder em
+    /// segundos, não minutos — tempo alto esconde travadas como "aguardando"
+    /// silencioso na interface.
+    private func pedido(_ url: URL) -> URLRequest {
+        var pedido = URLRequest(url: url)
+        pedido.timeoutInterval = 15
+        return pedido
     }
 
     // MARK: - DCR + fluxo de autorização
@@ -185,13 +209,16 @@ final class SessaoOAuth: Sendable {
             "response_types": ["code"],
             "token_endpoint_auth_method": "none",
         ]
-        var pedido = URLRequest(url: metadados.registracao)
+        var pedido = pedido(metadados.registracao)
         pedido.httpMethod = "POST"
         pedido.setValue("application/json", forHTTPHeaderField: "Content-Type")
         pedido.httpBody = try JSONSerialization.data(withJSONObject: parametros)
 
         let (dados, resposta) = try await sessao.data(for: pedido)
         guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            registro.fault(
+                "Registro de cliente falhou — status \(String(describing: (resposta as? HTTPURLResponse)?.statusCode))"
+            )
             throw ErroOAuth.registroFalhou
         }
 
@@ -207,6 +234,7 @@ final class SessaoOAuth: Sendable {
         if let dados = try? JSONEncoder().encode(cliente) {
             try? cofre.salvar(dados, conta: "client")
         }
+        registro.info("Cliente registrado: \(idCliente, privacy: .public)")
         return cliente
     }
 
@@ -227,6 +255,9 @@ final class SessaoOAuth: Sendable {
             itens.append(URLQueryItem(name: "scope", value: escopos.joined(separator: " ")))
         }
         componentes.queryItems = itens
+        registro.info(
+            "URL de autorização pronta: \(componentes.url!.absoluteString, privacy: .public)"
+        )
         return componentes.url!
     }
 
@@ -245,7 +276,7 @@ final class SessaoOAuth: Sendable {
             "redirect_uri": "papagaio://oauth/callback",
             "code_verifier": verificador,
         ]
-        var pedido = URLRequest(url: metadados.token)
+        var pedido = pedido(metadados.token)
         pedido.httpMethod = "POST"
         pedido.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if cliente.metodoDeAutenticacao == "client_secret_basic", let segredo = cliente.segredo {
@@ -256,6 +287,7 @@ final class SessaoOAuth: Sendable {
         }
         pedido.httpBody = try JSONSerialization.data(withJSONObject: corpo)
 
+        registro.info("Trocando código de autorização por token")
         return try await responderComToken(pedido)
     }
 
@@ -268,7 +300,7 @@ final class SessaoOAuth: Sendable {
             "grant_type": "refresh_token",
             "refresh_token": refresh,
         ]
-        var pedido = URLRequest(url: (try await metadados()).token)
+        var pedido = pedido((try await metadados()).token)
         pedido.httpMethod = "POST"
         pedido.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if cliente.metodoDeAutenticacao == "client_secret_basic", let segredo = cliente.segredo {
@@ -279,6 +311,7 @@ final class SessaoOAuth: Sendable {
         }
         pedido.httpBody = try JSONSerialization.data(withJSONObject: corpo)
 
+        registro.info("Renovando token com refresh token")
         let credenciais = try await responderComToken(pedido)
         return credenciais
     }
@@ -287,7 +320,7 @@ final class SessaoOAuth: Sendable {
         let cliente: ClienteRegistrado? = cofre.carregar(conta: "client")
             .flatMap { try? JSONDecoder().decode(ClienteRegistrado.self, from: $0) }
         let metadados = try await metadados()
-        var pedido = URLRequest(url: metadados.revogacao)
+        var pedido = pedido(metadados.revogacao)
         pedido.httpMethod = "POST"
         pedido.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         if let cliente {
@@ -316,6 +349,7 @@ final class SessaoOAuth: Sendable {
             refreshToken: json["refresh_token"] as? String,
             expiraEm: Date().addingTimeInterval(expiraEm)
         )
+        registro.info("Token obtido (expira em \(Int(expiraEm))s)")
         guardar(credenciais)
         return credenciais
     }
