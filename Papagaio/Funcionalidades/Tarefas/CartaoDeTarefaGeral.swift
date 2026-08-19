@@ -11,12 +11,18 @@ struct CartaoDeTarefaGeral: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack {
+                // Só a prioridade — que é dado da tarefa, escolhido por
+                // alguém. O status já está dito pela coluna em que o cartão
+                // está; repeti-lo aqui em cima era a mesma informação duas
+                // vezes na mesma tela.
                 SeloDePrioridade(prioridade: tarefa.tarefa.prioridade)
                 Spacer()
-                SeloDeStatusDaTarefa(status: tarefa.tarefa.status)
                 Menu {
                     Button("Editar", systemImage: "pencil", action: aoEditar)
-                    Button(concluida ? "Marcar em andamento" : "Marcar concluída", systemImage: concluida ? "clock" : "checkmark", action: aoAlternarConclusao)
+                    // "Marcar concluída" saiu daqui: com três colunas agora, o
+                    // gesto que muda o status é arrastar o cartão até a que
+                    // representa o novo estado — este atalho pulava direto
+                    // para Concluída, sem passar por Em andamento.
                     Button("Excluir", systemImage: "trash", role: .destructive, action: aoExcluir)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -43,51 +49,23 @@ struct CartaoDeTarefaGeral: View {
                     .lineLimit(1)
             }
 
-            HStack(spacing: PapagaioTema.Espaco.curto) {
-                avatarResponsavel
-                Spacer(minLength: 0)
-                Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(corDoPrazo)
-                    .lineLimit(1)
-            }
-
+            Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(corDoPrazo)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(PapagaioTema.Espaco.largo)
         // A grade fica muito mais fácil de varrer quando cada tarefa ocupa o
         // mesmo retângulo; título longo é truncado nas duas linhas acima.
-        .frame(maxWidth: .infinity, minHeight: 156, maxHeight: 156, alignment: .topLeading)
+        // Mais baixo que antes: sem o selo de status e sem a linha do
+        // responsável, o retângulo antigo sobrava embaixo, vazio.
+        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .topLeading)
         // Mesmo raio de todo cartão do app — o de "controle" (8pt, botão e
         // campo) fazia este cartão parecer um componente pequeno, não a
         // mesma superfície do cartão de conversa ao lado dele na Biblioteca.
         .cartaoPapagaio()
         .shadow(color: PapagaioTema.destaque.opacity(0.08), radius: 10, y: 6)
-    }
-
-    private var avatarResponsavel: some View {
-        HStack(spacing: PapagaioTema.Espaco.curto) {
-            if let nome = tarefa.tarefa.responsavelValido {
-                // O mesmo avatar do cartão de conversa: se a pessoa já tem
-                // foto cadastrada em algum lugar do app, ela aparece aqui
-                // também, em vez de reinventar iniciais soltas.
-                AvatarDePessoa(nome: nome, diametro: 28)
-
-                Text(nome)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .lineLimit(1)
-            } else {
-                Image(systemName: "person.crop.circle.badge.questionmark")
-                    .font(.system(size: 20))
-                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.6))
-                    .frame(width: 28, height: 28)
-
-                Text("Sem responsável")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-                    .lineLimit(1)
-            }
-        }
     }
 
     private var rotuloDoPrazo: String {

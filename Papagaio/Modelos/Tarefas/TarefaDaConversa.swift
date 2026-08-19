@@ -8,6 +8,9 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
     var status: StatusDaTarefa
     var responsavel: String?
     var prazo: Date?
+    /// Opcional e por último de propósito: tarefas gravadas antes desta versão
+    /// decodificam com `nil` aqui, sem quebrar.
+    var descricao: String?
 
     init(
         id: UUID = UUID(),
@@ -16,7 +19,8 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         prioridade: PrioridadeDaTarefa,
         status: StatusDaTarefa,
         responsavel: String?,
-        prazo: Date?
+        prazo: Date?,
+        descricao: String? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -25,6 +29,7 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         self.status = status
         self.responsavel = responsavel
         self.prazo = prazo
+        self.descricao = descricao
     }
 
     /// O nome do responsável, só quando é um nome de verdade.

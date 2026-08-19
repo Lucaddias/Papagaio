@@ -286,6 +286,18 @@ final class Biblioteca {
 
     // MARK: - Edição de arquivos
 
+    /// Move a pasta da gravação no disco para acompanhar o título, assim que
+    /// ele existe — "Mostrar no Finder" deve abrir num lugar reconhecível,
+    /// não num UUID. Falha em mover a pasta não pode derrubar quem chamou:
+    /// o título continua salvo mesmo que a pasta fique com o nome antigo.
+    private func renomearPastaSeNecessario(_ arquivo: inout Arquivo) {
+        let novaRelativa = armazenamento.renomearParaTitulo(
+            relativoAtual: arquivo.pastaRelativa,
+            titulo: arquivo.resumo?.titulo ?? arquivo.titulo
+        )
+        arquivo.pastaRelativa = novaRelativa
+    }
+
     func renomear(_ arquivo: Arquivo, para novoTitulo: String) async {
         let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty,
@@ -303,6 +315,7 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
+        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
@@ -336,6 +349,7 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
+        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
@@ -581,7 +595,7 @@ final class Biblioteca {
         )
 
         do {
-            let final = try await pipeline.processar(arquivo) { fase in
+            var final = try await pipeline.processar(arquivo) { fase in
                 Task { @MainActor [weak self] in
                     guard self?.identificadorDaExecucao == execucao else { return }
                     self?.fases[chave] = fase
@@ -590,6 +604,11 @@ final class Biblioteca {
             guard identificadorDaExecucao == execucao,
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
+            // O resumo acabou de chegar com um título de verdade — é agora
+            // que a pasta, até aqui nomeada pelo UUID, ganha o nome da
+            // conversa.
+            renomearPastaSeNecessario(&final)
+            try? await repositorio.salvar(final)
             substituir(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
