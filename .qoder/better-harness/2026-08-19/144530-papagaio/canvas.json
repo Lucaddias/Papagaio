@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "evidenceMode": "session-limited",
+    "evidenceBoundary": {
+      "manifest": {
+        "schemaVersion": 2,
+        "sourceFingerprint": "6c564f956aa67d9a",
+        "adapterVersion": "qoder-task-loop-source-v2",
+        "platform": "qoder",
+        "selection": {
+          "strategy": "all-eligible",
+          "eligibleCount": 0,
+          "analyzedCount": 0,
+          "confidence": "Low"
+        }
+      },
+      "episodeCoverage": {
+        "episodeCount": 0,
+        "editedEpisodeCount": 0,
+        "closedEpisodeCount": 0,
+        "recoveredEpisodeCount": 0
+      },
+      "deliveryEvidenceLevels": [],
+      "sourceGaps": []
+    },
+    "semanticFacets": {
+      "schemaVersion": 1,
+      "status": "supplementary",
+      "entries": [
+        {
+          "id": "session-insight:source-coverage",
+          "kind": "redacted-summary",
+          "episodeRef": null,
+          "status": "candidate",
+          "labels": [
+            "source-coverage",
+            "Low"
+          ],
+          "summary": "Analyzed 0 of 0 sessions; 1/5 enabled source roots exist. Use this as the current workspace evidence boundary for final insight cards.",
+          "evidenceRefs": [],
+          "modelVersion": "session-insights-v1"
+        },
+        {
+          "id": "session-insight:validation-behavior",
+          "kind": "redacted-summary",
+          "episodeRef": null,
+          "status": "candidate",
+          "labels": [
+            "validation-behavior",
+            "Low"
+          ],
+          "summary": "No validation command category was observed in the analyzed session sample. Inspect more sessions or add explicit validation guidance before claiming validation-after-edit behavior.",
+          "evidenceRefs": [],
+          "modelVersion": "session-insights-v1"
+        },
+        {
+          "id": "session-insight:post-edit-validation",
+          "kind": "rework-correction",
+          "episodeRef": null,
+          "status": "candidate",
+          "labels": [
+            "post-edit-validation",
+            "Low"
+          ],
+          "summary": "No edit event was observed in the analyzed sample. Inspect more sessions before making claims about edit or validation habits.",
+          "evidenceRefs": [],
+          "modelVersion": "session-insights-v1"
+        },
+        {
+          "id": "session-insight:execution-friction",
+          "kind": "friction-taxonomy",
+          "episodeRef": null,
+          "status": "candidate",
+          "labels": [
+            "execution-friction",
+            "Low"
+          ],
+          "summary": "No strong execution friction signal in the analyzed sample. Keep friction claims narrow unless additional failed commands, rejected actions, or warnings are inspected.",
+          "evidenceRefs": [],
+          "modelVersion": "session-insights-v1"
+        }
+      ]
+    },
+    "learningCapture": {
+      "schemaVersion": 1,
+      "state": "N/A",
+      "summary": "N/A — requires two comparable observation windows and an intervention comparison.",
+      "interventions": []
+    },
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Workflows"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Workflows",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".github/workflows/ci.yml"
+          ]
+        },
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Hooks",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Commands",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "MCP",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        },
+        {
+          "surface": "Memories",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0
+        }
+      ],
+      "repositorySourceRows": [],
+      "memoryDetails": {
+        "contentPolicy": "metadata-only",
+        "scanState": "scanned-empty",
+        "scopeCounts": [],
+        "integrity": {
+          "status": "reviewed",
+          "titleCount": 0,
+          "reviewedTitleCount": 0,
+          "truncated": false,
+          "exactCollisionGroups": 0,
+          "similarityCandidates": 0
+        }
+      }
+    },
+    "projectName": "Papagaio",
+    "locale": "en",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 26,
+    "overview": "Papagaio has strong project-owned mechanisms — a checksum-pinned runtime bootstrap shared by local dev, GitHub Actions, and Xcode Cloud, plus focused behavior-level tests on the core pipeline — but they are not fully wired together: the only setup/navigation entrypoint is being deleted while in-code references still depend on it, the remaining first-run instructions contradict the repository's canonical truth, and the app-layer test sources are attached to no build or CI gate. This was a session-limited review: no eligible sessions were available in the 30-day window, so all behavior claims rest on inspected project mechanisms only.",
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "Task Understanding",
+        "score": 50,
+        "summary": "A README and unusually rich Package.swift boundary rationale currently route setup and architecture context, but the current change deletes that entrypoint while comments still reference it, and no session evidence exists to show the route is actually used.",
+        "findingRefs": [
+          "entrypoint-deletion-dangling-refs"
+        ]
+      },
+      {
+        "id": "controlled-execution",
+        "label": "Controlled Execution",
+        "score": 45,
+        "summary": "bootstrap-runtimes.sh is a strong, checksum-pinned, loud-failing setup route reused by CI and Xcode Cloud, but the documented first-run story contradicts it (stale Git LFS steps and a nonexistent workspace name), and no doctor or reset surface exists.",
+        "findingRefs": [
+          "first-run-instructions-contradict-truth"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "Change Validation",
+        "score": 56,
+        "summary": "PapagaioCore has dense, focused Swift Testing coverage with negative and recovery cases and a filtered fast route, but the PapagaioTests sources are wired to neither the Xcode project nor CI, leaving the highest-churn SwiftUI layer without any mechanical check.",
+        "findingRefs": [
+          "app-tests-unwired"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "Reliable Delivery",
+        "score": 55,
+        "summary": "Recent history shows an active PR-based acceptance practice with per-PR CI on main, but merge-enforcement is host-side and unverified, and the current change set sits unstaged directly on main.",
+        "findingRefs": []
+      },
+      {
+        "id": "learning-capture",
+        "label": "Learning Capture",
+        "score": 38,
+        "summary": "The review window contains no eligible session episodes (source roots disabled or missing), so repeated work, friction, and reuse opportunities cannot be detected; no durable learning owner is configured and no later outcome exists.",
+        "findingRefs": [
+          "session-history-unavailable"
+        ]
+      }
+    ],
+    "assignmentSummaries": []
+  },
+  "findings": [
+    {
+      "id": "entrypoint-deletion-dangling-refs",
+      "title": "Deleting the only setup and navigation docs leaves the project without a task entrypoint and dangling architecture references",
+      "severity": "Medium",
+      "reason": "The current unstaged change deletes README.md and Master Plans/DECISIONS.md on main, while PapagaioCore/Package.swift comments still route readers to them (\"Ver DECISIONS.md\", decisions D-3.1/D-3.2). If committed as-is, agents and humans lose the only documented setup order, test command, and contribution route, and the package's boundary rationale points at files that no longer exist. Fact: verified via git diff --name-status and Package.swift lines 14/60. Uncertainty: the deletion may be an intentional reorganization in progress, and the content is recoverable from git history; no agent-instruction file (AGENTS.md/Rules) exists to absorb the route.",
+      "dimensionRefs": [
+        "task-understanding"
+      ],
+      "subdimensionRefs": [
+        "relevant-context"
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nRestore or replace the project's task entrypoint before the deletion lands: either keep a concise README (setup order, test command, contribution route) or move the still-referenced decision records to a new owner, then update the Package.swift comments that say \"Ver DECISIONS.md\" to point at the surviving route.\n\n## Validation\n\n- Grep the repository for references to deleted files (README.md, DECISIONS.md, PROMPT-MESTRE.md) and confirm none remain dangling\n- Confirm one document routes first-run setup, the PapagaioCore test command, and the PR practice",
+      "expectedArtifact": "Document",
+      "expectedOutput": [
+        "Update the existing Document owner identified by the reviewed evidence and retain a focused validation result."
+      ]
+    },
+    {
+      "id": "first-run-instructions-contradict-truth",
+      "title": "Fresh setup following the README hits wrong LFS steps and a workspace file that does not exist",
+      "severity": "Low",
+      "reason": "README.md (HEAD) instructs `git lfs install && git lfs pull`, claiming the frameworks in PapagaioCore/Frameworks/ are versioned via Git LFS, but .gitattributes is empty and .gitignore keeps PapagaioCore/Frameworks/ out of git; Scripts/bootstrap-runtimes.sh is the canonical download route and its header records that the script and LFS previously disputed ownership of the same artifacts. The README also tells the reader to open \"Papagaio.xcworkspace\", which does not exist (the project opens via Loro.xcodeproj). Anyone cloning HEAD today follows steps that describe a repository state that no longer matches reality. Uncertainty: the README is slated for deletion in the current change, so this consequence may be transient; no fresh-clone run was executed in this review.",
+      "dimensionRefs": [
+        "controlled-execution"
+      ],
+      "subdimensionRefs": [
+        "instruction-led-start"
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nReconcile the first-run story with canonical truth: inspect Scripts/bootstrap-runtimes.sh, .gitignore, and .gitattributes, then replace the stale Git LFS instructions and the nonexistent \"Papagaio.xcworkspace\" reference with the actual setup order (bootstrap script, then open Loro.xcodeproj), or fold the corrected steps into whatever document replaces the README.\n\n## Validation\n\n- Every setup step in the surviving entrypoint matches the current .gitignore/.gitattributes and bootstrap script behavior\n- The named project file to open exists in the repository",
+      "expectedArtifact": "Document",
+      "expectedOutput": [
+        "Update the existing Document owner identified by the reviewed evidence and retain a focused validation result."
+      ]
+    },
+    {
+      "id": "app-tests-unwired",
+      "title": "App-layer tests exist but run in no build or CI gate, so regressions in the fastest-changing SwiftUI layer merge silently",
+      "severity": "Medium",
+      "reason": "PapagaioTests/ contains two test files (BibliotecaTests.swift, InterfaceTests.swift, ~340 lines), but Loro.xcodeproj/project.pbxproj contains zero references to PapagaioTests (verified at HEAD and in the working tree) and .github/workflows/ci.yml only runs `swift test` in PapagaioCore plus an app build that never executes tests. Meanwhile the project's hottest churn sits in SwiftUI views (ArquivoDetalheView, CartaoDeConversa, BibliotecaHomeView) and ViewModels/Biblioteca.swift — exactly the app layer with no mechanical feedback. This is a verified wiring gap: declared test sources, an active CI entrypoint, and no connection between them. Uncertainty: the app tests may have been intended for a local scheme or Xcode Cloud pipeline that was not inspected; whether CI is a required check is host-side and unverified.",
+      "dimensionRefs": [
+        "change-validation"
+      ],
+      "subdimensionRefs": [
+        "relevant-check"
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nDecide the fate of PapagaioTests and wire the chosen route end to end: inspect Loro.xcodeproj/project.pbxproj, the Loro scheme, and .github/workflows/ci.yml, then either attach PapagaioTests as a real test target of the Loro project and add an `xcodebuild test` step to CI, or explicitly retire the orphaned test files.\n\n## Validation\n\n- Run the wired app-test route locally once and confirm it discovers PapagaioTests\n- Confirm the same route executes in .github/workflows/ci.yml (or confirm the deliberate retirement)",
+      "expectedArtifact": "Config",
+      "expectedOutput": [
+        "Update the existing Config owner identified by the reviewed evidence and retain a focused validation result."
+      ]
+    },
+    {
+      "id": "session-history-unavailable",
+      "title": "No session history is available for this window, so repeated work, friction, and learning opportunities cannot be assessed",
+      "severity": "Low",
+      "reason": "The qoder session lane for the 30-day window returned 0 eligible sessions, 0 task episodes, and 0 request roots, with source warnings disabled-source-root and missing-optional-root (1 of 5 enabled source roots exists, 7 discovered). This is an evidence-gap condition, not proof of inactivity: the review cannot distinguish repeated procedures, validation habits, or friction, and Loop Effectiveness claims about actual agent work stay Unobserved. The bounded review therefore cannot produce a clean no-candidate decision and retains this evidence-bound gap under Lifecycle Opportunity Detection. Uncertainty: the absence may reflect provider source configuration rather than real inactivity; the exact root configuration is provider-side.",
+      "dimensionRefs": [
+        "learning-capture"
+      ],
+      "subdimensionRefs": [
+        "lifecycle-repeat-detection"
+      ],
+      "aiFixPrompt": "/better-harness fix this issue\n\nTreat this as bounded discovery: confirm which Qoder session source roots are enabled for this workspace (the analysis observed 1 of 5 enabled roots with disabled-source-root and missing-optional-root warnings), enable the project's session sources so future work is observable, then rerun /better-harness once eligible sessions exist to detect repeated workflows and learning opportunities.\n\n## Validation\n\n- A subsequent evidence bundle for this workspace reports at least one eligible session or an explicit clean source state without disabled-source-root warnings",
+      "expectedArtifact": "Config",
+      "expectedOutput": [
+        "Update the existing Config owner identified by the reviewed evidence and retain a focused validation result."
+      ]
+    }
+  ]
+}
