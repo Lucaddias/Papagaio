@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// VAD — corta silêncio **dentro** do áudio antes de mandar para o Whisper,
 /// não só decide se o arquivo inteiro tem fala ou não.
@@ -45,6 +46,9 @@ public enum DetectorDeAtividadeDeVoz {
     /// `contexto`/`estado` um do outro. A fila garante uma sessão por vez.
     private static let filaDoSilero = FilaEstrita()
 
+    /// Modo degradado (modelo ausente) precisa ser visível, não silencioso.
+    private static let logger = Logger(subsystem: "PapagaioCore", category: "VAD")
+
     /// Portão de arquivo inteiro — mantido só para quem ainda chama esta API
     /// (ex.: testes). Prefira `janelasDeFala` para transcrição de verdade.
     public static func contemFala(
@@ -81,6 +85,15 @@ public enum DetectorDeAtividadeDeVoz {
         guard !amostras.isEmpty else { return [] }
         let tamanhoDoQuadro = max(1, Int(duracaoDoQuadro * taxa))
 
+        // Modelo ausente degrada para o portão de energia: um resource de
+        // 2,3 MB fora do bundle não pode transformar toda transcrição em
+        // erro. O portão de energia é mais fraco (não separa fala de
+        // tom/ruído), mas ainda corta o silêncio digital — e avisa.
+        let usaSilero = await sileroVAD.modeloDisponivel()
+        if !usaSilero {
+            Self.logger.warning("Silero VAD ausente — janelas de fala pelo portão de energia (modo degradado).")
+        }
+
         // Sequência nova = contexto e estado do Silero zerados. Sem isto, a
         // "memória" de fala de um arquivo vazaria para o seguinte. Tudo entre
         // o `entrar` e o `sair` é de uma sessão só (ver `filaDoSilero`).
@@ -97,7 +110,7 @@ public enum DetectorDeAtividadeDeVoz {
                 let quadro = amostras[inicio..<fim]
                 let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
                 var temFala = energia >= limiarDeEnergia
-                if temFala {
+                if temFala, usaSilero {
                     // O Silero só é consultado quando a energia já passou — é o
                     // filtro rápido contra silêncio digital.
                     temFala = try await sileroVAD.probabilidadeDeFala(quadro: Array(quadro)) >= limiarDeFala

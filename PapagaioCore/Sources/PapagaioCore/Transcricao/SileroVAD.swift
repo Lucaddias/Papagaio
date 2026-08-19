@@ -41,6 +41,12 @@ public actor SileroVAD: CicloDeVidaDeModelos.Residente {
         self.sessao = SessaoOnnx(modelo: modelo)
     }
 
+    /// O `.onnx` está no lugar? Sem ele a inferência lança `modeloAusente` —
+    /// quem chama usa isto para degradar com aviso em vez de falhar.
+    public func modeloDisponivel() -> Bool {
+        FileManager.default.fileExists(atPath: caminhoDoModelo.path)
+    }
+
     /// Começa uma sequência nova (um arquivo de áudio novo): zera o contexto e
     /// o estado. Chamar sem isso com outro arquivo vazaria a "memória" da fala
     /// anterior.
