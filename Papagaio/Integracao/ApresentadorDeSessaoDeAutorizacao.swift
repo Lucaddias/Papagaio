@@ -17,6 +17,11 @@ import PapagaioCore
 struct ApresentadorDeSessaoDeAutorizacao: ApresentadorDeAutorizacaoOAuth {
     private let registro = Logger(subsystem: "Papagaio", category: "Granola")
 
+    // A `ASWebAuthenticationSession` precisa nascer e ser iniciada na main
+    // thread. A sessão OAuth roda no executor global (os `await` do fluxo
+    // saltam de thread), então esta implementação é isolada no MainActor: em
+    // background o `start()` fica preso sem apresentar o navegador.
+    @MainActor
     func autorizar(url: URL) async throws -> String {
         let estadoEsperado = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?
