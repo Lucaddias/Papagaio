@@ -6,7 +6,6 @@ struct MenuDeArquivoAberto: View {
     let podeDiarizar: Bool
     let aoDiarizar: () -> Void
     let aoReprocessar: () -> Void
-    let aoEditarImagem: () -> Void
     let aoRenomear: () -> Void
     let aoBaixar: () -> Void
     let aoCompartilhar: () -> Void
@@ -42,7 +41,6 @@ struct MenuDeArquivoAberto: View {
                 acao: aoReprocessar
             )
 
-            ItemDoMenuDeArquivo(simbolo: "pencil.and.outline", titulo: "Editar imagem", acao: aoEditarImagem)
             ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
             ItemDoMenuDeArquivo(simbolo: "arrow.down.circle", titulo: "Baixar", acao: aoBaixar)
             ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)

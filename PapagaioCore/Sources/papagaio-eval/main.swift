@@ -21,7 +21,7 @@ func uso() {
     USO:
       papagaio-eval contratos    imprime os contratos disponíveis
       papagaio-eval run          harness de medição — chega no Passo 6
-papagaio-eval resolver     diagnóstico da atribuição de falantes:
+      papagaio-eval resolver     diagnóstico da atribuição de falantes:
                                 <audio> (ou --fixture <json>), --modelos <dir>,
                                 --pasta <dir de diarização>, --sem-modelo
       papagaio-eval granola      fluxo OAuth + MCP reais no Granola

@@ -792,7 +792,6 @@ struct CartaoDeConversa: View {
                 podeDiarizar: podeDiarizar,
                 aoDiarizar: executarMenu(aoDiarizar),
                 aoReprocessar: executarMenu(aoReprocessar),
-                aoEditarImagem: executarMenu(editarImagem),
                 aoRenomear: executarMenu(abrirEditorDeInformacoes),
                 aoBaixar: executarMenu(baixar),
                 aoCompartilhar: executarMenu(compartilhar),

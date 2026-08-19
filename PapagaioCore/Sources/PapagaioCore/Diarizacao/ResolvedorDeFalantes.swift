@@ -283,7 +283,8 @@ public enum ResolvedorDeFalantes {
             resumo: arquivo.resumo,
             engineTranscricao: arquivo.engineTranscricao,
             engineResumo: arquivo.engineResumo,
-            apagadoEm: arquivo.apagadoEm
+            apagadoEm: arquivo.apagadoEm,
+            idExterno: arquivo.idExterno
         )
     }
 
