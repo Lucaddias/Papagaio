@@ -81,6 +81,11 @@ struct PerfilPessoalView: View {
             nome = perfil.nome
             email = perfil.email
         }
+        // O onAppear sozinho deixa os campos velhos quando o perfil muda com
+        // a tela já montada (troca de conta, fim do sign-in): os campos
+        // seguem o modelo enquanto a view existe.
+        .onChange(of: perfil.nome) { _, novo in nome = novo }
+        .onChange(of: perfil.email) { _, novo in email = novo }
         .alert("Login com Apple", isPresented: $mostrandoAvisoDeSenha) {
             Button("OK", role: .cancel) {}
         } message: {
