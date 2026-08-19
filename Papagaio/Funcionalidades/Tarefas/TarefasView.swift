@@ -163,6 +163,7 @@ struct TarefasView: View {
             .buttonStyle(.plain)
             .padding(PapagaioTema.Espaco.pagina)
             .help("Adicionar tarefa")
+            .accessibilityLabel("Adicionar tarefa")
             .disabled(conversas.isEmpty)
         }
         .sheet(isPresented: $exibindoEditor) {

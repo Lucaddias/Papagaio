@@ -174,6 +174,24 @@ struct ContentView: View {
             alturaDoPlayer = altura
         }
         .frame(minWidth: 460, minHeight: 520)
+        // Atalhos globais da janela: ⌘R alterna a gravação e ⌘[ volta um
+        // passo, de qualquer tela. São botões invisíveis de propósito —
+        // existem só para o sistema rotear as teclas; as ações vivem nos
+        // mesmos lugares de sempre (selo, barra superior).
+        .background {
+            Group {
+                Button("") {
+                    Task { await aoAlternarGravacao() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+
+                Button("", action: voltar)
+                    .keyboardShortcut("[", modifiers: .command)
+            }
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+        }
         // `nil` em "Sistema": sem esquema preferido a janela herda a aparência
         // do Mac. Nos outros dois casos isto fixa a aparência da janela, e as
         // cores dinâmicas do tema resolvem em cima dela.

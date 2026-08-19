@@ -80,6 +80,7 @@ struct TarefasDaConversaView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Adicionar tarefa")
+                .accessibilityLabel("Adicionar tarefa")
                 .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
