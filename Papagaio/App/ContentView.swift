@@ -19,6 +19,9 @@ struct ContentView: View {
 
     @State private var biblioteca: Biblioteca?
     @State private var modelos: ModelosViewModel?
+    /// A conexão com o Granola. Nasce junto com a biblioteca (`abrir`), que é
+    /// quem também entrega o destino das importações.
+    @State private var granola: GranolaViewModel?
     @State private var perfil = PerfilViewModel()
     @State private var notificacoes = NotificacoesViewModel()
     @State private var equipes = EquipesDoUsuario.carregar()
@@ -263,7 +266,8 @@ struct ContentView: View {
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
+                              granola: granola, biblioteca: biblioteca)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
@@ -289,6 +293,12 @@ struct ContentView: View {
                 abrirFichaDaEntrevista(para: arquivo)
             }
             biblioteca = nova
+
+            let conexao = GranolaViewModel()
+            conexao.aoNotificar = { titulo, mensagem, tipo in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
+            }
+            granola = conexao
 
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos

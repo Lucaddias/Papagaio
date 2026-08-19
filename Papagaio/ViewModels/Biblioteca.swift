@@ -129,6 +129,61 @@ final class Biblioteca {
         return arquivo
     }
 
+    /// Importa uma reunião de fonte externa (Granola etc.):
+    /// sem áudio — `pastaRelativa` vazia é a marca de `Arquivo.semAudio` —,
+    /// com transcrição, notas e resumo prontos, e **fora** da fila de
+    /// processamento (não há nada para os modelos locais fazerem aqui).
+    ///
+    /// A importação é idempotente por `idExterno`: a mesma reunião nunca
+    /// duplica, mesmo se o loop de importação rodar duas vezes.
+    @discardableResult
+    func registrarExterna(_ reuniao: ReuniaoExterna) async -> Arquivo? {
+        guard !arquivos.contains(where: { $0.idExterno == "granola:\(reuniao.id)" }),
+              !arquivosNaLixeira.contains(where: { $0.idExterno == "granola:\(reuniao.id)" })
+        else { return nil }
+
+        let trechos = reuniao.transcricao?.map { segmento in
+            Trecho(
+                start: segmento.inicio ?? 0,
+                end: segmento.fim ?? segmento.inicio ?? 0,
+                texto: segmento.texto,
+                speaker: FalanteExterno.rotulo(de: segmento.falante)
+            )
+        } ?? []
+
+        let notas: [NotaDaConversa]
+        if let texto = reuniao.notas, !texto.isEmpty {
+            notas = [NotaDaConversa(texto: texto, start: 0)]
+        } else {
+            notas = []
+        }
+
+        let resumo = reuniao.resumo.map {
+            Resumo(titulo: reuniao.titulo, visaoGeral: $0)
+        }
+
+        let arquivo = Arquivo(
+            titulo: reuniao.titulo,
+            criadoEm: reuniao.data == .distantPast ? Date() : reuniao.data,
+            duracao: trechos.map(\.end).max() ?? 0,
+            pastaRelativa: "",
+            espaco: espaco,
+            trechos: trechos,
+            notas: notas,
+            resumo: resumo,
+            idExterno: "granola:\(reuniao.id)"
+        )
+        do {
+            try await repositorio.salvar(arquivo)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível importar a reunião: \(error)"
+            return nil
+        }
+        arquivos.insert(arquivo, at: 0)
+        arquivos.sort { $0.criadoEm > $1.criadoEm }
+        return arquivo
+    }
+
     // MARK: - Lixeira
 
     /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,

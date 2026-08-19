@@ -44,6 +44,10 @@ public final class ArquivoPersistido {
     /// É opcional para manter compatibilidade com registros locais já salvos.
     public var apagadoEm: Date?
 
+    /// Identificador da reunião na fonte externa de origem (`granola:` + id).
+    /// Opcional para manter a migração leve: arquivos locais não têm.
+    public var idExterno: String?
+
     /// Título e visão geral do resumo. O resto do `Resumo` vira `InsightPersistido`.
     ///
     /// **Não opcionais, com default.** Um `String?` obrigaria o predicado de

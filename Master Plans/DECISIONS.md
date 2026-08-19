@@ -1498,6 +1498,76 @@ números e próximos passos num áudio já conhecido.
 
 ---
 
+## Integração externa (Granola) — 2026-08-19
+
+Levantamento real: o Granola MCP oficial (`https://mcp.granola.ai/mcp`) usa
+Streamable HTTP + **browser OAuth com DCR** — "sem client ID/secret, credenciais
+tratadas automaticamente" (docs oficiais). Ferramentas: `get_account_info`,
+`list_meetings`, `get_meetings` (notas privadas + resumo), `get_meeting_transcript`
+(pagos), `list_meeting_folders`, `query_granola_meetings`. Transcrição tem
+falantes por nome (`speaker.name`) e rótulos `me`/`them`.
+
+### D-14.1 — Primeira fonte externa: Granola via MCP com OAuth 2.0 + PKCE + DCR
+
+**Decidido:** o Papagaio importa de fontes externas de reunião por um contrato
+único (`FonteDeReunioesExternas`), com Granola como primeira implementação. A
+autenticação é OAuth 2.0 Authorization Code + PKCE com Dynamic Client
+Registration — o fluxo que o próprio MCP exige; não há API key.
+
+**Componentes** (todos em `PapagaioCore/Integracao/`, sem dependências novas):
+`AutenticacaoOAuth` (metadados RFC 8414, DCR, PKCE S256, troca e refresh de
+token), `CofreDeTokens` (Keychain), `SessaoOAuth` (ator: orquestra fluxo,
+persistência e renovação silenciosa), `ClienteMCP` (JSON-RPC 2.0 sobre
+Streamable HTTP, com retry em 401 forçando renovação), `FonteGranola` +
+`MapeadorGranola` (JSON tolerante → domínio).
+
+**Descartado:** API key/pat (o Granola não oferece para MCP), OAuth client
+pré-registrado (DCR é o padrão e o servidor pode rejeitar clientes fixos),
+`granola` CLI local/Keychain do CLI (macOS-only, contorna o fluxo oficial e
+quebra no sandbox), e drivers por fonte sem contrato (Fireflies/Otter/Zoom
+ficam como futuras implementações do mesmo protocolo).
+
+**Por quê:** é o caminho oficial, documentado, que sobrevive a re-logins e
+rotaciona token sozinho. O mesmo esqueleto atende qualquer servidor MCP futuro.
+
+### D-14.2 — `ValorJSON` como árvore de resposta do MCP
+
+**Decidido:** o `ClienteMCP` devolve respostas como `ValorJSON` (enum Sendable
+objeto/lista/texto/número/booleano/nulo), não `Any`.
+
+**Por quê:** `Any` de `JSONSerialization` não cruza fronteiras de actor em
+Swift 6 (erro do compilador). `Any` com `@unchecked Sendable` existiria, mas a
+árvore tipada também dá `Equatable` e transforma o mapeador em pattern matching
+puro, sem casts defensivos.
+
+### D-14.3 — Transcrição externa sempre por segmento
+
+**Decidido:** `SegmentoDeTranscricaoExterna` carrega `inicio`/`fim` em segundos
+(ou nil). Granola entrega timestamps absolutos ISO 8601; o mapeador converte
+para segundos relativos à reunião. De propósito **não** há `palavras`: fontes
+externas não entregam limites palavra a palavra, e sem áudio não há destaque
+por palavra na transcrição externa.
+
+### D-14.4 — Redirecionamento: loopback na CLI, custom scheme no app
+
+**Decidido:** `SessaoOAuth` aceita o redirect URI por injeção. A CLI de
+avaliação sobe um listener HTTP de um pedido só em `127.0.0.1:porta-livre`
+(que DCR aceita sem custom scheme) e captura o `code` automaticamente, com
+fallback de colagem manual + validação de `state`. O app usa `papagaio://oauth`
+com `ASWebAuthenticationSession`.
+
+**Descartado:** blanket allow de `state` ausente (o listener só aceita o
+`estado` da própria URL de autorização) e listener em porta fixa (presente em
+todos os Macs da distribuição, mas é colisão esperável).
+
+### D-14.5 — Erros de plano sem transcrição são silenciosos no detalhe
+
+**Decidido:** `get_meeting_transcript` falhando (plano Basic, transcrição
+apagada por retenção) não derruba `obterReuniao` — a reunião vem com notas e
+resumo e sem transcrição. Erros de transporte/OAuth sobem normalmente.
+
+---
+
 ## Riscos abertos
 
 | # | Risco | Estado |

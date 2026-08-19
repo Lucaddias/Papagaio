@@ -302,6 +302,18 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
     /// restaurados antes da exclusão definitiva.
     public var apagadoEm: Date?
 
+    /// Identificador da reunião na fonte externa de onde o arquivo veio
+    /// (ex.: `"granola:2bf21a40"`). `nil` para gravações e importações de
+    /// áudio. É a âncora de idempotência da importação: sem ele a mesma
+    /// reunião seria duplicada a cada "importar".
+    public let idExterno: String?
+
+    /// Verdadeiro para reuniões importadas de fontes externas (Granola etc.),
+    /// que não têm áudio: `pastaRelativa` vazia é a marca — não existe pasta
+    /// de mídia no container. O player some da UI e a transcrição vira só
+    /// leitura, sem destaque por palavra.
+    public var semAudio: Bool { pastaRelativa.isEmpty }
+
     public init(
         id: ArquivoID = ArquivoID(),
         titulo: String,
@@ -314,7 +326,8 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         resumo: Resumo? = nil,
         engineTranscricao: String? = nil,
         engineResumo: String? = nil,
-        apagadoEm: Date? = nil
+        apagadoEm: Date? = nil,
+        idExterno: String? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -328,5 +341,6 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         self.engineTranscricao = engineTranscricao
         self.engineResumo = engineResumo
         self.apagadoEm = apagadoEm
+        self.idExterno = idExterno
     }
 }
