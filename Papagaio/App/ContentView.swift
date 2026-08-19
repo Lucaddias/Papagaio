@@ -528,16 +528,9 @@ struct ContentView: View {
 
         try await biblioteca?.excluirDadosDaConta()
 
-        for equipe in equipes {
-            MembrosDasEquipes.remover(equipeID: equipe.id)
-        }
-        EquipesDoUsuario.remover()
-        TarefasDaConversa.removerTodas()
-        MidiasDaConversa.removerTodas()
-        PreferenciasVisuaisDoArquivo.removerTodas()
-        LixeiraDeMidia.limparRegistros()
-        LixeiraDeTarefas.esvaziar()
-        UserDefaults.standard.removeObject(forKey: "espacoIndividual")
+        // Todos os stores de dados da conta num caminho só — store novo se
+        // registra lá, não aqui.
+        LimpezaDeConta.executar()
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()
