@@ -120,13 +120,16 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
         // `Timer.scheduledTimer` é indisponível de contexto async no Swift 6.2
         // (pode nunca disparar); criar o timer e anexá-lo ao RunLoop da main
         // foge disso e garante o modo `.common`.
-        let timer = Timer(
-            timeInterval: 0.25,
-            target: self,
-            selector: #selector(atualizarMedicao),
-            userInfo: nil,
-            repeats: true
-        )
+        //
+        // Bloco com `[weak self]` no lugar de `target: self`: o timer de
+        // destino retém a sessão, e um caminho de erro que nunca chegasse a
+        // `parar()`/`descartar()` a manteria viva para sempre junto com o
+        // recorder e o tap — o `ReprodutorDeArquivo` já usa o padrão fraco.
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.atualizarMedicao()
+            }
+        }
         self.timer = timer
         RunLoop.main.add(timer, forMode: .common)
         tempoDecorrido = 0
@@ -298,7 +301,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
 
     // MARK: - Medição
 
-    @objc private func atualizarMedicao() {
+    private func atualizarMedicao() {
         guard let recorder, !pausada else { return }
         tempoDecorrido = recorder.currentTime
         recorder.updateMeters()
