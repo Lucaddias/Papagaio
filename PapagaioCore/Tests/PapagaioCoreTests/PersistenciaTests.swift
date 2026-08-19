@@ -90,6 +90,47 @@ func persistenciaRoundTrip() async throws {
     #expect(volta.resumo?.proximosPassos.first?.responsavel == "Luca")
 }
 
+@Test("Round-trip preserva o falante acústico da diarização")
+func persistenciaPreservaFalanteAcustico() async throws {
+    // Regressão: o `paraDominio` reconstruía cada palavra sem o
+    // `falanteAcustico`, e a atribuição da diarização sumia em todo reload.
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let original = arquivoDeExemplo(
+        titulo: "Diarizada", espaco: espaco,
+        trechos: [
+            Trecho(start: 0, end: 12, texto: "oi, tudo bem?", speaker: Speaker.eu, palavras: [
+                Palavra(start: 0, end: 1, texto: "oi", falanteAcustico: "S1"),
+                Palavra(start: 1, end: 6, texto: "tudo bem", falanteAcustico: "S2"),
+                Palavra(start: 6, end: 12, texto: "sim"), // sem falante: nil precisa sobreviver também
+            ]),
+        ]
+    )
+
+    try await repo.salvar(original)
+    let volta = try #require(try await repo.listar(espaco: espaco).first)
+
+    let palavras = try #require(volta.trechos.first?.palavras)
+    #expect(palavras.count == 3)
+    #expect(palavras[0].falanteAcustico == "S1")
+    #expect(palavras[1].falanteAcustico == "S2")
+    #expect(palavras[2].falanteAcustico == nil)
+}
+
+@Test("Espaço ausente em registro legado devolve sempre o mesmo id")
+func espacoAusenteUsaIdEstavel() {
+    // Registro legado sem a relação de espaço: o fallback não pode inventar
+    // um UUID novo a cada leitura, senão o mesmo arquivo troca de espaço toda
+    // vez que é relido do banco.
+    let legado = ArquivoPersistido()
+    legado.espaco = nil
+
+    let primeira = SwiftDataRepository.paraDominio(legado).espaco
+    let segunda = SwiftDataRepository.paraDominio(legado).espaco
+
+    #expect(primeira == segunda)
+}
+
 @Test("Cura de palavras legadas arranca o token especial sem perder a fala")
 func curaDePalavrasLegadas() async throws {
     // A primeira versão mesclava o `[_TT_…]` do fim do segmento à última

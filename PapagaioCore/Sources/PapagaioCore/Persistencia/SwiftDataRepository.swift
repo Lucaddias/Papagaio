@@ -342,9 +342,19 @@ public actor SwiftDataRepository: ArquivoRepository {
                     // `[_TT_…]` do fim do segmento foi **mesclado à última
                     // palavra real** (sem espaço), o que faria o filtro por
                     // `contains("[")` apagar a palavra inteira junto. Aqui a
-                    // cura arranca só o código e mantém a fala:
+                    // cura arranca só o código e mantém a fala. O
+                    // `falanteAcustico` vem junto: sem ele a atribuição da
+                    // diarização sumia em todo reload do banco:
                     palavras: (try? JSONDecoder().decode([Palavra].self, from: pTrecho.palavrasJSON ?? Data()))?
-                        .map { Palavra(id: $0.id, start: $0.start, end: $0.end, texto: curarTextoDePalavraLegada($0.texto)) }
+                        .map { p in
+                            Palavra(
+                                id: p.id,
+                                start: p.start,
+                                end: p.end,
+                                texto: curarTextoDePalavraLegada(p.texto),
+                                falanteAcustico: p.falanteAcustico
+                            )
+                        }
                         .filter { !$0.texto.isEmpty } ?? []
                 )
             }
@@ -385,7 +395,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             criadoEm: p.criadoEm,
             duracao: p.duracao,
             pastaRelativa: p.pastaRelativa,
-            espaco: EspacoID(rawValue: p.espaco?.id ?? UUID()),
+            espaco: p.espaco.map { EspacoID(rawValue: $0.id) } ?? .legado,
             trechos: trechos,
             notas: notas,
             resumo: resumo,
