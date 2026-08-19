@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */; };
 		B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB0EFF564744FCC603EE0C3D /* Cocoa.framework */; };
+		F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */; };
 		FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43957C69D28FDB0507C82E6C /* InterfaceTests.swift */; };
 		PA00000000000000000012 /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
 /* End PBXBuildFile section */
@@ -41,6 +42,7 @@
 		1962886877C57566118E7CAC /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		43957C69D28FDB0507C82E6C /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
 		7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
+		AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDaConversaViewModelTests.swift; sourceTree = "<group>"; };
 		DB0EFF564744FCC603EE0C3D /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		PA00000000000000000006 /* Loro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA00000000000000000013 /* Papagaio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Papagaio.entitlements; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 			children = (
 				7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */,
 				43957C69D28FDB0507C82E6C /* InterfaceTests.swift */,
+				AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */,
 			);
 			name = PapagaioTests;
 			path = PapagaioTests;
@@ -240,6 +243,7 @@
 			files = (
 				0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */,
 				FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */,
+				F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

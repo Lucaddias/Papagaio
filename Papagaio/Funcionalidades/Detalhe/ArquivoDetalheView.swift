@@ -43,16 +43,10 @@ struct ArquivoDetalheView: View {
     @State private var anexosDaGravacao: [AnexoDeMidiaDaConversa] = []
     @State private var erroDeMidia: String?
     @State private var midiasNaLixeiraDaConversa: [MidiaNaLixeira] = []
-    @State private var tarefasDaConversa: [TarefaDaConversa] = []
-    @State private var filtroDeTarefas: FiltroDeTarefas = .tudo
-    @State private var mostrandoCriacaoDeTarefa = false
-    @State private var tituloDaNovaTarefa = ""
-    @State private var responsavelDaNovaTarefa = ""
-    @State private var prioridadeDaNovaTarefa: PrioridadeDaTarefa = .media
-    @State private var statusDaNovaTarefa: StatusDaTarefa = .emAndamento
-    @State private var prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    @State private var mostrandoEdicaoDeTarefa = false
-    @State private var tarefaEmEdicaoID: UUID?
+    /// As tarefas da conversa num view model próprio: a regra de prazo, o
+    /// formulário e a gravação em disco viviam duplicados aqui (o VM existia
+    /// e ninguém usava). A view só desenha e repassa ações.
+    @State private var tarefasDaConversaVM: TarefasDaConversaViewModel
     @State private var editandoInformacoes = false
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
@@ -77,6 +71,41 @@ struct ArquivoDetalheView: View {
     @Environment(\.dismiss) private var fechar
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
+
+    init(
+        arquivo: Arquivo,
+        audio: URL,
+        audioSecundario: URL?,
+        importado: Bool,
+        estado: EstadoDoArquivo,
+        processando: Bool,
+        naFila: Bool,
+        responsaveisDisponiveis: [ResponsavelDaTarefa],
+        aoTranscrever: @escaping () -> Void,
+        aoAtualizarNotas: @escaping ([NotaDaConversa]) async -> Void,
+        aoNotificarTarefa: @escaping (_ titulo: String, _ mensagem: String) -> Void,
+        aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
+        aoAtualizarTranscricao: @escaping ([Trecho]) async -> Void,
+        aoDitar: @escaping (URL) async throws -> String
+    ) {
+        self.arquivo = arquivo
+        self.audio = audio
+        self.audioSecundario = audioSecundario
+        self.importado = importado
+        self.estado = estado
+        self.processando = processando
+        self.naFila = naFila
+        self.responsaveisDisponiveis = responsaveisDisponiveis
+        self.aoTranscrever = aoTranscrever
+        self.aoAtualizarNotas = aoAtualizarNotas
+        self.aoNotificarTarefa = aoNotificarTarefa
+        self.aoAtualizarMetadados = aoAtualizarMetadados
+        self.aoAtualizarTranscricao = aoAtualizarTranscricao
+        self.aoDitar = aoDitar
+        _tarefasDaConversaVM = State(
+            initialValue: TarefasDaConversaViewModel(arquivoID: arquivo.id)
+        )
+    }
     @State private var pairandoNoTitulo = false
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var mostrandoFicha = false
@@ -223,7 +252,12 @@ struct ArquivoDetalheView: View {
         .task {
             sincronizarNotasComArquivo()
             carregarMidias()
-            carregarTarefas()
+            tarefasDaConversaVM.aoNotificar = aoNotificarTarefa
+            tarefasDaConversaVM.carregar(
+                base: arquivo.resumo?.proximosPassos ?? [],
+                tituloDaConversa: titulo,
+                dataDaConversa: arquivo.criadoEm
+            )
             let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos, secundario: audioSecundario)
             await novo.preparar()
             // Se a view sumiu no meio do carregamento, o `.task` já foi
@@ -288,30 +322,30 @@ struct ArquivoDetalheView: View {
                 aoSalvar: salvarInformacoesDaConversa
             )
         }
-        .sheet(isPresented: $mostrandoCriacaoDeTarefa) {
+        .sheet(isPresented: $tarefasDaConversaVM.mostrandoCriacao) {
             NovaTarefaDaConversaSheet(
                 modo: .criacao,
-                titulo: $tituloDaNovaTarefa,
-                responsavel: $responsavelDaNovaTarefa,
-                prioridade: $prioridadeDaNovaTarefa,
-                status: $statusDaNovaTarefa,
-                prazo: $prazoDaNovaTarefa,
+                titulo: $tarefasDaConversaVM.tituloDaTarefa,
+                responsavel: $tarefasDaConversaVM.responsavelDaTarefa,
+                prioridade: $tarefasDaConversaVM.prioridadeDaTarefa,
+                status: $tarefasDaConversaVM.statusDaTarefa,
+                prazo: $tarefasDaConversaVM.prazoDaTarefa,
                 responsaveisDisponiveis: responsaveisDisponiveis,
-                aoCancelar: cancelarCriacaoDeTarefa,
-                aoAdicionar: adicionarTarefa
+                aoCancelar: tarefasDaConversaVM.cancelarCriacao,
+                aoAdicionar: { tarefasDaConversaVM.adicionar(origem: titulo) }
             )
         }
-        .sheet(isPresented: $mostrandoEdicaoDeTarefa) {
+        .sheet(isPresented: $tarefasDaConversaVM.mostrandoEdicao) {
             NovaTarefaDaConversaSheet(
                 modo: .edicao,
-                titulo: $tituloDaNovaTarefa,
-                responsavel: $responsavelDaNovaTarefa,
-                prioridade: $prioridadeDaNovaTarefa,
-                status: $statusDaNovaTarefa,
-                prazo: $prazoDaNovaTarefa,
+                titulo: $tarefasDaConversaVM.tituloDaTarefa,
+                responsavel: $tarefasDaConversaVM.responsavelDaTarefa,
+                prioridade: $tarefasDaConversaVM.prioridadeDaTarefa,
+                status: $tarefasDaConversaVM.statusDaTarefa,
+                prazo: $tarefasDaConversaVM.prazoDaTarefa,
                 responsaveisDisponiveis: responsaveisDisponiveis,
-                aoCancelar: cancelarEdicaoDeTarefa,
-                aoAdicionar: salvarEdicaoDeTarefa
+                aoCancelar: tarefasDaConversaVM.cancelarEdicao,
+                aoAdicionar: tarefasDaConversaVM.salvarEdicao
             )
         }
     }
@@ -804,13 +838,14 @@ struct ArquivoDetalheView: View {
     }
 
     private var tarefas: some View {
-        TarefasDaConversaView(
-            tarefas: tarefasDaConversa,
-            filtro: $filtroDeTarefas,
-            aoAdicionar: { mostrandoCriacaoDeTarefa = true },
-            aoAlternarConclusao: alternarConclusaoDaTarefa,
-            aoEditar: iniciarEdicaoDaTarefa,
-            aoMover: moverTarefa
+        @Bindable var vm = tarefasDaConversaVM
+        return TarefasDaConversaView(
+            tarefas: vm.tarefas,
+            filtro: $vm.filtro,
+            aoAdicionar: { vm.mostrandoCriacao = true },
+            aoAlternarConclusao: vm.alternarConclusao,
+            aoEditar: vm.iniciarEdicao,
+            aoMover: vm.mover
         )
     }
 
@@ -1012,141 +1047,11 @@ struct ArquivoDetalheView: View {
     }
 
     // MARK: - Tarefas
-
-    private func carregarTarefas() {
-        let carregadas = TarefasDaConversa.carregar(
-            arquivo.id,
-            base: arquivo.resumo?.proximosPassos ?? [],
-            tituloDaConversa: titulo,
-            dataDaConversa: arquivo.criadoEm
-        )
-        let ajustadas = carregadas.map { tarefaAjustadaPeloPrazo($0) }
-        tarefasDaConversa = ajustadas
-        if ajustadas != carregadas {
-            salvarTarefas()
-        }
-    }
-
-    private func adicionarTarefa() {
-        let tituloLimpo = tituloDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tituloLimpo.isEmpty else { return }
-
-        let tarefa = tarefaAjustadaPeloPrazo(
-            TarefaDaConversa(
-                titulo: tituloLimpo,
-                origem: titulo,
-                prioridade: prioridadeDaNovaTarefa,
-                status: statusDaNovaTarefa,
-                responsavel: responsavelLimpo,
-                prazo: prazoDaNovaTarefa
-            )
-        )
-        tarefasDaConversa.append(tarefa)
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefa)
-        limparNovaTarefa()
-        mostrandoCriacaoDeTarefa = false
-    }
-
-    private func cancelarCriacaoDeTarefa() {
-        limparNovaTarefa()
-        mostrandoCriacaoDeTarefa = false
-    }
-
-    private func iniciarEdicaoDaTarefa(_ tarefa: TarefaDaConversa) {
-        tarefaEmEdicaoID = tarefa.id
-        tituloDaNovaTarefa = tarefa.titulo
-        responsavelDaNovaTarefa = tarefa.responsavel ?? ""
-        prioridadeDaNovaTarefa = tarefa.prioridade
-        statusDaNovaTarefa = tarefa.status
-        prazoDaNovaTarefa = tarefa.prazo ?? Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-        mostrandoEdicaoDeTarefa = true
-    }
-
-    private func salvarEdicaoDeTarefa() {
-        let tituloLimpo = tituloDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tituloLimpo.isEmpty,
-              let tarefaEmEdicaoID,
-              let indice = tarefasDaConversa.firstIndex(where: { $0.id == tarefaEmEdicaoID })
-        else { return }
-
-        var tarefa = tarefasDaConversa[indice]
-        tarefa.titulo = tituloLimpo
-        tarefa.responsavel = responsavelLimpo
-        tarefa.prioridade = prioridadeDaNovaTarefa
-        tarefa.status = statusDaNovaTarefa
-        tarefa.prazo = prazoDaNovaTarefa
-        tarefa = tarefaAjustadaPeloPrazo(tarefa)
-        tarefasDaConversa[indice] = tarefa
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefa)
-        cancelarEdicaoDeTarefa()
-    }
-
-    private func cancelarEdicaoDeTarefa() {
-        tarefaEmEdicaoID = nil
-        limparNovaTarefa()
-        mostrandoEdicaoDeTarefa = false
-    }
-
-    private func limparNovaTarefa() {
-        tituloDaNovaTarefa = ""
-        responsavelDaNovaTarefa = ""
-        prioridadeDaNovaTarefa = .media
-        statusDaNovaTarefa = .emAndamento
-        prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    }
-
-    private var responsavelLimpo: String? {
-        let valor = responsavelDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        return valor.isEmpty ? nil : valor
-    }
-
-    private func alternarConclusaoDaTarefa(_ tarefa: TarefaDaConversa) {
-        guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == tarefa.id }) else { return }
-        tarefasDaConversa[indice].status = tarefasDaConversa[indice].status == .concluida ? .emAndamento : .concluida
-        salvarTarefas()
-    }
-
-    private func moverTarefa(_ id: UUID, para destino: DestinoDeTarefa) {
-        guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == id }) else { return }
-        if let prioridade = destino.prioridade {
-            tarefasDaConversa[indice].prioridade = prioridade
-        }
-        tarefasDaConversa[indice].status = destino.status
-        tarefasDaConversa[indice] = tarefaAjustadaPeloPrazo(tarefasDaConversa[indice])
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefasDaConversa[indice])
-    }
-
-    private func salvarTarefas() {
-        TarefasDaConversa.salvar(tarefasDaConversa, para: arquivo.id)
-    }
-
-    private func tarefaAjustadaPeloPrazo(_ tarefa: TarefaDaConversa) -> TarefaDaConversa {
-        var ajustada = tarefa
-        guard ajustada.status != .concluida, prazoEstaPerto(ajustada.prazo) else { return ajustada }
-        ajustada.prioridade = .alta
-        return ajustada
-    }
-
-    private func prazoEstaPerto(_ prazo: Date?) -> Bool {
-        guard let prazo else { return false }
-        let calendario = Calendar.current
-        let hoje = calendario.startOfDay(for: Date())
-        let diaDoPrazo = calendario.startOfDay(for: prazo)
-        let dias = calendario.dateComponents([.day], from: hoje, to: diaDoPrazo).day ?? Int.max
-        return dias <= 2
-    }
-
-    private func notificarPrazoSeNecessario(_ tarefa: TarefaDaConversa) {
-        guard tarefa.status != .concluida, prazoEstaPerto(tarefa.prazo) else { return }
-        let data = tarefa.prazo?.formatted(.dateTime.day().month().year()) ?? "em breve"
-        aoNotificarTarefa(
-            "Prazo perto",
-            "\(tarefa.titulo) vence \(data) e foi marcada como prioridade alta."
-        )
-    }
+    //
+    // Regra de prazo, formulário e gravação vivem no
+    // `TarefasDaConversaViewModel` — a duplicata que existia aqui foi
+    // removida quando a view passou a usar o VM (o VM existia e ninguém
+    // usava).
 
     private func revelarPlayer() {
         guard !mostrandoPlayer else { return }
