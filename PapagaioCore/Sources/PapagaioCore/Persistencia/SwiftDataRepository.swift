@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 
 /// Repositório local da biblioteca.
@@ -9,6 +10,10 @@ import SwiftData
 /// todo acesso ao contexto acontece numa mesma fila.
 @ModelActor
 public actor SwiftDataRepository: ArquivoRepository {
+    /// Falhas de persistência que não derrubam a operação, mas não podem ser
+    /// silenciosas (ex.: palavras que não codificaram para JSON).
+    private static let logger = Logger(subsystem: "PapagaioCore", category: "Persistencia")
+
     /// Container local, com o schema completo do app.
     public static func containerLocal(
         nome: String = "Papagaio",
@@ -75,7 +80,22 @@ public actor SwiftDataRepository: ArquivoRepository {
             t.speaker = trecho.speaker
             // Vazio é o mesmo que ausente: transcrições sem palavras guardam
             // `nil`, e a leitura cai no fallback do `Text` inteiro.
-            t.palavrasJSON = trecho.palavras.isEmpty ? nil : try? JSONEncoder().encode(trecho.palavras)
+            //
+            // Falha de codificação **não** pode virar `try?` silencioso: o
+            // trecho era persistido sem timestamps de palavra sem nenhum
+            // sinal, e a navegação palavra a palavra morria sem diagnóstico.
+            if trecho.palavras.isEmpty {
+                t.palavrasJSON = nil
+            } else {
+                do {
+                    t.palavrasJSON = try JSONEncoder().encode(trecho.palavras)
+                } catch {
+                    Self.logger.error(
+                        "Palavras do trecho \(trecho.id.uuidString) não codificaram: \(error.localizedDescription, privacy: .public). O trecho segue sem timestamps."
+                    )
+                    t.palavrasJSON = nil
+                }
+            }
             t.arquivo = persistido
             modelContext.insert(t)
         }
