@@ -227,19 +227,32 @@ public actor SwiftDataRepository: ArquivoRepository {
     /// mídia. Deixar o áudio órfão no container é vazamento de disco que a
     /// pessoa não tem como limpar.
     public func apagar(_ id: ArquivoID) async throws {
+        try await apagar(id) { relativo in
+            try Armazenamento.padrao().removerGravacao(relativa: relativo)
+        }
+    }
+
+    /// Mesmo fluxo com a remoção da mídia injetável — os testes simulam a
+    /// falha dela sem tocar o disco real do usuário.
+    func apagar(_ id: ArquivoID, removerMidia: (String) throws -> Void) async throws {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm != nil else {
             throw ErroLixeira.arquivoNaoEstaNaLixeira
         }
 
         let relativo = persistido.pastaRelativa
-        if !relativo.isEmpty {
-            let armazenamento = try Armazenamento.padrao()
-            try armazenamento.removerGravacao(relativa: relativo)
-        }
 
+        // O registro sai do banco **primeiro**, com `save`, e a mídia por
+        // último. Se a remoção da mídia falhar, sobra áudio órfão em disco —
+        // recuperável. A ordem antiga apagava os arquivos antes do `save`:
+        // se ele falhasse, sobrava um registro sem mídia que não toca mais e
+        // que a pessoa não tem como consertar.
         modelContext.delete(persistido)
         try modelContext.save()
+
+        if !relativo.isEmpty {
+            try removerMidia(relativo)
+        }
     }
 
     /// Exclui todos os registros de um espaço, ativos e na lixeira. É usado
