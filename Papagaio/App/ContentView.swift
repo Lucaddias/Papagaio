@@ -365,6 +365,14 @@ struct ContentView: View {
             formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
             participantes: quantidade
         )
+
+        // Antes de sobrescrever: depois, os metadados antigos já não estão
+        // por aqui para comparar, e a foto ficaria presa numa chave que nada
+        // mais lê.
+        let metadadosAntigos = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+        FotosDePessoas.migrarAoEditarNomes(de: metadadosAntigos.entrevistado, para: metadados.entrevistado)
+        FotosDePessoas.migrarAoEditarNomes(de: metadadosAntigos.entrevistadores, para: metadados.entrevistadores)
+
         PreferenciasVisuaisDoArquivo.definirMetadados(metadados, para: arquivo.id)
 
         // A duração não é editável na ficha: continua sendo a do próprio áudio.

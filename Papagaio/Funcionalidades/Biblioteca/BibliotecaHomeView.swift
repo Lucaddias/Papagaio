@@ -232,17 +232,58 @@ struct BibliotecaHomeView: View {
         }
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !termo.isEmpty else { return fonte }
-        return fonte.filter { arquivo in
-            let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
-            // Pelo nome da pasta também: "Cliente X" é como se pensa no
-            // projeto, e a pessoa não deveria ter de lembrar o título de cada
-            // conversa dentro dele para encontrá-las.
-            let pastaDaConversa = PreferenciasVisuaisDoArquivo.pasta(arquivo.id) ?? ""
-            return titulo.localizedCaseInsensitiveContains(termo)
-                || pastaDaConversa.localizedCaseInsensitiveContains(termo)
-                || (secaoSelecionada == .todos
-                    && biblioteca.estado(de: arquivo).descricao.localizedCaseInsensitiveContains(termo))
+        return fonte.filter { conversaCasaTermo($0, termo) }
+    }
+
+    /// Se a busca casa com esta conversa — por título, pasta, pessoas, data
+    /// ou qualquer coisa dita ou anotada dentro dela.
+    ///
+    /// Título e pasta são a fachada; a maior parte do que se procura mora no
+    /// conteúdo. "Preço" não costuma estar no título de uma entrevista, mas
+    /// aparece na transcrição, e é lá — não só na primeira impressão — que
+    /// esta busca também olha. Os campos vêm de `arquivo` e do resumo direto,
+    /// sem tocar o banco: já estão carregados em memória, então comparar mais
+    /// texto aqui não custa uma consulta a mais.
+    private func conversaCasaTermo(_ arquivo: Arquivo, _ termo: String) -> Bool {
+        let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
+        // Pelo nome da pasta também: "Cliente X" é como se pensa no projeto,
+        // e a pessoa não deveria ter de lembrar o título de cada conversa
+        // dentro dele para encontrá-las.
+        let pastaDaConversa = PreferenciasVisuaisDoArquivo.pasta(arquivo.id) ?? ""
+        let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+        // Não pelo estado de processamento ("Transcrevendo", "Processando"):
+        // é um rótulo passageiro, não algo pelo que alguém pensa em procurar
+        // uma conversa.
+        let data = DataDigitada.texto(de: arquivo.criadoEm)
+
+        if titulo.localizedCaseInsensitiveContains(termo)
+            || pastaDaConversa.localizedCaseInsensitiveContains(termo)
+            || metadados.entrevistado.localizedCaseInsensitiveContains(termo)
+            || metadados.entrevistadores.localizedCaseInsensitiveContains(termo)
+            || metadados.descricao.localizedCaseInsensitiveContains(termo)
+            || data.localizedCaseInsensitiveContains(termo) {
+            return true
         }
+
+        if let resumo = arquivo.resumo {
+            if resumo.visaoGeral.localizedCaseInsensitiveContains(termo) { return true }
+            if resumo.temas.contains(where: {
+                $0.titulo.localizedCaseInsensitiveContains(termo)
+                    || $0.detalhe.localizedCaseInsensitiveContains(termo)
+            }) { return true }
+            if resumo.citacoes.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) }) {
+                return true
+            }
+            if resumo.proximosPassos.contains(where: {
+                $0.descricao.localizedCaseInsensitiveContains(termo)
+            }) { return true }
+        }
+
+        if arquivo.trechos.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) }) {
+            return true
+        }
+
+        return arquivo.notas.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) })
     }
 
     private var subtitulo: String {

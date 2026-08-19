@@ -57,26 +57,36 @@ struct CartaoDeTarefaGeral: View {
         // A grade fica muito mais fácil de varrer quando cada tarefa ocupa o
         // mesmo retângulo; título longo é truncado nas duas linhas acima.
         .frame(maxWidth: .infinity, minHeight: 156, maxHeight: 156, alignment: .topLeading)
-        .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
-        }
+        // Mesmo raio de todo cartão do app — o de "controle" (8pt, botão e
+        // campo) fazia este cartão parecer um componente pequeno, não a
+        // mesma superfície do cartão de conversa ao lado dele na Biblioteca.
+        .cartaoPapagaio()
         .shadow(color: PapagaioTema.destaque.opacity(0.08), radius: 10, y: 6)
     }
 
     private var avatarResponsavel: some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
-            Text(iniciais(de: tarefa.tarefa.responsavel ?? "?"))
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PapagaioTema.texto)
-                .frame(width: 30, height: 30)
-                .background(PapagaioTema.destaqueSuave, in: Circle())
+            if let nome = tarefa.tarefa.responsavelValido {
+                // O mesmo avatar do cartão de conversa: se a pessoa já tem
+                // foto cadastrada em algum lugar do app, ela aparece aqui
+                // também, em vez de reinventar iniciais soltas.
+                AvatarDePessoa(nome: nome, diametro: 28)
 
-            Text(tarefa.tarefa.responsavel?.isEmpty == false ? tarefa.tarefa.responsavel! : "Sem responsável")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .lineLimit(1)
+                Text(nome)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+            } else {
+                Image(systemName: "person.crop.circle.badge.questionmark")
+                    .font(.system(size: 20))
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.6))
+                    .frame(width: 28, height: 28)
+
+                Text("Sem responsável")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+            }
         }
     }
 

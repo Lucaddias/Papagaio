@@ -9,7 +9,7 @@ struct SeloDePrioridade: View {
             .foregroundStyle(cor)
             .padding(.horizontal, PapagaioTema.Espaco.curto)
             .frame(height: PapagaioTema.Altura.compacta)
-            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+            .background(cor.opacity(0.12), in: Capsule())
     }
 
     private var texto: String {
@@ -30,7 +30,7 @@ struct SeloDeStatusDaTarefa: View {
             .foregroundStyle(cor)
             .padding(.horizontal, PapagaioTema.Espaco.curto)
             .frame(height: PapagaioTema.Altura.compacta)
-            .background(cor.opacity(0.12), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+            .background(cor.opacity(0.12), in: Capsule())
     }
 
     private var cor: Color {

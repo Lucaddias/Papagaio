@@ -634,11 +634,19 @@ struct ArquivoDetalheView: View {
             nomesInformados(entrevistadoEditado) + nomesInformados(entrevistadoresEditados)
         )
 
+        // Antes de sobrescrever: depois, os metadados antigos já não estão
+        // por aqui para comparar, e a foto ficaria presa numa chave que nada
+        // mais lê.
+        let entrevistadoLimpo = entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entrevistadoresLimpos = entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines)
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistado, para: entrevistadoLimpo)
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistadores, para: entrevistadoresLimpos)
+
         PreferenciasVisuaisDoArquivo.definirMetadados(
             MetadadosVisuaisDoArquivo(
-                entrevistado: entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+                entrevistado: entrevistadoLimpo,
                 emailDoEntrevistado: emailDoEntrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
-                entrevistadores: entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines),
+                entrevistadores: entrevistadoresLimpos,
                 emailDosEntrevistadores: emailDosEntrevistadoresEditado.trimmingCharacters(in: .whitespacesAndNewlines),
                 descricao: descricaoEditada.trimmingCharacters(in: .whitespacesAndNewlines),
                 formato: formatoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
