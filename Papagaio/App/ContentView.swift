@@ -3,6 +3,23 @@ import PapagaioCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// O formulário da ficha da entrevista num valor só. Os campos espelham os do
+/// `EditorDeInformacoesDoCard`; juntá-los aqui faz abrir, salvar e resetar o
+/// formulário virarem uma operação cada — antes eram dez estados soltos que
+/// precisavam andar em sincronia na mão.
+struct FichaDaEntrevista {
+    var titulo = ""
+    var entrevistado = ""
+    var emailDoEntrevistado = ""
+    var entrevistadores = ""
+    var emailDosEntrevistadores = ""
+    var descricao = ""
+    var formato = ""
+    var participantes = "1"
+    var data = Date()
+    var duracao = ""
+}
+
 /// Coordenador da interface inicial.
 ///
 /// Mantém a identidade dos view models e as integrações de sistema (navegação,
@@ -26,16 +43,10 @@ struct ContentView: View {
     @State private var mostrandoImportador = false
     @State private var arquivoParaConfigurar: Arquivo?
     @State private var arquivosAguardandoFicha: Set<ArquivoID> = []
-    @State private var tituloDaFicha = ""
-    @State private var entrevistadoDaFicha = ""
-    @State private var emailDoEntrevistadoDaFicha = ""
-    @State private var entrevistadoresDaFicha = ""
-    @State private var emailDosEntrevistadoresDaFicha = ""
-    @State private var descricaoDaFicha = ""
-    @State private var formatoDaFicha = ""
-    @State private var participantesDaFicha = "1"
-    @State private var dataDaFicha = Date()
-    @State private var duracaoDaFicha = ""
+    /// O formulário da ficha num valor só: abrir, salvar e resetar viram uma
+    /// operação cada, no lugar de dez estados soltos que precisavam andar em
+    /// sincronia na mão.
+    @State private var ficha = FichaDaEntrevista()
     @State private var consulta = ""
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var confirmandoCancelamentoDaGravacao = false
@@ -222,16 +233,16 @@ struct ContentView: View {
         )) {
             EditorDeInformacoesDoCard(
                 modo: .nova,
-                titulo: $tituloDaFicha,
-                entrevistado: $entrevistadoDaFicha,
-                emailDoEntrevistado: $emailDoEntrevistadoDaFicha,
-                entrevistadores: $entrevistadoresDaFicha,
-                emailDosEntrevistadores: $emailDosEntrevistadoresDaFicha,
-                descricao: $descricaoDaFicha,
-                formato: $formatoDaFicha,
-                participantes: $participantesDaFicha,
-                data: $dataDaFicha,
-                duracao: $duracaoDaFicha,
+                titulo: $ficha.titulo,
+                entrevistado: $ficha.entrevistado,
+                emailDoEntrevistado: $ficha.emailDoEntrevistado,
+                entrevistadores: $ficha.entrevistadores,
+                emailDosEntrevistadores: $ficha.emailDosEntrevistadores,
+                descricao: $ficha.descricao,
+                formato: $ficha.formato,
+                participantes: $ficha.participantes,
+                data: $ficha.data,
+                duracao: $ficha.duracao,
                 aoCancelar: { arquivoParaConfigurar = nil },
                 aoSalvar: salvarFichaDaEntrevista
             )
@@ -347,16 +358,18 @@ struct ContentView: View {
     private func abrirFichaDaEntrevista(para arquivo: Arquivo) {
         let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
         arquivoParaConfigurar = arquivo
-        tituloDaFicha = arquivo.resumo?.titulo ?? arquivo.titulo
-        entrevistadoDaFicha = metadados.entrevistado
-        emailDoEntrevistadoDaFicha = metadados.emailDoEntrevistado
-        entrevistadoresDaFicha = metadados.entrevistadores
-        emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
-        descricaoDaFicha = metadados.descricao
-        formatoDaFicha = metadados.formato
-        participantesDaFicha = "\(max(1, metadados.participantes ?? 1))"
-        dataDaFicha = arquivo.criadoEm
-        duracaoDaFicha = arquivo.duracao.comoDuracaoPorExtenso
+        ficha = FichaDaEntrevista(
+            titulo: arquivo.resumo?.titulo ?? arquivo.titulo,
+            entrevistado: metadados.entrevistado,
+            emailDoEntrevistado: metadados.emailDoEntrevistado,
+            entrevistadores: metadados.entrevistadores,
+            emailDosEntrevistadores: metadados.emailDosEntrevistadores,
+            descricao: metadados.descricao,
+            formato: metadados.formato,
+            participantes: "\(max(1, metadados.participantes ?? 1))",
+            data: arquivo.criadoEm,
+            duracao: arquivo.duracao.comoDuracaoPorExtenso
+        )
     }
 
     private func salvarFichaDaEntrevista() {
@@ -364,7 +377,7 @@ struct ContentView: View {
               let biblioteca
         else { return }
 
-        let tituloLimpo = tituloDaFicha.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tituloLimpo = ficha.titulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
         // Participantes deixou de ser um campo digitável na ficha: sai da soma
@@ -372,15 +385,15 @@ struct ContentView: View {
         // deixava sempre "1", independente de quantos nomes havia.
         let quantidade = max(
             1,
-            nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha)
+            nomesInformados(ficha.entrevistado) + nomesInformados(ficha.entrevistadores)
         )
         let metadados = MetadadosVisuaisDoArquivo(
-            entrevistado: entrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            emailDoEntrevistado: emailDoEntrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            entrevistadores: entrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            emailDosEntrevistadores: emailDosEntrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            descricao: descricaoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
+            entrevistado: ficha.entrevistado.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDoEntrevistado: ficha.emailDoEntrevistado.trimmingCharacters(in: .whitespacesAndNewlines),
+            entrevistadores: ficha.entrevistadores.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDosEntrevistadores: ficha.emailDosEntrevistadores.trimmingCharacters(in: .whitespacesAndNewlines),
+            descricao: ficha.descricao.trimmingCharacters(in: .whitespacesAndNewlines),
+            formato: ficha.formato.trimmingCharacters(in: .whitespacesAndNewlines),
             participantes: quantidade
         )
         PreferenciasVisuaisDoArquivo.definirMetadados(metadados, para: arquivo.id)
@@ -388,7 +401,7 @@ struct ContentView: View {
         // A duração não é editável na ficha: continua sendo a do próprio áudio.
         let duracao = arquivo.duracao
         Task {
-            await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: dataDaFicha, duracao: duracao)
+            await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: ficha.data, duracao: duracao)
             await MainActor.run {
                 arquivoParaConfigurar = nil
             }
