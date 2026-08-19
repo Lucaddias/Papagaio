@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */; };
+		B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB0EFF564744FCC603EE0C3D /* Cocoa.framework */; };
+		FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43957C69D28FDB0507C82E6C /* InterfaceTests.swift */; };
 		PA00000000000000000012 /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
 /* End PBXBuildFile section */
 
@@ -24,7 +27,21 @@
 		};
 /* End PBXBuildRule section */
 
+/* Begin PBXContainerItemProxy section */
+		DA9199445138523AC741449C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PA00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = PA00000000000000000002;
+			remoteInfo = Loro;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		1962886877C57566118E7CAC /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		43957C69D28FDB0507C82E6C /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
+		7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
+		DB0EFF564744FCC603EE0C3D /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		PA00000000000000000006 /* Loro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA00000000000000000013 /* Papagaio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Papagaio.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -32,12 +49,22 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		PA00000000000000000003 /* Papagaio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Papagaio;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		366319D57FE13962BB39209D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000008 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -49,12 +76,40 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		27C3E6D70B63092078CC6613 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				DB0EFF564744FCC603EE0C3D /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		3EA31F92D3F5820AB8552F68 /* PapagaioTests */ = {
+			isa = PBXGroup;
+			children = (
+				7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */,
+				43957C69D28FDB0507C82E6C /* InterfaceTests.swift */,
+			);
+			name = PapagaioTests;
+			path = PapagaioTests;
+			sourceTree = "<group>";
+		};
+		D1E41723161B1AFF502172C6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				27C3E6D70B63092078CC6613 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		PA00000000000000000004 = {
 			isa = PBXGroup;
 			children = (
 				PA00000000000000000003 /* Papagaio */,
 				PA00000000000000000014 /* Config */,
 				PA00000000000000000005 /* Products */,
+				D1E41723161B1AFF502172C6 /* Frameworks */,
+				3EA31F92D3F5820AB8552F68 /* PapagaioTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -62,6 +117,7 @@
 			isa = PBXGroup;
 			children = (
 				PA00000000000000000006 /* Loro.app */,
+				1962886877C57566118E7CAC /* PapagaioTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +133,27 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C3CB7FAE9667FAE9D35E85BE /* PapagaioTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF5E4D477685D57FE3DA1158 /* Build configuration list for PBXNativeTarget "PapagaioTests" */;
+			buildPhases = (
+				368C631C6CE82ABC2C975D89 /* Sources */,
+				366319D57FE13962BB39209D /* Frameworks */,
+				A4C38324449BA0BEA33E7124 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8B775CD426C501B7FEFAD188 /* PBXTargetDependency */,
+			);
+			name = PapagaioTests;
+			packageProductDependencies = (
+				PA00000000000000000011 /* PapagaioCore */,
+			);
+			productName = PapagaioTests;
+			productReference = 1962886877C57566118E7CAC /* PapagaioTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		PA00000000000000000002 /* Loro */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = PA0000000000000000000B /* Build configuration list for PBXNativeTarget "Loro" */;
@@ -134,11 +211,19 @@
 			projectRoot = "";
 			targets = (
 				PA00000000000000000002 /* Loro */,
+				C3CB7FAE9667FAE9D35E85BE /* PapagaioTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A4C38324449BA0BEA33E7124 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000009 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -149,6 +234,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		368C631C6CE82ABC2C975D89 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */,
+				FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -158,7 +252,52 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		8B775CD426C501B7FEFAD188 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Loro;
+			target = PA00000000000000000002 /* Loro */;
+			targetProxy = DA9199445138523AC741449C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		231FABBBA4E752998DC0FDD3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+			};
+			name = Release;
+		};
+		FC8CCF66A34A897FA02FD5C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+			};
+			name = Debug;
+		};
 		PA0000000000000000000C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -235,7 +374,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-Wl,-export_dynamic";
 				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -266,7 +407,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-Wl,-export_dynamic";
 				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -276,6 +419,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CF5E4D477685D57FE3DA1158 /* Build configuration list for PBXNativeTarget "PapagaioTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				231FABBBA4E752998DC0FDD3 /* Release */,
+				FC8CCF66A34A897FA02FD5C1 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		PA0000000000000000000A /* Build configuration list for PBXProject "Loro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

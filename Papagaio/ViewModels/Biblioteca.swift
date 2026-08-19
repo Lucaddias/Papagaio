@@ -23,6 +23,11 @@ final class Biblioteca {
     private(set) var iniciadoEm: [UUID: Date] = [:]
     private(set) var erros: [UUID: String] = [:]
 
+    /// Falha ao abrir a lista do banco. Observável por conta própria —
+    /// dentro do dicionário `erros` (chaveado por arquivo) ela não tinha
+    /// dono e a interface nunca a via.
+    private(set) var erroDeCarregamento: String?
+
     /// Whisper e Qwen continuam pesados. A fila mantém os
     /// pedidos em ordem de chegada e permite que somente um deles carregue os
     /// modelos por vez.
@@ -65,6 +70,16 @@ final class Biblioteca {
         self.espaco = Self.espacoIndividual()
     }
 
+    /// Injeção para testes: container em memória, armazenamento temporário e
+    /// espaço isolado — sem tocar o banco nem o container reais do usuário.
+    /// O caminho de produção continua sendo o `init()` acima.
+    init(armazenamento: Armazenamento, repositorio: SwiftDataRepository, espaco: EspacoID) {
+        self.armazenamento = armazenamento
+        self.pastaDeModelos = armazenamento.pastaDeModelos
+        self.repositorio = repositorio
+        self.espaco = espaco
+    }
+
     /// O espaço individual é um só e precisa sobreviver a relançamentos: sem
     /// isto, cada abertura criaria um espaço novo e a lista voltaria vazia.
     private static func espacoIndividual() -> EspacoID {
@@ -90,8 +105,10 @@ final class Biblioteca {
         do {
             arquivos = try await repositorio.listar(espaco: espaco)
             arquivosNaLixeira = try await repositorio.listarNaLixeira(espaco: espaco)
+            // Uma carga bem-sucedida limpa o lixo de execuções anteriores.
+            erroDeCarregamento = nil
         } catch {
-            erros[UUID()] = "Não foi possível abrir a biblioteca: \(error)"
+            erroDeCarregamento = "Não foi possível abrir a biblioteca: \(error)"
         }
     }
 
@@ -226,6 +243,9 @@ final class Biblioteca {
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
+            // Sem isto o arquivo apagado deixa favorito, pasta, capa e
+            // metadados órfãos em UserDefaults para sempre.
+            PreferenciasVisuaisDoArquivo.remover(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
