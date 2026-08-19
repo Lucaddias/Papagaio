@@ -73,9 +73,12 @@ struct TarefasDaConversaView: View {
 
                 Button(action: aoAdicionar) {
                     Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
+                        // Altura.destaque (44) é a medida do sistema para ação
+                        // principal/alvo mínimo — o 48 de antes vivia fora da
+                        // escala que o próprio botão deveria exemplificar.
+                        .font(.title2.weight(.medium))
                         .foregroundStyle(PapagaioTema.textoSobrePrimario)
-                        .frame(width: 48, height: 48)
+                        .frame(width: PapagaioTema.Altura.destaque, height: PapagaioTema.Altura.destaque)
                         .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 }
                 .buttonStyle(.plain)
