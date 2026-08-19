@@ -171,12 +171,23 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     public func pausar() async {
         guard !pausada else { return }
         recorder?.pause()
+        #if os(macOS)
+        // O tap não pausa o stream — pausa a escrita. Sem isso o canal do
+        // sistema acumula o tempo de pausa e se desalinha do microfone.
+        systemTap?.pausar()
+        nivelSistema.definirNormalizado(0)
+        #endif
         pausada = true
         nivelMicrofone.definirNormalizado(0)
     }
 
     public func continuar() async {
         guard pausada else { return }
+        #if os(macOS)
+        // Retoma a escrita antes do recorder para não perder o primeiro
+        // buffer que o microfone ainda não pediu.
+        systemTap?.continuar()
+        #endif
         recorder?.record()
         pausada = false
     }
