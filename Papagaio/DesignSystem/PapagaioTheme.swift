@@ -133,14 +133,30 @@ enum PapagaioTema {
 
     /// Uma escala só. `tituloDePagina` substitui os cinco tamanhos de H1 que
     /// existiam espalhados pelas telas.
+    ///
+    /// Os tamanhos seguem o que a pessoa pediu nas Preferências de
+    /// Acessibilidade: a proporção é aplicada sobre o corpo preferido do
+    /// sistema. Com o padrão do macOS o fator é 1 e a identidade fica
+    /// exatamente como desenhada; aumentar o texto do sistema aumenta tudo.
+    /// (Trocar direto pelos estilos de texto não servia: no macOS eles são
+    /// menores que a identidade — largeTitle = 26, body = 13.)
     enum Tipo {
-        static let tituloDePagina = Font.system(size: 30, weight: .bold)
-        static let tituloDeSecao = Font.system(size: 20, weight: .semibold)
-        static let tituloDeCard = Font.system(size: 17, weight: .semibold)
+        static var tituloDePagina: Font { sistema(30, weight: .bold) }
+        static var tituloDeSecao: Font { sistema(20, weight: .semibold) }
+        static var tituloDeCard: Font { sistema(17, weight: .semibold) }
         static let corpo = Font.body
         static let apoio = Font.callout
         static let legenda = Font.caption
         static let rotulo = Font.caption.weight(.semibold)
+
+        private static func sistema(_ tamanho: CGFloat, weight: Font.Weight) -> Font {
+            Font.system(size: tamanho * fatorDeEscala, weight: weight)
+        }
+
+        /// Corpo preferido do sistema sobre o corpo padrão do macOS (13 pt).
+        private static var fatorDeEscala: CGFloat {
+            NSFont.preferredFont(forTextStyle: .body).pointSize / 13
+        }
     }
 
     // MARK: - Formas
@@ -216,13 +232,18 @@ extension View {
 enum DataDigitada {
     private static let formatos = ["dd/MM/yyyy", "dd-MM-yyyy", "ddMMyyyy", "dd/MM/yy", "dd/MM"]
 
+    /// Um formatador só, reconfigurado a cada leitura. Antes cada chamada
+    /// criava um `DateFormatter` novo — e ele é notoriamente caro de construir.
+    private static let formatador: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "pt_BR")
+        f.calendar = Calendar.current
+        return f
+    }()
+
     static func lendo(_ texto: String) -> Date? {
         let limpo = texto.trimmingCharacters(in: .whitespaces)
         guard !limpo.isEmpty else { return nil }
-
-        let formatador = DateFormatter()
-        formatador.locale = Locale(identifier: "pt_BR")
-        formatador.calendar = Calendar.current
 
         for formato in formatos {
             formatador.dateFormat = formato
@@ -276,47 +297,53 @@ struct BotaoCircularPapagaio: View {
     /// mudava até o clique. Ícone e borda acendem no coral da identidade,
     /// como já acontece nos botões da barra.
     @State private var pairando = false
+    /// Posição para a legenda flutuante. `onGeometryChange` no lugar do
+    /// `GeometryReader` antigo: mesmo dado, sem o wrapper que expande e
+    /// bagunça layout de botão de tamanho fixo.
+    @State private var areaDoBotao: CGRect = .zero
 
     var body: some View {
-        GeometryReader { geometria in
-            Button(action: acao) {
-                Image(systemName: simbolo)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(
-                        destaque || pairando
-                            ? PapagaioTema.destaqueEscuro
-                            : PapagaioTema.textoSecundario
+        Button(action: acao) {
+            Image(systemName: simbolo)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(
+                    destaque || pairando
+                        ? PapagaioTema.destaqueEscuro
+                        : PapagaioTema.textoSecundario
+                )
+                .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
+                .background(PapagaioTema.superficie, in: Circle())
+                .overlay {
+                    Circle().stroke(
+                        pairando ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
+                        lineWidth: 1
                     )
-                    .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
-                    .background(PapagaioTema.superficie, in: Circle())
-                    .overlay {
-                        Circle().stroke(
-                            pairando ? PapagaioTema.destaque.opacity(0.58) : PapagaioTema.borda,
-                            lineWidth: 1
-                        )
-                    }
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help(ajuda)
-            .accessibilityLabel(ajuda)
-            .onHover { ativo in
-                pairando = ativo
-                guard let legendaAtiva else { return }
-                if ativo {
-                    let area = geometria.frame(in: .global)
-                    legendaAtiva.wrappedValue = LegendaDaBarra(
-                        texto: ajuda,
-                        x: area.midX,
-                        baseDoIcone: area.maxY
-                    )
-                } else if legendaAtiva.wrappedValue?.texto == ajuda {
-                    legendaAtiva.wrappedValue = nil
                 }
-            }
-            .animation(.easeOut(duration: 0.14), value: pairando)
+                .contentShape(Circle())
         }
+        .buttonStyle(.plain)
+        .help(ajuda)
+        .accessibilityLabel(ajuda)
         .frame(width: PapagaioTema.Altura.padrao, height: PapagaioTema.Altura.padrao)
+        .onGeometryChange(for: CGRect.self) { geometria in
+            geometria.frame(in: .global)
+        } action: { nova in
+            areaDoBotao = nova
+        }
+        .onHover { ativo in
+            pairando = ativo
+            guard let legendaAtiva else { return }
+            if ativo {
+                legendaAtiva.wrappedValue = LegendaDaBarra(
+                    texto: ajuda,
+                    x: areaDoBotao.midX,
+                    baseDoIcone: areaDoBotao.maxY
+                )
+            } else if legendaAtiva.wrappedValue?.texto == ajuda {
+                legendaAtiva.wrappedValue = nil
+            }
+        }
+        .animation(.easeOut(duration: 0.14), value: pairando)
     }
 }
 
