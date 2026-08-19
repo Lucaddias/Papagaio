@@ -122,8 +122,13 @@ struct PerfilPessoalView: View {
         painel.canChooseDirectories = false
         painel.canChooseFiles = true
         painel.title = "Escolher foto do perfil"
-        if painel.runModal() == .OK, let url = painel.url {
-            perfil.escolherAvatar(url)
+        // `begin` no lugar de `runModal`: o painel deixa de travar a main
+        // enquanto a pessoa navega.
+        painel.begin { resposta in
+            guard resposta == .OK, let url = painel.url else { return }
+            Task { @MainActor in
+                perfil.escolherAvatar(url)
+            }
         }
     }
 

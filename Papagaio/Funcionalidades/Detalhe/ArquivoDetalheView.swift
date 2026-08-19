@@ -921,10 +921,16 @@ struct ArquivoDetalheView: View {
         painel.allowsMultipleSelection = true
         painel.resolvesAliases = true
 
-        guard painel.runModal() == .OK else { return }
-
-        for url in painel.urls {
-            adicionarMidia(url)
+        // `begin` no lugar de `runModal`: o painel deixa de travar a main
+        // enquanto a pessoa navega pelos arquivos.
+        painel.begin { resposta in
+            guard resposta == .OK else { return }
+            let urls = painel.urls
+            Task { @MainActor in
+                for url in urls {
+                    adicionarMidia(url)
+                }
+            }
         }
     }
 

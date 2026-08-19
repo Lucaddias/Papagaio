@@ -400,6 +400,10 @@ struct BibliotecaHomeView: View {
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
+    ///
+    /// `begin` no lugar de `runModal` e a cópia fora da main: a pasta pode
+    /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
+    /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
         guard let pacote = pacoteDaPasta(nome) else { return }
 
@@ -410,15 +414,17 @@ struct BibliotecaHomeView: View {
         painel.canChooseDirectories = true
         painel.canCreateDirectories = true
 
-        guard painel.runModal() == .OK,
-              let destino = painel.url,
-              destino.startAccessingSecurityScopedResource()
-        else { return }
-        defer { destino.stopAccessingSecurityScopedResource() }
+        painel.begin { resposta in
+            guard resposta == .OK, let destino = painel.url else { return }
+            Task.detached {
+                guard destino.startAccessingSecurityScopedResource() else { return }
+                defer { destino.stopAccessingSecurityScopedResource() }
 
-        let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-        try? FileManager.default.removeItem(at: alvo)
-        try? FileManager.default.copyItem(at: pacote, to: alvo)
+                let alvo = destino.appendingPathComponent(nome, isDirectory: true)
+                try? FileManager.default.removeItem(at: alvo)
+                try? FileManager.default.copyItem(at: pacote, to: alvo)
+            }
+        }
     }
 
     /// Compartilha como um `.zip` único.
