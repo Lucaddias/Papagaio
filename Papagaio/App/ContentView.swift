@@ -217,7 +217,10 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $mostrandoImportador,
-            allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .wav]
+            // Sai da mesma lista do arraste: antes o painel aceitava menos
+            // formatos que o drop, e o mesmo arquivo entrava por um caminho e
+            // era recusado pelo outro.
+            allowedContentTypes: Self.tiposDeAudio
         ) { resultado in
             guard case let .success(url) = resultado,
                   url.startAccessingSecurityScopedResource()
@@ -434,9 +437,18 @@ struct ContentView: View {
         }
     }
 
+    /// As extensões aceitas na importação — única fonte de verdade, usada
+    /// pelo `.fileImporter` (via `tiposDeAudio`) e pelo filtro do arraste.
     private static let extensoesDeAudio: Set<String> = [
         "m4a", "mp3", "wav", "aac", "aiff", "aif", "caf", "flac", "mp4", "mov",
     ]
+
+    /// Os mesmos formatos do arraste, como `UTType`, para o painel de
+    /// importação. Extensão sem tipo conhecido não entra no painel — o
+    /// caminho do arraste continua cobrindo.
+    private static var tiposDeAudio: [UTType] {
+        extensoesDeAudio.sorted().compactMap { UTType(filenameExtension: $0) }
+    }
 
     private func abrirLixeira() {
         telaSelecionada = .biblioteca
