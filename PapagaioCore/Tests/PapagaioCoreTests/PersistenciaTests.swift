@@ -117,6 +117,27 @@ func persistenciaPreservaFalanteAcustico() async throws {
     #expect(palavras[2].falanteAcustico == nil)
 }
 
+@Test("Falha ao apagar a mídia não deixa registro zumbi: o registro sai antes")
+func persistenciaApagarPreservaRegistroSeMidiaFalhar() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let arquivo = arquivoDeExemplo(titulo: "na lixeira", espaco: espaco)
+    try await repo.salvar(arquivo)
+    try await repo.moverParaLixeira(arquivo.id)
+
+    struct FalhaDeMidia: Error {}
+    await #expect(throws: FalhaDeMidia.self) {
+        try await repo.apagar(arquivo.id) { _ in throw FalhaDeMidia() }
+    }
+
+    // Ordem invertida em relação à primeira versão: o registro sai do banco
+    // primeiro e a mídia por último. Se a mídia falhar, o pior caso é áudio
+    // órfão em disco — nunca um registro sem áudio que não toca mais. A
+    // deleção do registro precisa estar persistida mesmo com a falha.
+    #expect(try await repo.listarNaLixeira(espaco: espaco).isEmpty)
+    #expect(try await repo.listar(espaco: espaco).isEmpty)
+}
+
 @Test("Espaço ausente em registro legado devolve sempre o mesmo id")
 func espacoAusenteUsaIdEstavel() {
     // Registro legado sem a relação de espaço: o fallback não pode inventar
