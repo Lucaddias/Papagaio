@@ -8,27 +8,25 @@ struct MenuDeArquivoAberto: View {
     let aoReprocessar: () -> Void
     let aoEditarImagem: () -> Void
     let aoRenomear: () -> Void
-    let aoMoverParaPasta: () -> Void
+    let aoBaixar: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
-    let aoPersonalizar: () -> Void
+    let aoEditarAparencia: () -> Void
     let aoMoverParaLixeira: () -> Void
 
+    /// A ordem é por frequência, com a aparência no fim.
+    ///
+    /// "Cor e imagem" estava no topo por ser a mais nova, não por ser a mais
+    /// usada — e ocupava o primeiro item, que é onde o olho cai e onde deveria
+    /// estar o que se faz todo dia. Ela é decisão de arrumação: escolhe-se uma
+    /// vez e não se volta. Vai para o fim da lista, encostada no separador que
+    /// a distingue da lixeira.
+    ///
+    /// Mesmo desenho do menu da pasta, que já tinha Baixar antes de
+    /// Compartilhar — "guardar comigo" antes de "mandar para alguém".
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ItemDoMenuDeArquivo(simbolo: "pencil.and.outline", titulo: "Editar imagem", acao: aoEditarImagem)
-            ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
-            ItemDoMenuDeArquivo(simbolo: "folder", titulo: "Mover para pasta", acao: aoMoverParaPasta)
-            ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
-            ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
-            // Favoritar sai daqui: a estrela no canto do card já faz isso, e
-            // repetir a ação no menu só alongava a lista.
-
-            SeparadorPapagaio()
-                .padding(.horizontal, PapagaioTema.Espaco.medio)
-                .padding(.vertical, PapagaioTema.Espaco.minimo)
-
-// Diarização retroativa: arquivos gravados antes da diarização
+            // Diarização retroativa: arquivos gravados antes da diarização
             // existir têm palavras sem falante — distinguir é leve (só os
             // modelos pequenos), reprocessar re-transcreve tudo.
             ItemDoMenuDeArquivo(
@@ -44,15 +42,15 @@ struct MenuDeArquivoAberto: View {
                 acao: aoReprocessar
             )
 
-            // Separado das ações acima porque não age sobre esta conversa: as
-            // outras mexem neste arquivo, esta muda como toda a grade se
-            // apresenta. Juntas na mesma lista, pareceria que "Personalizar"
-            // personaliza só este cartão.
-            ItemDoMenuDeArquivo(
-                simbolo: "slider.horizontal.3",
-                titulo: "Personalizar cartões",
-                acao: aoPersonalizar
-            )
+            ItemDoMenuDeArquivo(simbolo: "pencil.and.outline", titulo: "Editar imagem", acao: aoEditarImagem)
+            ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
+            ItemDoMenuDeArquivo(simbolo: "arrow.down.circle", titulo: "Baixar", acao: aoBaixar)
+            ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
+            ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
+            // Favoritar e mover para pasta saem daqui: são botões no rodapé do
+            // cartão. Repetir a ação no menu só alonga a lista e faz a pessoa
+            // procurar em dois lugares o mesmo comando.
+            ItemDoMenuDeArquivo(simbolo: "paintpalette", titulo: "Cor e imagem", acao: aoEditarAparencia)
 
             SeparadorPapagaio()
                 .padding(.horizontal, PapagaioTema.Espaco.medio)

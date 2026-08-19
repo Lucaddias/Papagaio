@@ -88,6 +88,90 @@ enum DossieDaConversa {
         return destino
     }
 
+    /// Uma pasta com **tudo** de cada conversa: documento, áudios e anexos.
+    ///
+    /// Compartilhar uma pasta é compartilhar o projeto inteiro — mandar só os
+    /// documentos deixaria de fora justamente as fotos, os PDFs e o áudio que
+    /// alguém anexou ali de propósito. Uma subpasta por conversa, com o nome
+    /// dela, porque dez arquivos `microfone.wav` no mesmo nível não se
+    /// distinguem.
+    static func pastaComTudo(
+        nome: String,
+        conversas: [(arquivo: Arquivo, audio: URL)]
+    ) throws -> URL {
+        let fm = FileManager.default
+        let raiz = fm.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent(nome, isDirectory: true)
+        try fm.createDirectory(at: raiz, withIntermediateDirectories: true)
+
+        for (arquivo, audio) in conversas {
+            let base = nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
+            let pastaDaConversa = raiz.appendingPathComponent(base, isDirectory: true)
+            try fm.createDirectory(at: pastaDaConversa, withIntermediateDirectories: true)
+
+            try? gerar(arquivo: arquivo).write(
+                to: pastaDaConversa.appendingPathComponent("\(base).md"),
+                atomically: true,
+                encoding: .utf8
+            )
+
+            // Os dois canais quando existem: uma gravação de microfone e
+            // sistema chegaria pela metade só com o principal.
+            let audios = [
+                audio,
+                audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistema),
+                audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistemaM4ALegado),
+            ]
+            for origem in audios where fm.fileExists(atPath: origem.path) {
+                try? fm.copyItem(
+                    at: origem,
+                    to: pastaDaConversa.appendingPathComponent(origem.lastPathComponent)
+                )
+            }
+
+            let anexos = MidiasDaConversa.carregar(arquivo.id)
+            guard !anexos.isEmpty else { continue }
+            let pastaDeMidia = pastaDaConversa.appendingPathComponent("Mídia", isDirectory: true)
+            try? fm.createDirectory(at: pastaDeMidia, withIntermediateDirectories: true)
+            for anexo in anexos where fm.fileExists(atPath: anexo.url.path) {
+                try? fm.copyItem(at: anexo.url, to: pastaDeMidia.appendingPathComponent(anexo.nome))
+            }
+        }
+
+        return raiz
+    }
+
+    /// Compacta uma pasta, do mesmo jeito que o "Comprimir" do Finder.
+    ///
+    /// Zip porque pasta solta não se anexa em e-mail nem em mensagem.
+    static func zipar(_ pasta: URL) throws -> URL {
+        var erroDoCoordenador: NSError?
+        var erroDaCopia: Error?
+        var destino: URL?
+
+        NSFileCoordinator().coordinate(
+            readingItemAt: pasta,
+            options: [.forUploading],
+            error: &erroDoCoordenador
+        ) { zipTemporario in
+            let alvo = FileManager.default.temporaryDirectory
+                .appendingPathComponent("\(pasta.lastPathComponent).zip")
+            try? FileManager.default.removeItem(at: alvo)
+            do {
+                try FileManager.default.copyItem(at: zipTemporario, to: alvo)
+                destino = alvo
+            } catch {
+                erroDaCopia = error
+            }
+        }
+
+        if let erroDoCoordenador { throw erroDoCoordenador }
+        if let erroDaCopia { throw erroDaCopia }
+        guard let destino else { throw CocoaError(.fileWriteUnknown) }
+        return destino
+    }
+
     private static func linhaDaTarefa(_ tarefa: TarefaDaConversa) -> String {
         let marca = tarefa.status == .concluida ? "x" : " "
         var detalhes = [tarefa.prioridade.rawValue]

@@ -481,15 +481,16 @@ struct ArquivoDetalheView: View {
     /// do formulário, ele fica sempre do mesmo tamanho e sempre igual.
     private var fichaEmPopover: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            // Rótulo no plural quando há mais de um nome: "Entrevistado: Ana,
-            // João" lia errado, como se fosse uma pessoa só de nome composto.
+            // Rótulo concordando em gênero e número com quem está na lista:
+            // "Entrevistado: Ana, João" lia errado duas vezes — como se fosse
+            // uma pessoa só, e como se essa pessoa fosse homem.
             linhaDaFicha(
-                rotuloDePessoas("Entrevistador", "Entrevistadores", em: entrevistadoresDaFicha),
+                rotuloDeEntrevistadores(nomesDePessoas(entrevistadoresDaFicha)),
                 valor: entrevistadoresDaFicha,
                 simbolo: "person.crop.circle.badge.checkmark"
             )
             linhaDaFicha(
-                rotuloDePessoas("Entrevistado", "Entrevistados", em: entrevistadoDaFicha),
+                rotuloDeEntrevistados(nomesDePessoas(entrevistadoDaFicha)),
                 valor: entrevistadoDaFicha,
                 simbolo: "person"
             )
@@ -553,12 +554,6 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    /// Singular ou plural conforme o número de nomes preenchidos. Campo vazio
-    /// fica no singular: é o rótulo do campo, não a contagem de ninguém.
-    private func rotuloDePessoas(_ singular: String, _ plural: String, em texto: String) -> String {
-        nomesInformados(texto) > 1 ? plural : singular
-    }
-
     /// Uma linha da ficha em leitura. Campo vazio continua aparecendo, dizendo
     /// que não foi informado: sumir dava a impressão de que a ficha nem existe.
     private func linhaDaFicha(_ rotulo: String, valor: String, simbolo: String) -> some View {
@@ -591,13 +586,13 @@ struct ArquivoDetalheView: View {
             metadadoDoCabecalho(
                 entrevistado.isEmpty
                     ? "Entrevistado não informado"
-                    : "\(quantidadeDePessoas(entrevistado) > 1 ? "Entrevistados" : "Entrevistado"): \(entrevistado)",
+                    : "\(rotuloDeEntrevistados(nomesDePessoas(entrevistado))): \(entrevistado)",
                 simbolo: "person"
             )
             metadadoDoCabecalho(
                 entrevistadores.isEmpty
                     ? "Entrevistador não informado"
-                    : "\(quantidadeDePessoas(entrevistadores) > 1 ? "Entrevistadores" : "Entrevistador"): \(entrevistadores)",
+                    : "\(rotuloDeEntrevistadores(nomesDePessoas(entrevistadores))): \(entrevistadores)",
                 simbolo: "person.crop.circle.badge.checkmark"
             )
             metadadoDoCabecalho(
@@ -698,8 +693,33 @@ struct ArquivoDetalheView: View {
         )
     }
 
+    /// Todo o conteúdo da conversa é texto selecionável.
+    ///
+    /// Resumo, transcrição, citações e tarefas existem para serem levados para
+    /// fora — relatório, e-mail, Notion. Sem seleção, a única saída era o
+    /// Compartilhar, que exporta a conversa inteira; copiar uma frase exigia
+    /// redigitá-la.
+    ///
+    /// `.textSelection(.enabled)` no contêiner vale para todo `Text` abaixo
+    /// dele, e traz junto o que o macOS já sabe fazer com texto selecionado:
+    /// Cmd+C, arrastar para outro app, Serviços e o menu de contexto.
     @ViewBuilder
     private var conteudoDaSecao: some View {
+        conteudoBrutoDaSecao
+            .textSelection(.enabled)
+            // Atalho para quem quer tudo: selecionar a conversa inteira à mão
+            // dá trabalho, e é o caso mais comum depois de copiar uma frase.
+            .contextMenu {
+                Button("Copiar conversa inteira", systemImage: "doc.on.doc") {
+                    let texto = DossieDaConversa.gerar(arquivo: arquivo)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(texto, forType: .string)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var conteudoBrutoDaSecao: some View {
         switch secaoSelecionada {
         case .resumo:
             resumo
@@ -1212,14 +1232,28 @@ struct ArquivoDetalheView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// O player em uma linha quando cabe, empilhado só quando não cabe.
+    ///
+    /// Estava fixo em `compacto: true`, ou seja, sempre na versão empilhada de
+    /// 208pt — três vezes a altura necessária numa janela larga, comendo a
+    /// parte de baixo da transcrição sem motivo. `ViewThatFits` escolhe pela
+    /// largura real: a faixa de 88pt em tela normal, a empilhada só na estreita,
+    /// que é o caso para o qual ela foi feita.
     private func barraFlutuante(_ reprodutor: ReprodutorDeArquivo) -> some View {
+        ViewThatFits(in: .horizontal) {
+            barraDeAudio(reprodutor, compacto: false)
+            barraDeAudio(reprodutor, compacto: true)
+        }
+    }
+
+    private func barraDeAudio(_ reprodutor: ReprodutorDeArquivo, compacto: Bool) -> some View {
         BarraDeAudioDaConversa(
             titulo: titulo,
             data: arquivo.criadoEm,
             reprodutor: reprodutor,
             tempoEmEdicao: $tempoEmEdicao,
             aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) },
-            compacto: true
+            compacto: compacto
         )
     }
 
@@ -1655,12 +1689,4 @@ struct ArquivoDetalheView: View {
 
     // MARK: - Formatação
 
-    /// Conta nomes numa lista já normalizada por `listaDePessoas`.
-    private func quantidadeDePessoas(_ lista: String) -> Int {
-        lista
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .count
-    }
 }

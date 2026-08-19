@@ -4,6 +4,17 @@
 <dict>
 	<key>CFBundleIconFile</key>
 	<string>LoroAppIcon</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>br.com.papagaio.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>papagaio</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Loro grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
 </dict>

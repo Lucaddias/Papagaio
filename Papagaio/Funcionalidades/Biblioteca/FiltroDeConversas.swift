@@ -24,19 +24,33 @@ struct FiltroDeConversas: View {
     var body: some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
             ForEach(FiltroDaBiblioteca.allCases) { filtro in
-                Button {
+                // Sem `Button`, e com `onTapGesture` na pastilha.
+                //
+                // Um `Button` decide sozinho onde termina o alvo, a partir do
+                // que o rótulo desenha — e foi essa decisão implícita que
+                // deixou "Todas" respondendo só sobre o texto, porque a
+                // pastilha não selecionada não desenha fundo nenhum. O
+                // `onTapGesture` não tem essa liberdade: ele vale exatamente na
+                // forma declarada logo antes dele, e essa forma é o retângulo
+                // inteiro da pastilha.
+                PastilhaDeFiltro(
+                    filtro: filtro,
+                    selecionada: selecionado == filtro,
+                    compacto: compacto
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
                     withAnimation(.snappy(duration: 0.18)) {
                         selecionado = filtro
                         pastaSelecionada = nil
                         atalhoSelecionado = nil
                         aoLimparAtalhoVisual()
                     }
-                } label: {
-                    PastilhaDeFiltro(filtro: filtro, selecionada: selecionado == filtro, compacto: compacto)
                 }
-                .buttonStyle(.plain)
                 .help(filtro.rawValue)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityLabel("Mostrar \(filtro.rawValue.localizedLowercase)")
+                .accessibilityAddTraits(selecionado == filtro ? [.isSelected] : [])
             }
         }
     }
@@ -67,10 +81,17 @@ private struct PastilhaDeFiltro: View {
                     lineWidth: 1
                 )
             }
-            // Sem isto, o clique continuaria valendo só sobre o desenho: a
-            // forma define a área de toque, e é ela que faz a pastilha ser um
-            // botão de verdade.
-            .contentShape(Capsule())
+            // A forma de clique é o retângulo inteiro da pastilha.
+            //
+            // Sem ela, o alvo era só o que está **desenhado** — e a pastilha
+            // não selecionada tem fundo `Color.clear`, que o SwiftUI não
+            // considera desenhado. Sobravam as letras e o glifo. Como a
+            // pastilha selecionada tem fundo com cor, ela funcionava inteira:
+            // por isso "Pastas" respondia enquanto se estava em Pastas, e
+            // "Todas" só respondia se o clique caísse exatamente sobre o texto.
+            // O sintoma trocava de lado junto com a seleção, o que fazia
+            // parecer que só um dos dois botões estava quebrado.
+            .contentShape(Rectangle())
             .onHover { pairando = $0 }
             .animation(.easeOut(duration: 0.14), value: pairando)
             .animation(.easeOut(duration: 0.14), value: selecionada)
@@ -82,6 +103,10 @@ private struct PastilhaDeFiltro: View {
 
     private var fundo: Color {
         if selecionada { return PapagaioTema.destaque.opacity(0.14) }
-        return pairando ? PapagaioTema.superficie : .clear
+        // `superficie` com opacidade quase nula, e não `.clear`: visualmente é
+        // a mesma coisa, mas é uma cor desenhada — e cor desenhada recebe
+        // clique. Sozinha já resolveria; com o `contentShape` acima, é a
+        // segunda trava contra o mesmo problema voltar.
+        return pairando ? PapagaioTema.superficie : PapagaioTema.superficie.opacity(0.001)
     }
 }

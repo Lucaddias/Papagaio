@@ -253,7 +253,8 @@ public struct PipelineDeArquivo: Sendable {
             resumo: arquivo.resumo,
             engineTranscricao: arquivo.engineTranscricao,
             engineResumo: arquivo.engineResumo,
-            apagadoEm: arquivo.apagadoEm
+            apagadoEm: arquivo.apagadoEm,
+            idExterno: arquivo.idExterno
         )
         // Costura de vozes iguais: fala duvidosa entre dois pedaços da MESMA
         // voz recebe o rótulo dela sem custo de modelo — é a leitura acústica

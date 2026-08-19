@@ -15,6 +15,14 @@ import SwiftUI
 /// Ele abre para baixo (`arrowEdge: .bottom`), portanto não cobre o ícone e o
 /// ponteiro continua "em cima" — sem isso o `onHover` viraria falso ao abrir e
 /// o balão entraria em pisca-pisca.
+///
+/// Já existiu uma versão que abria para o lado (`arrowEdge: .trailing`),
+/// justamente para o balão não cair em cima da linha de filtros logo abaixo
+/// do título — popover é uma janela do sistema, que engole todo clique
+/// embaixo dela, e um hover no "i" a caminho dos filtros travava o clique em
+/// "Todas". Voltou a abrir para baixo por pedido explícito, ciente desse
+/// risco: se "Todas" parar de responder de novo perto do título, é aqui que
+/// se procura primeiro.
 struct BotaoDeAjudaPapagaio: View {
     let texto: String
     var ajuda: String = "Sobre esta tela"

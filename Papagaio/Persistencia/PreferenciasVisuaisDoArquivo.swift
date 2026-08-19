@@ -60,6 +60,73 @@ enum PreferenciasVisuaisDoArquivo {
         pastas.append(nome)
         pastas.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         UserDefaults.standard.set(pastas, forKey: chave)
+        AparenciaDasPastas.registrarCriacao(de: nome)
+    }
+
+    /// Apaga a pasta e devolve as conversas dela para "Todas".
+    ///
+    /// Pasta aqui é só um rótulo: apagá-la **não** apaga conversa nenhuma, e é
+    /// por isso que a ação não precisa de aviso alarmante. O que ela precisa é
+    /// limpar o rótulo de quem o carregava — sem isso, sobrariam conversas
+    /// apontando para uma pasta que não existe mais, invisíveis em "Pastas" e
+    /// marcadas com um nome fantasma no cartão.
+    @MainActor
+    static func apagarPasta(_ pasta: String) {
+        let padroes = UserDefaults.standard
+
+        // Antes de apagar qualquer coisa: guarda quem estava dentro e como a
+        // pasta era. É esse retrato que a lixeira devolve depois.
+        var conversas: [UUID] = []
+        for (chave, valor) in padroes.dictionaryRepresentation()
+        where chave.hasPrefix(prefixoPasta) && (valor as? String) == pasta {
+            if let id = UUID(uuidString: String(chave.dropFirst(prefixoPasta.count))) {
+                conversas.append(id)
+            }
+            padroes.removeObject(forKey: chave)
+        }
+
+        LixeiraDePastas.guardar(
+            PastaNaLixeira(
+                nome: pasta,
+                conversas: conversas,
+                aparencia: AparenciaDasPastas.estado(de: pasta)
+            )
+        )
+
+        var pastas = padroes.stringArray(forKey: "pastasDaBiblioteca") ?? []
+        pastas.removeAll { $0.localizedCaseInsensitiveCompare(pasta) == .orderedSame }
+        padroes.set(pastas, forKey: "pastasDaBiblioteca")
+
+        AparenciaDasPastas.esquecer(pasta)
+    }
+
+    /// Renomeia a pasta e leva junto tudo o que aponta para o nome antigo.
+    ///
+    /// O nome **é** a identidade da pasta aqui — não há id. Trocar só a entrada
+    /// da lista deixaria as conversas rotuladas com o nome velho, órfãs de uma
+    /// pasta que não existe mais, e a aparência presa ao nome anterior.
+    @MainActor
+    static func renomearPasta(_ antigo: String, para novo: String) {
+        let limpo = novo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !limpo.isEmpty, limpo != antigo else { return }
+
+        let padroes = UserDefaults.standard
+        var pastas = padroes.stringArray(forKey: "pastasDaBiblioteca") ?? []
+        // Já existe uma pasta com o nome novo: renomear as fundiria em silêncio.
+        guard !pastas.contains(where: { $0.localizedCaseInsensitiveCompare(limpo) == .orderedSame })
+        else { return }
+
+        pastas.removeAll { $0 == antigo }
+        pastas.append(limpo)
+        pastas.sort { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        padroes.set(pastas, forKey: "pastasDaBiblioteca")
+
+        for (chave, valor) in padroes.dictionaryRepresentation()
+        where chave.hasPrefix(prefixoPasta) && (valor as? String) == antigo {
+            padroes.set(limpo, forKey: chave)
+        }
+
+        AparenciaDasPastas.renomear(de: antigo, para: limpo)
     }
 
     static func pastas() -> [String] {

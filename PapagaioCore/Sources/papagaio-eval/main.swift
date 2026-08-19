@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import LlamaRuntime
 import PapagaioCore
@@ -20,12 +21,119 @@ func uso() {
     USO:
       papagaio-eval contratos    imprime os contratos disponíveis
       papagaio-eval run          harness de medição — chega no Passo 6
-      papagaio-eval resolver     diagnóstico da atribuição de falantes:
+papagaio-eval resolver     diagnóstico da atribuição de falantes:
                                 <audio> (ou --fixture <json>), --modelos <dir>,
                                 --pasta <dir de diarização>, --sem-modelo
+      papagaio-eval granola      fluxo OAuth + MCP reais no Granola
 
-    Nesta fase o binário só confirma que PapagaioCore linka fora do app.
+    GRANOLA:
+      papagaio-eval granola [--servidor <URL>] [--lista] [--detalhe <id>]
+                               [--transcricao] [--sair] [--sem-navegador]
+        padrão       — conta conectada + até 10 reuniões mais recentes
+        --lista      — só a lista de reuniões
+        --detalhe    — notas + resumo da reunião (com --transcricao, inclui fala)
+        --sair       — apaga credenciais e registro de cliente do Keychain
+        --sem-navegador — não abre o navegador; só imprime a URL
+
+    Esta fase só confirma que PapagaioCore linka fora do app.
     """)
+}
+
+/// Servidor HTTP de um pedido só, em 127.0.0.1:porta livre — o redirect URI
+/// que os clientes MCP DCR aprovam sem custom scheme. Captura o `code` da
+/// primeira requisição (e responde para o navegador fechar a aba).
+final class ServidorDeLoopback: @unchecked Sendable {
+    private var fd: Int32 = -1
+    private var porta: UInt16 = 0
+
+    /// Sobe o listener em `127.0.0.1:0` (porta livre) e devolve o redirect URI.
+    func iniciar() throws -> URL {
+        fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw ErroOAuth.falhaDeRede("socket local falhou") }
+        var endereco = sockaddr_in()
+        endereco.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        endereco.sin_family = sa_family_t(AF_INET)
+        endereco.sin_port = 0
+        endereco.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        let ok = withUnsafePointer(to: &endereco) { ponteiro in
+            ponteiro.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                bind(fd, sa, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard ok == 0 else { throw ErroOAuth.falhaDeRede("bind em 127.0.0.1 falhou") }
+        guard listen(fd, 1) == 0 else { throw ErroOAuth.falhaDeRede("listen falhou") }
+        var portaRaw = socklen_t(MemoryLayout<sockaddr_in>.size)
+        var enderecoReal = sockaddr_in()
+        withUnsafeMutablePointer(to: &enderecoReal) { ponteiro in
+            ponteiro.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                getsockname(fd, sa, &portaRaw)
+            }
+        }
+        porta = enderecoReal.sin_port.bigEndian
+        return URL(string: "http://127.0.0.1:\(porta)/oauth")!
+    }
+
+    /// Espera (até `tempoLimite` s) o navegador autorizar. Devolve o código de
+    /// autorização — ou `nil`, para a CLI cair no modo de colagem manual.
+    func esperarCodigo(estadoEsperado: String, tempoLimite: TimeInterval = 90) -> String? {
+        var listernerPoll = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        let pronto = poll(&listernerPoll, 1, Int32(tempoLimite * 1000))
+        guard pronto > 0 else { return nil }
+        let conexao = accept(fd, nil, nil)
+        guard conexao >= 0 else { return nil }
+
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let lidos = recv(conexao, &buffer, buffer.count, 0)
+        let pedido = lidos > 0 ? String(decoding: buffer[..<lidos], as: UTF8.self) : ""
+        let resposta = "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: 20\r\nConnection: close\r\n\r\nPode fechar esta aba."
+        let bytesDaResposta = Array(resposta.utf8)
+        _ = send(conexao, bytesDaResposta, bytesDaResposta.count, 0)
+        close(conexao)
+
+        guard let linha = pedido.split(separator: "\r\n").first,
+              let alvo = linha.split(separator: " ").dropFirst().first,
+              let componentes = URLComponents(string: "http://127.0.0.1\(alvo)"),
+              let codigo = componentes.queryItems?.first(where: { $0.name == "code" })?.value
+        else { return nil }
+        guard componentes.queryItems?.first(where: { $0.name == "state" })?.value == estadoEsperado else {
+            return nil
+        }
+        return codigo
+    }
+
+    deinit {
+        if fd >= 0 { close(fd) }
+    }
+}
+
+/// Apresentador de autorização para terminal: sobe o loopback, abre o
+/// navegador e captura o `code`. Sem navegador/porta, cai na colagem manual.
+struct ApresentadorDeTerminal: ApresentadorDeAutorizacaoOAuth {
+    let abrirNavegador: Bool
+    let servidor: ServidorDeLoopback
+
+    func autorizar(url: URL) async throws -> String {
+        print()
+        print("Autorização necessária — autorize o Papagaio no navegador:")
+        print()
+        print("  \(url.absoluteString)")
+        print()
+        if abrirNavegador {
+            NSWorkspace.shared.open(url)
+        }
+        let estado = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "state" }?.value ?? ""
+        if let codigo = servidor.esperarCodigo(estadoEsperado: estado) {
+            print("código capturado pelo redirecionamento em 127.0.0.1.")
+            return codigo
+        }
+        print("Não recebido em \(90) s. Cole aqui o código da URL final (parâmetro `code`).")
+        print("(Enter vazio cancela.)")
+        guard let linha = readLine(), !linha.isEmpty else {
+            throw ErroOAuth.autorizacaoNegada
+        }
+        return linha
+    }
 }
 
 let argumentos = Array(CommandLine.arguments.dropFirst())
@@ -256,6 +364,109 @@ case "resolver":
         }
     }
     await DiagnosticoDeResolucao.rodar(opcoes)
+
+case "granola":
+    var servidor = URL(string: "https://mcp.granola.ai/mcp")!
+    var soLista = false
+    var detalhe: String?
+    var comTranscricao = false
+    var sair = false
+    var abrirNavegador = true
+    var i = 1
+    while i < argumentos.count {
+        switch argumentos[i] {
+        case "--servidor" where i + 1 < argumentos.count:
+            servidor = URL(string: argumentos[i + 1]) ?? servidor
+            i += 2
+        case "--lista":
+            soLista = true; i += 1
+        case "--detalhe" where i + 1 < argumentos.count:
+            detalhe = argumentos[i + 1]; i += 2
+        case "--transcricao":
+            comTranscricao = true; i += 1
+        case "--sair":
+            sair = true; i += 1
+        case "--sem-navegador":
+            abrirNavegador = false; i += 1
+        default:
+            print("argumento desconhecido: \(argumentos[i])")
+            exit(2)
+        }
+    }
+
+    let cofre = CofreDeTokens(servico: "papagaio-eval:granola")
+    let loopback = ServidorDeLoopback()
+    let redirecionamento = try? loopback.iniciar()
+    if redirecionamento == nil, abrirNavegador {
+        print("aviso: não consegui subir o listener em 127.0.0.1 — será necessário colar o código manualmente.")
+    }
+    let sessao = SessaoOAuth(
+        servidorMCP: servidor,
+        redirecionamento: redirecionamento,
+        cofre: cofre,
+        apresentador: ApresentadorDeTerminal(abrirNavegador: abrirNavegador, servidor: loopback)
+    )
+    if sair {
+        await sessao.sair()
+        print("credenciais apagadas do Keychain.")
+        exit(0)
+    }
+    let cliente = ClienteMCP(url: servidor) { forcar in
+        try await sessao.tokenDeAcesso(forcandoRenovacao: forcar)
+    }
+    let granola = FonteGranola(cliente: cliente)
+
+    do {
+        let conta = try await granola.conta()
+        print("conectado como: \(conta.email)\(conta.workspace.map { " · workspace \($0)" } ?? "")")
+        print()
+
+        if let detalhe {
+            let reuniao = try await granola.obterReuniao(
+                id: detalhe,
+                incluirTranscricao: comTranscricao
+            )
+            print("# \(reuniao.titulo)")
+            print("data: \(reuniao.data.formatted(date: .abbreviated, time: .shortened))")
+            print("participantes: \(reuniao.participantes.isEmpty ? "—" : reuniao.participantes.joined(separator: ", "))")
+            if let notas = reuniao.notas, !notas.isEmpty {
+                print()
+                print("## Notas")
+                print(notas)
+            }
+            if let resumo = reuniao.resumo, !resumo.isEmpty {
+                print()
+                print("## Resumo")
+                print(resumo)
+            }
+            if let transcricao = reuniao.transcricao, !transcricao.isEmpty {
+                print()
+                print("## Transcrição (\(transcricao.count) segmentos)")
+                for segmento in transcricao {
+                    let falante = segmento.falante.map { "\($0): " } ?? ""
+                    print("  \(falante)\(segmento.texto)")
+                }
+            }
+        } else {
+            let reunioes = try await granola.listarReunioes()
+            print("reuniões acessíveis: \(reunioes.count)")
+            for (indice, reuniao) in reunioes.prefix(10).enumerated() {
+                print(String(format: "  %2d  %@  %@",
+                             indice + 1,
+                             reuniao.data.formatted(date: .abbreviated, time: .omitted),
+                             reuniao.titulo))
+                if !reuniao.participantes.isEmpty {
+                    print("        com \(reuniao.participantes.joined(separator: ", "))")
+                }
+            }
+            if soLista { exit(0) }
+            print()
+            print("dica: papagaio-eval granola --detalhe <id> para ver notas e resumo.")
+        }
+    } catch {
+        FileHandle.standardError.write(Data("ERRO no Granola: \(error.localizedDescription)\n".utf8))
+        exit(3)
+    }
 
 case "run":
     FileHandle.standardError.write(

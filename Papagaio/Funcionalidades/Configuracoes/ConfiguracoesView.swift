@@ -1,3 +1,4 @@
+import PapagaioCore
 import SwiftUI
 
 /// Preferências que mudam a aparência do app e o gatilho do pipeline local,
@@ -5,8 +6,14 @@ import SwiftUI
 struct ConfiguracoesView: View {
     @Binding var processamentoAutomatico: Bool
     @Binding var aparencia: AparenciaDoApp
+    /// A conexão Granola viva do app. Quem a cria e a observa é a `ContentView`.
+    var granola: GranolaViewModel?
+    /// Necessária para importar; `nil` enquanto a biblioteca não abriu.
+    var biblioteca: Biblioteca?
     /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
     @AppStorage("painelFlutuanteDuranteGravacao") private var painelFlutuante = true
+    /// Reuniões marcadas para importar, pelos ids do Granola.
+    @State private var selecionadas: Set<String> = []
 
     private var processamentoPausado: Binding<Bool> {
         Binding(
@@ -20,12 +27,16 @@ struct ConfiguracoesView: View {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                 CabecalhoDePagina(
                     titulo: "Configurações",
-                    subtitulo: "Aparência do app e quando as transcrições começam."
+                    subtitulo: "Aparência do app, os cartões da biblioteca e quando as transcrições começam."
                 )
 
                 secaoDeAparencia
 
+                SecaoDePersonalizacaoDosCartoes()
+
                 secaoDeTranscricao
+
+                secaoDeGranola
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -61,7 +72,11 @@ struct ConfiguracoesView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: 760, alignment: .leading)
+        // Largura cheia: os 760pt fixos deixavam metade da janela vazia à
+        // direita e faziam cada seção terminar num ponto diferente do painel
+        // de baixo. O limite de leitura já vem do `larguraDeConteudoPapagaio`
+        // da página.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cartaoPapagaio()
     }
 
@@ -119,8 +134,234 @@ struct ConfiguracoesView: View {
             )
         }
         .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: 760, alignment: .leading)
+        // Largura cheia: os 760pt fixos deixavam metade da janela vazia à
+        // direita e faziam cada seção terminar num ponto diferente do painel
+        // de baixo. O limite de leitura já vem do `larguraDeConteudoPapagaio`
+        // da página.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .cartaoPapagaio()
+    }
+
+    // MARK: - Granola
+
+    @ViewBuilder
+    private var secaoDeGranola: some View {
+        if let granola {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Granola", systemImage: "link")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                estadoDaConexao(granola)
+
+                if granola.estado.conectado {
+                    listaDeReunioes(granola)
+                }
+
+                Text("Conectado, o Papagaio pode ver suas reuniões do Granola e importá-las para a biblioteca — notas e resumo sempre; a transcrição quando o seu plano incluir. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Granola.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        } else {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Granola", systemImage: "link")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                Text("A biblioteca ainda está abrindo — a conexão com o Granola aparece aqui em instantes.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        }
+    }
+
+    @ViewBuilder
+    private func estadoDaConexao(_ granola: GranolaViewModel) -> some View {
+        switch granola.estado {
+        case .desconectado:
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text("Importe reuniões do Granola para a biblioteca, com transcrição quando o plano permitir.")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await granola.conectar() }
+                } label: {
+                    Label("Conectar conta Granola…", systemImage: "person.badge.plus")
+                }
+                .help("Abre o navegador do macOS para autorizar o Papagaio na sua conta do Granola.")
+            }
+
+        case .conectando:
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Aguardando autorização no navegador…")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+        case let .falhou(mensagem):
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Label(mensagem, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await granola.conectar() }
+                } label: {
+                    Label("Tentar novamente", systemImage: "arrow.clockwise")
+                }
+            }
+
+        case let .conectado(conta):
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(conta.email)
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    if let workspace = conta.workspace, !workspace.isEmpty {
+                        Text("Workspace \(workspace)")
+                            .font(PapagaioTema.Tipo.apoio)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                    }
+                }
+
+                Spacer()
+
+                Button("Desconectar") {
+                    selecionadas.removeAll()
+                    Task { await granola.desconectar() }
+                }
+                .buttonStyle(.bordered)
+                .help("Apaga as credenciais do Granola do Keychain.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func listaDeReunioes(_ granola: GranolaViewModel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                Text("Reuniões acessíveis")
+                    .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
+
+                Spacer()
+
+                Button {
+                    Task { await granola.recarregar() }
+                } label: {
+                    Label("Atualizar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.destaque)
+            }
+
+            if granola.carregandoReunioes {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
+                    ProgressView().controlSize(.small)
+                    Text("Carregando reuniões…")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+            } else if granola.reunioes.isEmpty {
+                Text("Nenhuma reunião acessível nesta conta.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            } else {
+                VStack(spacing: PapagaioTema.Espaco.minimo) {
+                    ForEach(granola.reunioes.prefix(20)) { reuniao in
+                        linhaDeReuniao(reuniao)
+                    }
+                }
+            }
+
+            Button {
+                importarSelecionadas(granola)
+            } label: {
+                if granola.importando {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label(
+                        "Importar selecionadas",
+                        systemImage: "square.and.arrow.down"
+                    )
+                }
+            }
+            .disabled(biblioteca == nil || selecionadas.isEmpty || granola.importando)
+            .help(
+                biblioteca == nil
+                    ? "A biblioteca ainda não abriu."
+                    : "Importa as reuniões marcadas para a biblioteca."
+            )
+
+            if let falha = granola.falhaDeImportacao {
+                Label(falha, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func linhaDeReuniao(_ reuniao: ReuniaoExterna) -> some View {
+        let marcada = Binding(
+            get: { selecionadas.contains(reuniao.id) },
+            set: { marcada in
+                if marcada {
+                    selecionadas.insert(reuniao.id)
+                } else {
+                    selecionadas.remove(reuniao.id)
+                }
+            }
+        )
+
+        return Toggle(isOn: marcada) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text(reuniao.titulo)
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(1)
+
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Text(reuniao.data.formatted(date: .abbreviated, time: .omitted))
+                    if !reuniao.participantes.isEmpty {
+                        Text("·")
+                        Text(reuniao.participantes.prefix(3).joined(separator: ", "))
+                    }
+                }
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private func importarSelecionadas(_ granola: GranolaViewModel) {
+        let ids = selecionadas
+        Task {
+            guard let biblioteca else { return }
+            let salvas = await granola.importar(ids, biblioteca: biblioteca)
+            if salvas > 0 {
+                selecionadas.subtract(ids)
+            }
+        }
     }
 }
 
@@ -153,6 +394,14 @@ private struct AmostraDeAparencia: View {
                         lineWidth: selecionada ? 2 : 1
                     )
             }
+            // A forma vai **dentro** do rótulo, e não no botão.
+            //
+            // Fora, ela descreve o botão para quem o contém — o botão continua
+            // decidindo o próprio alvo pelo desenho do rótulo, que aqui é a
+            // miniatura e o texto. Na opção não selecionada, cujo fundo é
+            // transparente, sobrava só isso de clicável e o resto do cartão era
+            // buraco. Dentro, ela é o alvo.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(opcao.descricao)

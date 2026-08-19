@@ -19,6 +19,9 @@ struct ContentView: View {
 
     @State private var biblioteca: Biblioteca?
     @State private var modelos: ModelosViewModel?
+    /// A conexão com o Granola. Nasce junto com a biblioteca (`abrir`), que é
+    /// quem também entrega o destino das importações.
+    @State private var granola: GranolaViewModel?
     @State private var perfil = PerfilViewModel()
     @State private var notificacoes = NotificacoesViewModel()
     @State private var equipes = EquipesDoUsuario.carregar()
@@ -98,6 +101,17 @@ struct ContentView: View {
                 conteudoDaTela
             }
             .background(PapagaioTema.fundo.ignoresSafeArea())
+            // A seleção de texto **não** fica na raiz.
+            //
+            // `.textSelection(.enabled)` aqui vale para toda a árvore, e no
+            // macOS cada `Text` selecionável monta a máquina de seleção do
+            // AppKit. Numa grade de vinte cartões — cada um com título,
+            // descrição, datas e nomes — e numa transcrição de milhares de
+            // palavras, isso é o suficiente para a janela parar de responder.
+            //
+            // Ela vive onde a leitura acontece: no conteúdo da conversa, em
+            // `ArquivoDetalheView`. Cartão da biblioteca não é texto para
+            // copiar, é alvo de clique.
         .toolbarBackground(.hidden, for: .windowToolbar)
             .overlay(alignment: .top) {
                 // Sem padding: a legenda se ancora na base do próprio ícone,
@@ -252,7 +266,8 @@ struct ContentView: View {
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
+                              granola: granola, biblioteca: biblioteca)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
@@ -278,6 +293,12 @@ struct ContentView: View {
                 abrirFichaDaEntrevista(para: arquivo)
             }
             biblioteca = nova
+
+            let conexao = GranolaViewModel()
+            conexao.aoNotificar = { titulo, mensagem, tipo in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
+            }
+            granola = conexao
 
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos

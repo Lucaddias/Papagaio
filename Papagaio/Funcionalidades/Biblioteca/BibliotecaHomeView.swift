@@ -1,3 +1,4 @@
+import AppKit
 import PapagaioCore
 import SwiftUI
 import UniformTypeIdentifiers
@@ -34,6 +35,9 @@ struct BibliotecaHomeView: View {
     @State private var atalhoVisualSelecionado: AtalhoDaBiblioteca?
     @State private var versaoDasPreferenciasVisuais = 0
     @State private var criandoPasta = false
+    /// O picker não retém o delegate; sem esta referência o "Salvar em…" some
+    /// do painel de compartilhamento.
+    @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
     @State private var novaPasta = ""
 
     /// Durante a captura, filtros e pastas somem: a página é a tela da
@@ -44,55 +48,107 @@ struct BibliotecaHomeView: View {
             // Filtros e atalhos na mesma linha: são a mesma decisão — qual
             // recorte da biblioteca estou vendo. Separados, "Recentes" e
             // "Favoritos" pareciam ações do título, e não filtros.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: PapagaioTema.Espaco.largo) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual
-                    )
+            // Uma linha só, e não um `ViewThatFits` com três arranjos.
+            //
+            // O `ViewThatFits` monta **todos** os candidatos para medi-los e
+            // descarta os que não couberem. Os três traziam um `FiltroDeConversas`
+            // próprio, e os três posicionavam esse filtro no mesmo canto — o
+            // superior esquerdo, que é justamente onde fica "Todas". Bastava um
+            // candidato descartado continuar recebendo o clique para a pastilha
+            // da esquerda parar de responder enquanto a da direita, mais para
+            // dentro da linha, seguia funcionando. Era exatamente o sintoma.
+            //
+            // Com uma instância só não existe a quem confundir. As pastilhas são
+            // pequenas e o `Spacer` cede primeiro, então a linha aguenta janela
+            // estreita sem precisar de arranjo alternativo.
+            HStack(spacing: PapagaioTema.Espaco.largo) {
+                FiltroDeConversas(
+                    selecionado: $filtroSelecionado,
+                    pastaSelecionada: $pastaSelecionada,
+                    atalhoSelecionado: $atalhoSelecionado,
+                    aoLimparAtalhoVisual: limparAtalhoVisual
+                )
 
-                    Spacer(minLength: PapagaioTema.Espaco.medio)
+                Spacer(minLength: PapagaioTema.Espaco.curto)
 
-                    atalhosDaBiblioteca
-                }
-
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual,
-                        compacto: true
-                    )
-
-                    Spacer(minLength: PapagaioTema.Espaco.curto)
-
-                    atalhosDaBibliotecaCompactos
-                }
-
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    FiltroDeConversas(
-                        selecionado: $filtroSelecionado,
-                        pastaSelecionada: $pastaSelecionada,
-                        atalhoSelecionado: $atalhoSelecionado,
-                        aoLimparAtalhoVisual: limparAtalhoVisual
-                    )
-
-                    atalhosDaBiblioteca
-                }
+                atalhosDaBiblioteca
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Acima do que vem depois — inclusive da grade de pastas, que é
+            // irmã desta linha dentro do mesmo `if`.
+            //
+            // O `.zIndex(1)` já existiu, mas no `filtrosEPastas` inteiro, do
+            // lado de fora. Um `@ViewBuilder` com duas visões em sequência —
+            // esta `HStack` e o `if filtroSelecionado == .pastas` logo abaixo
+            // — vira uma só `TupleView` quando entra na `VStack` de fora, e um
+            // modificador aplicado a ela se distribui igual para as duas
+            // partes. Pastilhas e grade acabavam com o mesmo `zIndex`, e numa
+            // `VStack` quem desenha por cima em caso de empate é o irmão
+            // seguinte — a grade —, então bastava ela invadir a borda de baixo
+            // das pastilhas (uma sombra, um cartão com moldura maior que o
+            // conteúdo visível) para roubar o clique bem ali. O `zIndex` tem
+            // que estar aqui dentro, só nesta linha, pra valer só para ela.
+            .zIndex(1)
 
-            if filtroSelecionado == .pastas, pastaSelecionada == nil {
+            // A pasta aberta manda no cabeçalho, não a aba.
+            //
+            // Uma pasta também se abre pelos resultados de busca em "Todas" —
+            // é a grade de "Pastas" logo abaixo, quando o termo casa com
+            // alguma. Prender este cabeçalho a `filtroSelecionado == .pastas`
+            // deixava quem entrou por ali sem nome de pasta, sem contagem e
+            // sem botão de voltar: a única saída era lembrar de clicar em
+            // "Todas" de novo. `pastaSelecionada` já é a mesma verdade nos
+            // dois casos — é ela quem deve decidir se o cabeçalho aparece.
+            if let pastaAberta = pastaSelecionada {
+                CabecalhoDaPastaAberta(
+                    nome: pastaAberta,
+                    // Contado direto, e não pela lista de pastas: com o
+                    // atalho Favoritos ativo aquela lista está recortada, e
+                    // uma pasta aberta que não é favorita apareceria como
+                    // "0 conversas".
+                    quantidade: biblioteca?.arquivos.count {
+                        PreferenciasVisuaisDoArquivo.pasta($0.id) == pastaAberta
+                    } ?? 0
+                ) {
+                    withAnimation(.snappy(duration: 0.18)) {
+                        pastaSelecionada = nil
+                    }
+                }
+            } else if filtroSelecionado == .pastas {
                 GradeDePastas(
                     pastas: informacoesDasPastas,
                     selecionada: $pastaSelecionada,
-                    aoCriarPasta: abrirCriacaoDePasta
+                    aoCriarPasta: abrirCriacaoDePasta,
+                    aoApagarPasta: apagarPasta,
+                    aoRenomearPasta: { antigo, novo in
+                        withAnimation(.snappy(duration: 0.2)) {
+                            PreferenciasVisuaisDoArquivo.renomearPasta(antigo, para: novo)
+                            if pastaSelecionada == antigo {
+                                pastaSelecionada = novo.trimmingCharacters(in: .whitespacesAndNewlines)
+                            }
+                            atualizarPreferenciasVisuais()
+                        }
+                    },
+                    aoBaixarPasta: baixarPasta,
+                    aoCompartilharPasta: compartilharPasta,
+                    apenasFavoritas: atalhoSelecionado == .favoritos
                 )
                 .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
             }
         }
+    }
+
+    /// O que era o subtítulo da página, agora sob demanda.
+    ///
+    /// Texto que se lê uma vez e depois só ocupa a primeira dobra da tela
+    /// inicial — mesmo tratamento que a explicação da aba Mídia já tinha
+    /// recebido.
+    private var ajudaDaBiblioteca: some View {
+        BotaoDeAjudaPapagaio(
+            texto: "Gerencie suas transcrições e insights de entrevistas.",
+            ajuda: "Sobre a biblioteca",
+            largura: 300
+        )
     }
 
     private var atalhosDaBiblioteca: some View {
@@ -100,43 +156,29 @@ struct BibliotecaHomeView: View {
             selecionado: $atalhoVisualSelecionado,
             aoSelecionarRecentes: {
                 withAnimation(.snappy(duration: 0.18)) {
-                    filtroSelecionado = .todas
-                    pastaSelecionada = nil
+                    // Mesma regra do Favoritos: em Pastas, o atalho reordena as
+                    // pastas em vez de trocar o que está sendo mostrado.
+                    if filtroSelecionado != .pastas {
+                        filtroSelecionado = .todas
+                        pastaSelecionada = nil
+                    }
                     atalhoSelecionado = .recentes
                     atalhoVisualSelecionado = .recentes
                 }
             },
             aoSelecionarFavoritos: {
                 withAnimation(.snappy(duration: 0.18)) {
-                    filtroSelecionado = .todas
-                    pastaSelecionada = nil
+                    // Em Pastas, "Favoritos" filtra pastas favoritas; forçar
+                    // .todas jogava a pessoa de volta para as conversas e
+                    // desfazia o recorte que ela tinha acabado de escolher.
+                    if filtroSelecionado != .pastas {
+                        filtroSelecionado = .todas
+                        pastaSelecionada = nil
+                    }
                     atalhoSelecionado = .favoritos
                     atalhoVisualSelecionado = .favoritos
                 }
             }
-        )
-    }
-
-    private var atalhosDaBibliotecaCompactos: some View {
-        AtalhosDaBiblioteca(
-            selecionado: $atalhoVisualSelecionado,
-            aoSelecionarRecentes: {
-                withAnimation(.snappy(duration: 0.18)) {
-                    filtroSelecionado = .todas
-                    pastaSelecionada = nil
-                    atalhoSelecionado = .recentes
-                    atalhoVisualSelecionado = .recentes
-                }
-            },
-            aoSelecionarFavoritos: {
-                withAnimation(.snappy(duration: 0.18)) {
-                    filtroSelecionado = .todas
-                    pastaSelecionada = nil
-                    atalhoSelecionado = .favoritos
-                    atalhoVisualSelecionado = .favoritos
-                }
-            },
-            compacto: true
         )
     }
 
@@ -180,13 +222,24 @@ struct BibliotecaHomeView: View {
                 fonte = recentes
             }
         case .lixeira:
-            fonte = biblioteca.arquivosNaLixeira
+            // Conversas que foram para a lixeira junto com a pasta aparecem
+            // dentro do cartão dela, não soltas: repetidas nos dois lugares,
+            // restaurar num deles deixaria o outro mentindo.
+            let dentroDePastaApagada = Set(LixeiraDePastas.itens().flatMap(\.conversas))
+            fonte = biblioteca.arquivosNaLixeira.filter {
+                !dentroDePastaApagada.contains($0.id.rawValue)
+            }
         }
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !termo.isEmpty else { return fonte }
         return fonte.filter { arquivo in
             let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
+            // Pelo nome da pasta também: "Cliente X" é como se pensa no
+            // projeto, e a pessoa não deveria ter de lembrar o título de cada
+            // conversa dentro dele para encontrá-las.
+            let pastaDaConversa = PreferenciasVisuaisDoArquivo.pasta(arquivo.id) ?? ""
             return titulo.localizedCaseInsensitiveContains(termo)
+                || pastaDaConversa.localizedCaseInsensitiveContains(termo)
                 || (secaoSelecionada == .todos
                     && biblioteca.estado(de: arquivo).descricao.localizedCaseInsensitiveContains(termo))
         }
@@ -225,16 +278,37 @@ struct BibliotecaHomeView: View {
     private var informacoesDasPastas: [InformacaoDaPasta] {
         guard let biblioteca else { return [] }
         _ = versaoDasPreferenciasVisuais
-        return pastasCriadas.map { pasta in
-            let arquivos = biblioteca.arquivos.filter {
-                PreferenciasVisuaisDoArquivo.pasta($0.id) == pasta
-            }
-            return InformacaoDaPasta(
+
+        var visiveis = atalhoSelecionado == .favoritos
+            ? pastasCriadas.filter { AparenciaDasPastas.favorita($0) }
+            : pastasCriadas
+
+        // A busca também recorta a grade de pastas. Uma pasta vazia não tem
+        // conversa que a traga no resultado, então sem isto ela era
+        // inalcançável pela busca — e pasta vazia é justamente a que se acabou
+        // de criar e se quer encontrar.
+        let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !termo.isEmpty {
+            visiveis = visiveis.filter { $0.localizedCaseInsensitiveContains(termo) }
+        }
+
+        let informacoes = visiveis.map { pasta in
+            InformacaoDaPasta(
                 nome: pasta,
-                quantidade: arquivos.count,
-                duracaoTotal: arquivos.reduce(0) { $0 + $1.duracao },
-                ultimoArquivo: arquivos.map(\.criadoEm).max()
+                quantidade: biblioteca.arquivos.count {
+                    PreferenciasVisuaisDoArquivo.pasta($0.id) == pasta
+                },
+                criadaEm: AparenciaDasPastas.criadaEm(pasta)
             )
+        }
+
+        guard atalhoSelecionado == .recentes else { return informacoes }
+
+        // Ordena pela data de criação, que é a data que o cartão mostra.
+        // Ordenar por outro critério — a conversa mais nova de dentro, por
+        // exemplo — deixaria a grade numa ordem que a própria tela contradiz.
+        return informacoes.sorted {
+            ($0.criadaEm ?? .distantPast) > ($1.criadaEm ?? .distantPast)
         }
     }
 
@@ -247,6 +321,140 @@ struct BibliotecaHomeView: View {
             $0.nome.localizedCaseInsensitiveContains(termo)
                 || $0.conversaTitulo.localizedCaseInsensitiveContains(termo)
         }
+    }
+
+    /// Apagar a pasta leva as conversas dela para a lixeira, junto.
+    ///
+    /// A alternativa — apagar só o rótulo e deixar as conversas soltas em
+    /// "Todas" — parece mais gentil e é pior: quem apaga a pasta "Cliente X"
+    /// quer o projeto fora da vista, e encontraria as mesmas conversas
+    /// espalhadas na grade um segundo depois. Na lixeira nada se perde, e a
+    /// pasta ali dentro permite trazer de volta o conjunto ou um arquivo só.
+    private func apagarPasta(_ nome: String) {
+        guard let biblioteca else { return }
+        let conversas = biblioteca.arquivos.filter {
+            PreferenciasVisuaisDoArquivo.pasta($0.id) == nome
+        }
+
+        if pastaSelecionada == nome { pastaSelecionada = nil }
+
+        Task {
+            for arquivo in conversas {
+                await biblioteca.moverParaLixeira(arquivo)
+            }
+            // Depois de mover: `apagarPasta` lê quem ainda tem o rótulo para
+            // montar o retrato, e o rótulo sobrevive à ida para a lixeira.
+            PreferenciasVisuaisDoArquivo.apagarPasta(nome)
+            atualizarPreferenciasVisuais()
+        }
+    }
+
+    private func conversasDa(_ pasta: PastaNaLixeira) -> [Arquivo] {
+        guard let biblioteca else { return [] }
+        // A ordem é a da lixeira, não a de `conversas`: é a mesma ordem dos
+        // outros cartões da tela.
+        return biblioteca.arquivosNaLixeira.filter { pasta.conversas.contains($0.id.rawValue) }
+    }
+
+    /// Devolve a pasta e tudo o que ainda estava dentro dela.
+    private func restaurarPasta(_ pasta: PastaNaLixeira) {
+        guard let biblioteca else { return }
+        let conversas = conversasDa(pasta)
+
+        Task {
+            for arquivo in conversas where await biblioteca.restaurarDaLixeira(arquivo) {
+                LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
+            }
+            LixeiraDePastas.restaurar(pasta)
+            atualizarPreferenciasVisuais()
+        }
+    }
+
+    /// Traz uma conversa de volta sem restaurar a pasta.
+    ///
+    /// Ela volta para "Todas", sem rótulo: a pasta não existe mais, e inventar
+    /// uma para ela criaria uma pasta que a pessoa não pediu.
+    private func restaurarConversaDaPasta(_ arquivo: Arquivo, de pasta: PastaNaLixeira) {
+        guard let biblioteca else { return }
+        Task {
+            guard await biblioteca.restaurarDaLixeira(arquivo) else { return }
+            LixeiraDePastas.desvincular(arquivo.id)
+            atualizarPreferenciasVisuais()
+        }
+    }
+
+    /// As conversas de uma pasta, como arquivos prontos para sair do app.
+    ///
+    /// Um dossiê por conversa — texto com resumo, transcrição e tarefas — e não
+    /// o áudio: "baixar a pasta" quase sempre quer dizer levar o conteúdo para
+    /// um relatório, e o áudio de doze entrevistas são gigabytes que ninguém
+    /// pediu. Quem quer o áudio de uma conversa usa o Compartilhar dela.
+    private func pacoteDaPasta(_ nome: String) -> URL? {
+        guard let biblioteca else { return nil }
+        let conversas = biblioteca.arquivos
+            .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
+            .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
+
+        guard !conversas.isEmpty else { return nil }
+        return try? DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+    }
+
+    /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
+    private func baixarPasta(_ nome: String) {
+        guard let pacote = pacoteDaPasta(nome) else { return }
+
+        let painel = NSOpenPanel()
+        painel.title = "Escolha onde salvar a pasta \(nome)"
+        painel.prompt = "Salvar aqui"
+        painel.canChooseFiles = false
+        painel.canChooseDirectories = true
+        painel.canCreateDirectories = true
+
+        guard painel.runModal() == .OK,
+              let destino = painel.url,
+              destino.startAccessingSecurityScopedResource()
+        else { return }
+        defer { destino.stopAccessingSecurityScopedResource() }
+
+        let alvo = destino.appendingPathComponent(nome, isDirectory: true)
+        try? FileManager.default.removeItem(at: alvo)
+        try? FileManager.default.copyItem(at: pacote, to: alvo)
+    }
+
+    /// Compartilha como um `.zip` único.
+    ///
+    /// Um arquivo só, e não uma lista: mandar quarenta arquivos soltos pelo
+    /// painel de compartilhamento é o que trava e-mail e mensagem — e do outro
+    /// lado ninguém remonta a estrutura de pastas na mão.
+    private func compartilharPasta(_ nome: String) {
+        guard let pacote = pacoteDaPasta(nome),
+              let zip = try? DossieDaConversa.zipar(pacote),
+              let view = NSApp.keyWindow?.contentView
+        else { return }
+
+        // O mesmo painel do cartão de conversa, com o delegate que acrescenta
+        // "Salvar em…". Sem ele, compartilhar uma pasta oferecia só os apps —
+        // e guardar num diretório, que é o caso mais comum, ficava de fora.
+        let picker = NSSharingServicePicker(items: [zip])
+        let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
+        delegadoDeCompartilhamento = opcoes
+        picker.delegate = opcoes
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+    }
+
+    /// As pastas cujo nome casa com a busca. Vazio sem termo digitado.
+    private var pastasEncontradas: [InformacaoDaPasta] {
+        let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !termo.isEmpty, secaoSelecionada == .todos else { return [] }
+        return informacoesDasPastas
+    }
+
+    private var pastasNaLixeira: [PastaNaLixeira] {
+        _ = versaoDasPreferenciasVisuais
+        let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
+        let itens = LixeiraDePastas.itens()
+        guard !termo.isEmpty else { return itens }
+        return itens.filter { $0.nome.localizedCaseInsensitiveContains(termo) }
     }
 
     private var tarefasNaLixeira: [TarefaNaLixeira] {
@@ -302,6 +510,86 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// Título, filtros e grade dentro de um painel só.
+    ///
+    /// É o "cardzão" do Classroom: a grade não flutua sobre o fundo da janela,
+    /// ela mora numa superfície com nome. O ganho não é decorativo — o painel
+    /// delimita o que o título e os filtros governam, e separa a biblioteca do
+    /// que aparece fora dela, como o aviso de download dos modelos.
+    private var painelDaBiblioteca: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+            HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+                Text("Biblioteca de Conversas")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
+
+                // Ao lado do título, e não dos filtros: o que ele explica é o
+                // que a seção é, não como ela está recortada.
+                ajudaDaBiblioteca
+
+                Spacer(minLength: 0)
+
+                if let biblioteca, biblioteca.processando {
+                    SeloDeStatus(
+                        texto: "Processamento em andamento",
+                        simbolo: "waveform",
+                        estilo: .destaque
+                    )
+                }
+            }
+
+            filtrosEPastas
+
+            // Buscando em "Todas", as pastas que casam com o termo aparecem
+            // antes das conversas. Sem isto, procurar por um projeto só
+            // encontrava as conversas dentro dele — e uma pasta recém-criada,
+            // ainda vazia, não aparecia em lugar nenhum.
+            //
+            // `pastaSelecionada == nil`: com uma pasta já aberta esta grade de
+            // resultados perdia sentido — ela reaparecia por cima da conversa
+            // filtrada, com o mesmo termo ainda casando o nome da pasta aberta.
+            if pastaSelecionada == nil, filtroSelecionado != .pastas, !pastasEncontradas.isEmpty {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                    Text("Pastas")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .textCase(.uppercase)
+
+                    GradeDePastas(
+                        pastas: pastasEncontradas,
+                        selecionada: $pastaSelecionada,
+                        aoCriarPasta: abrirCriacaoDePasta,
+                        aoApagarPasta: apagarPasta,
+                        aoRenomearPasta: { antigo, novo in
+                            PreferenciasVisuaisDoArquivo.renomearPasta(antigo, para: novo)
+                            atualizarPreferenciasVisuais()
+                        },
+                        aoBaixarPasta: baixarPasta,
+                        aoCompartilharPasta: compartilharPasta,
+                        ocultarCriacao: true
+                    )
+                }
+            }
+
+            gradeDeConversas
+                .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        // Contorno mais firme que o dos cartões de dentro: é ele que separa o
+        // painel do fundo da janela, que aqui tem quase a mesma luminosidade.
+        // Sem a linha, o painel só existia por causa da sombra.
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
@@ -309,7 +597,22 @@ struct BibliotecaHomeView: View {
                 // transcreva e revise" empurrava o painel de captura — que é a
                 // única coisa que importa nesse momento — para baixo. A frase
                 // vira o "i" que fica ao lado do cronômetro.
-                if !emCaptura {
+                // Na biblioteca, o cabeçalho inteiro saiu: "Biblioteca de
+                // Conversas / Gerencie suas transcrições" ocupava a primeira
+                // dobra para dizer o que a grade de cartões logo abaixo já
+                // mostra. É a tela inicial do app — ninguém chega nela sem
+                // saber onde está. A frase virou o "i" ao lado dos filtros.
+                if !emCaptura, secaoSelecionada == .todos {
+                    if let modelos, !modelos.pronto {
+                        CartaoDeModelos(
+                            modelos: modelos,
+                            aoEscolherPasta: aoEscolherPastaDeModelos,
+                            aoUsarPastaDoApp: aoUsarPastaDoApp
+                        )
+                    }
+
+                    painelDaBiblioteca
+                } else if !emCaptura {
                     CabecalhoDePagina(
                         titulo: tituloDaPagina,
                         subtitulo: subtitulo
@@ -317,11 +620,12 @@ struct BibliotecaHomeView: View {
                     HStack(spacing: PapagaioTema.Espaco.largo) {
                         if secaoSelecionada != .todos, let biblioteca {
                             AcoesDaLixeira(
-                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty,
+                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
                                 aoRestaurarTudo: {
                                     Task { await biblioteca.restaurarTudoDaLixeira() }
                                     LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
                                     LixeiraDeMidia.restaurarTudo()
+                                    LixeiraDePastas.restaurarTudo()
                                     atualizarPreferenciasVisuais()
                                 },
                                 aoEsvaziar: {
@@ -341,29 +645,31 @@ struct BibliotecaHomeView: View {
                     }
                 }
 
-                filtrosEPastas
+                if emCaptura || secaoSelecionada != .todos {
+                    filtrosEPastas
 
-                if let modelos, !modelos.pronto {
-                    CartaoDeModelos(
-                        modelos: modelos,
-                        aoEscolherPasta: aoEscolherPastaDeModelos,
-                        aoUsarPastaDoApp: aoUsarPastaDoApp
-                    )
-                }
+                    if let modelos, !modelos.pronto {
+                        CartaoDeModelos(
+                            modelos: modelos,
+                            aoEscolherPasta: aoEscolherPastaDeModelos,
+                            aoUsarPastaDoApp: aoUsarPastaDoApp
+                        )
+                    }
 
-                capturaEmAndamento
+                    capturaEmAndamento
 
-                if !gravador.avisos.isEmpty {
-                    AvisosDaGravacao(avisos: gravador.avisos)
-                }
+                    if !gravador.avisos.isEmpty {
+                        AvisosDaGravacao(avisos: gravador.avisos)
+                    }
 
-                if let falhaDaGravacao {
-                    FalhaDaGravacao(mensagem: falhaDaGravacao)
-                }
+                    if let falhaDaGravacao {
+                        FalhaDaGravacao(mensagem: falhaDaGravacao)
+                    }
 
-                if !emCaptura {
-                    gradeDeConversas
-                        .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
+                    if !emCaptura {
+                        gradeDeConversas
+                            .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
+                    }
                 }
             }
             .larguraDeConteudoPapagaio()
@@ -379,6 +685,18 @@ struct BibliotecaHomeView: View {
         .simultaneousGesture(TapGesture().onEnded {
             fecharMenu()
         })
+        // Apagar a busca devolve a tela inicial inteira, pasta aberta
+        // inclusa. Sem isto, quem entrou numa pasta a partir de um resultado
+        // de busca via campo de texto continuava "dentro" dela depois de
+        // limpar o termo — via de volta que só o botão do cabeçalho oferecia.
+        .onChange(of: consulta) { _, novoValor in
+            guard novoValor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  pastaSelecionada != nil
+            else { return }
+            withAnimation(.snappy(duration: 0.18)) {
+                pastaSelecionada = nil
+            }
+        }
         .confirmationDialog(
             "Apagar definitivamente?",
             isPresented: apresentandoConfirmacaoDeExclusao,
@@ -414,6 +732,7 @@ struct BibliotecaHomeView: View {
                     Task { await biblioteca.esvaziarLixeira() }
                     LixeiraDeTarefas.esvaziar()
                     LixeiraDeMidia.esvaziar()
+                    LixeiraDePastas.esvaziar()
                     atualizarPreferenciasVisuais()
                 }
             }
@@ -500,7 +819,7 @@ struct BibliotecaHomeView: View {
             }
 
         case .lixeira:
-            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty {
+            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
                     titulo: "A lixeira está vazia",
@@ -508,7 +827,7 @@ struct BibliotecaHomeView: View {
                 )
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
-            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty {
+            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "magnifyingglass",
                     titulo: "Nenhum arquivo encontrado",
@@ -547,6 +866,21 @@ struct BibliotecaHomeView: View {
                                 atualizarPreferenciasVisuais()
                             },
                             aoRevelarNoFinder: { LixeiraDeMidia.revelarNoFinder(item) }
+                        )
+                    }
+
+                    ForEach(pastasNaLixeira) { item in
+                        CartaoDePastaNaLixeira(
+                            item: item,
+                            conversas: conversasDa(item),
+                            aoRestaurar: { restaurarPasta(item) },
+                            aoRestaurarConversa: { arquivo in
+                                restaurarConversaDaPasta(arquivo, de: item)
+                            },
+                            aoApagarDefinitivamente: {
+                                LixeiraDePastas.remover(item)
+                                atualizarPreferenciasVisuais()
+                            }
                         )
                     }
 
@@ -604,6 +938,14 @@ struct BibliotecaHomeView: View {
             aoAlterarPreferenciasVisuais: atualizarPreferenciasVisuais,
             aoMoverParaLixeira: {
                 Task { await biblioteca.moverParaLixeira(arquivo) }
+            },
+            aoAbrirPasta: { nome in
+                withAnimation(.snappy(duration: 0.2)) {
+                    filtroSelecionado = .pastas
+                    pastaSelecionada = nome
+                    atalhoSelecionado = nil
+                    limparAtalhoVisual()
+                }
             }
         )
     }
