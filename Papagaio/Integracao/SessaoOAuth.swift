@@ -17,8 +17,7 @@ enum ErroOAuth: LocalizedError, Equatable {
     case servidor(mensagem: String)
     /// Refresh sem refresh token disponível no Keychain.
     case semRefreshToken
-    /// O navegador gerenciado do macOS não abriu e o fallback também não
-    /// chegou a entregar um código.
+    /// O navegador padrão não abriu a URL de autorização.
     case navegadorNaoAbriu
     /// A autorização ficou quieta por tempo demais.
     case tempoEsgotado
@@ -40,7 +39,7 @@ enum ErroOAuth: LocalizedError, Equatable {
         case .navegadorNaoAbriu:
             "O navegador não abriu — confira se o Papagaio pode abrir janelas e tente de novo."
         case .tempoEsgotado:
-            "Tempo esgotado aguardando sua autorização no navegador. Tente de novo."
+            "Tempo esgotado esperando sua autorização — volte ao navegador e tente de novo."
         }
     }
 }
@@ -49,9 +48,8 @@ enum ErroOAuth: LocalizedError, Equatable {
 ///
 /// Faz o caminho inteiro que um cliente MCP de terceiros precisaria:
 /// DCR (RFC 7591) registra um cliente novo no `register`, PKCE (S256) protege
-/// o `authorization_code`, e o navegador gerenciado do macOS
-/// (`ASWebAuthenticationSession`, scheme `papagaio://` no Info.plist) apresenta
-/// a autorização.
+/// o `authorization_code`, e o navegador padrão do sistema (scheme
+/// `papagaio://` no Info.plist) apresenta a autorização.
 ///
 /// As credenciais vivem no Keychain via `CofreDeTokens`: sobrevivem a
 /// reinicializações e nunca ficam em texto puro no disco. O `GranolaViewModel`
@@ -185,9 +183,8 @@ final class SessaoOAuth: Sendable {
         let metadados = try await metadados()
         let cliente = try await registrar(metadados: metadados)
 
-        let codigo = try await apresentador.autorizar(
-            url: urlDeAutorizacao(cliente: cliente, metadados: metadados)
-        )
+        let url = urlDeAutorizacao(cliente: cliente, metadados: metadados)
+        let codigo = try await apresentador.autorizar(url: url)
         guard !codigo.isEmpty else { throw ErroOAuth.semCodigoDeAutorizacao }
 
         let credenciais = try await trocarCodigo(codigo, cliente: cliente, metadados: metadados)

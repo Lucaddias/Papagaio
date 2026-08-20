@@ -2,15 +2,14 @@ import Foundation
 
 /// Ponto único de entrega do retorno `papagaio://` do fluxo OAuth.
 ///
-/// Quando o navegador é o padrão do sistema (fallback do fluxo, quando a
-/// `ASWebAuthenticationSession` não abre), o retorno da autorização chega ao
-/// app pelo scheme declarado no Info.plist; o `ContentView` encaminha o URL
-/// para cá, que valida o `state` e entrega o código a quem está esperando.
+/// Quando o navegador padrão do sistema abre a autorização (`NSWorkspace`), o
+/// retorno chega ao app pelo scheme declarado no Info.plist; o `ContentView`
+/// encaminha o URL para cá, que valida o `state` e entrega o código a quem
+/// está esperando.
 ///
-/// As três vias de retorno (sessão gerenciada do macOS, navegador padrão e o
-/// tempo limite) disputam a mesma espera: só quem retira a entrada do
-/// repositório chama a continuação, então sempre exatamente um resultado
-/// chega — nunca duas.
+/// O retorno do navegador e o tempo limite disputam a mesma espera: só quem
+/// retira a entrada do repositório chama a continuação, então sempre
+/// exatamente um resultado chega — nunca dois.
 final class GerenciadorDeCallbackDeAutorizacao: @unchecked Sendable {
     static let compartilhado = GerenciadorDeCallbackDeAutorizacao()
 

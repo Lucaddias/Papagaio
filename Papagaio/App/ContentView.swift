@@ -187,7 +187,7 @@ struct ContentView: View {
             await abrir()
         }
         // Retorno do navegador quando a autorização do Granola roda no
-        // navegador padrão do sistema (fallback da sessão gerenciada).
+        // navegador padrão do sistema.
         .onOpenURL { url in
             GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
         }

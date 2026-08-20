@@ -208,7 +208,7 @@ struct ConfiguracoesView: View {
             HStack(spacing: PapagaioTema.Espaco.medio) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Aguardando autorização no navegador…")
+                Text("Autorize no navegador e volte ao Papagaio…")
                     .font(PapagaioTema.Tipo.corpo)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
