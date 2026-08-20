@@ -358,6 +358,7 @@ struct ContentView: View {
                 }
             }
             await nova.preparar()
+            atualizarEspacoDaBiblioteca()
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
@@ -477,18 +478,25 @@ struct ContentView: View {
 
     private func selecionarPerfilPessoal() {
         contextoDaConta = .perfil
+        atualizarEspacoDaBiblioteca()
     }
 
     /// Entra no contexto de equipe mesmo sem equipe alguma — é lá que mora o
     /// estado vazio que convida a criar a primeira.
     private func selecionarEquipe() {
         contextoDaConta = .equipe
-        if let equipeAtiva { equipeAtivaID = equipeAtiva.id }
+        if let equipeAtiva {
+            equipeAtivaID = equipeAtiva.id
+            garantirEspacoParaEquipe(id: equipeAtiva.id)
+            atualizarEspacoDaBiblioteca()
+        }
     }
 
     private func usarEquipe(_ equipe: EquipeDisponivel) {
         contextoDaConta = .equipe
         equipeAtivaID = equipe.id
+        garantirEspacoParaEquipe(id: equipe.id)
+        atualizarEspacoDaBiblioteca()
     }
 
     private func adicionarEquipe(nome: String) {
@@ -504,7 +512,8 @@ struct ContentView: View {
             id: "\(base)-\(UUID().uuidString.prefix(6))",
             nome: nomeLimpo,
             papel: "Administrador",
-            quantidadeDeMembros: 1
+            quantidadeDeMembros: 1,
+            espacoID: UUID().uuidString
         )
         equipes.append(nova)
         EquipesDoUsuario.salvar(equipes)
@@ -515,6 +524,28 @@ struct ContentView: View {
         guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
         equipes[indice].quantidadeDeMembros = quantidade
         EquipesDoUsuario.salvar(equipes)
+    }
+
+    private func garantirEspacoParaEquipe(id: String) {
+        guard let indice = equipes.firstIndex(where: { $0.id == id }),
+              UUID(uuidString: equipes[indice].espacoID ?? "") == nil
+        else { return }
+        equipes[indice].espacoID = UUID().uuidString
+        EquipesDoUsuario.salvar(equipes)
+    }
+
+    private func atualizarEspacoDaBiblioteca() {
+        guard let biblioteca else { return }
+        let espaco: EspacoID
+        if contextoDaConta == .equipe,
+           let equipe = equipeAtiva,
+           let texto = equipe.espacoID,
+           let id = UUID(uuidString: texto) {
+            espaco = EspacoID(rawValue: id)
+        } else {
+            espaco = Biblioteca.espacoPessoal()
+        }
+        Task { await biblioteca.usarEspaco(espaco) }
     }
 
     private func sairDoPerfil() {

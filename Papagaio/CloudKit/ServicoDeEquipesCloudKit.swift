@@ -12,6 +12,7 @@ actor ServicoDeEquipesCloudKit {
     private enum Campo {
         static let id = "id"
         static let nome = "nome"
+        static let espacoID = "espacoID"
     }
 
     private enum TipoDeRegistro {
@@ -37,7 +38,8 @@ actor ServicoDeEquipesCloudKit {
         let banco = container.privateCloudDatabase
         _ = try await banco.save(CKRecordZone(zoneID: zonaID))
 
-        let registro = registroDaEquipe(equipe, na: zonaID)
+        let espacoID = UUID(uuidString: equipe.espacoID ?? "") ?? UUID()
+        let registro = registroDaEquipe(equipe, espacoID: espacoID, na: zonaID)
         let compartilhamento = CKShare(recordZoneID: zonaID)
         compartilhamento[CKShare.SystemFieldKey.title] = equipe.nome as NSString
 
@@ -53,6 +55,7 @@ actor ServicoDeEquipesCloudKit {
             nome: equipe.nome,
             papel: equipe.papel,
             quantidadeDeMembros: equipe.quantidadeDeMembros,
+            espacoID: espacoID.uuidString,
             zonaCloudKit: zonaID.zoneName,
             compartilhamentoCloudKit: compartilhamento.recordID.recordName
         )
@@ -85,7 +88,9 @@ actor ServicoDeEquipesCloudKit {
 
         guard
             let id = registro[Campo.id] as? String,
-            let nome = registro[Campo.nome] as? String
+            let nome = registro[Campo.nome] as? String,
+            let espacoID = registro[Campo.espacoID] as? String,
+            UUID(uuidString: espacoID) != nil
         else {
             throw ErroDeEquipeCloudKit.registroDaEquipeInvalido
         }
@@ -95,6 +100,7 @@ actor ServicoDeEquipesCloudKit {
             nome: nome,
             papel: "Membro",
             quantidadeDeMembros: 0,
+            espacoID: espacoID,
             zonaCloudKit: zonaID.zoneName,
             compartilhamentoCloudKit: compartilhamento.recordID.recordName
         )
@@ -110,13 +116,18 @@ actor ServicoDeEquipesCloudKit {
         }
     }
 
-    private func registroDaEquipe(_ equipe: EquipeDisponivel, na zonaID: CKRecordZone.ID) -> CKRecord {
+    private func registroDaEquipe(
+        _ equipe: EquipeDisponivel,
+        espacoID: UUID,
+        na zonaID: CKRecordZone.ID
+    ) -> CKRecord {
         let registro = CKRecord(
             recordType: TipoDeRegistro.equipe,
             recordID: CKRecord.ID(recordName: "equipe", zoneID: zonaID)
         )
         registro[Campo.id] = equipe.id as NSString
         registro[Campo.nome] = equipe.nome as NSString
+        registro[Campo.espacoID] = espacoID.uuidString as NSString
         return registro
     }
 

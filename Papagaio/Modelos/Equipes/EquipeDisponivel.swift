@@ -13,6 +13,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
 
     /// Referência do workspace compartilhado. Equipes criadas antes do
     /// CloudKit continuam locais até serem publicadas explicitamente.
+    var espacoID: String?
     var zonaCloudKit: String?
     var compartilhamentoCloudKit: String?
 
@@ -21,6 +22,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         nome: String,
         papel: String,
         quantidadeDeMembros: Int,
+        espacoID: String? = nil,
         zonaCloudKit: String? = nil,
         compartilhamentoCloudKit: String? = nil
     ) {
@@ -28,6 +30,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         self.nome = nome
         self.papel = papel
         self.quantidadeDeMembros = quantidadeDeMembros
+        self.espacoID = espacoID
         self.zonaCloudKit = zonaCloudKit
         self.compartilhamentoCloudKit = compartilhamentoCloudKit
     }

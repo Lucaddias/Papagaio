@@ -58,7 +58,7 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
-    private let espaco: EspacoID
+    private var espaco: EspacoID
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -67,7 +67,7 @@ final class Biblioteca {
         self.repositorio = SwiftDataRepository(
             modelContainer: try SwiftDataRepository.containerLocal()
         )
-        self.espaco = Self.espacoIndividual()
+        self.espaco = Self.espacoPessoal()
     }
 
     /// Injeção para testes: container em memória, armazenamento temporário e
@@ -82,7 +82,7 @@ final class Biblioteca {
 
     /// O espaço individual é um só e precisa sobreviver a relançamentos: sem
     /// isto, cada abertura criaria um espaço novo e a lista voltaria vazia.
-    private static func espacoIndividual() -> EspacoID {
+    static func espacoPessoal() -> EspacoID {
         let chave = "espacoIndividual"
         if let guardado = UserDefaults.standard.string(forKey: chave),
            let id = UUID(uuidString: guardado) {
@@ -91,6 +91,25 @@ final class Biblioteca {
         let novo = UUID()
         UserDefaults.standard.set(novo.uuidString, forKey: chave)
         return EspacoID(rawValue: novo)
+    }
+
+    /// Troca o acervo exibido sem misturar uma equipe ao perfil pessoal.
+    /// Processamentos em curso continuam com o arquivo que os originou; a
+    /// troca só limpa a fila visual, que pertence à biblioteca aberta.
+    func usarEspaco(_ novoEspaco: EspacoID) async {
+        guard espaco != novoEspaco else {
+            await carregar()
+            return
+        }
+
+        filaDeProcessamento.removeAll()
+        espaco = novoEspaco
+        arquivos.removeAll()
+        arquivosNaLixeira.removeAll()
+        fases.removeAll()
+        erros.removeAll()
+        erroDaLixeira = nil
+        await carregar()
     }
 
     // MARK: - Ciclo de vida
