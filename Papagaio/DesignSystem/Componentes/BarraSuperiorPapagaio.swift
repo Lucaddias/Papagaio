@@ -383,13 +383,12 @@ struct BarraSuperiorPapagaioView: View {
         }
         .padding(.horizontal, PapagaioTema.Espaco.minimo)
         .frame(height: PapagaioTema.Altura.padrao)
-        .background(
-            PapagaioTema.superficie,
-            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-        )
+        // Cápsula, como o campo de busca e o botão de perfil ao lado — não
+        // um retângulo de cantos arredondados. Era o único componente
+        // quadrado no meio de tudo o mais redondo da barra.
+        .background(PapagaioTema.superficie, in: Capsule())
         .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
+            Capsule().stroke(PapagaioTema.borda, lineWidth: 1)
         }
         .fixedSize()
     }

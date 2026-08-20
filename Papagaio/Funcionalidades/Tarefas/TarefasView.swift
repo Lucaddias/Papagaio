@@ -53,10 +53,10 @@ struct TarefasView: View {
         guard !termo.isEmpty else { return filtradasPorSelecao }
         return filtradasPorSelecao.compactMap { conversa in
             let tarefas = conversa.tarefas.filter {
-                conversa.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.origem.localizedCaseInsensitiveContains(termo)
-                    || ($0.responsavel?.localizedCaseInsensitiveContains(termo) ?? false)
+                conversa.titulo.casaComBusca(termo)
+                    || $0.titulo.casaComBusca(termo)
+                    || $0.origem.casaComBusca(termo)
+                    || ($0.responsavel?.casaComBusca(termo) ?? false)
             }
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
