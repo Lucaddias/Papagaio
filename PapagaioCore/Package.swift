@@ -5,7 +5,7 @@ let package = Package(
     name: "PapagaioCore",
     platforms: [.macOS("26.0")],
     products: [
-        .library(name: "PapagaioCore", targets: ["PapagaioCore"]),
+        .library(name: "PapagaioCore", type: .dynamic, targets: ["PapagaioCore"]),
         .executable(name: "papagaio-eval", targets: ["papagaio-eval"]),
     ],
     dependencies: [

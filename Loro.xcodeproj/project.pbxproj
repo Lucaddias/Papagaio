@@ -293,6 +293,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+				);
 				OTHER_LDFLAGS = (
 					"-undefined",
 					dynamic_lookup,
@@ -311,6 +315,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+				);
 				OTHER_LDFLAGS = (
 					"-undefined",
 					dynamic_lookup,

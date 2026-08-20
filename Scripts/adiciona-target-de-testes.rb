@@ -44,8 +44,8 @@ tests = proj.new_target(
 )
 tests.add_dependency(app)
 
-# Os testes importam PapagaioCore direto: o produto do pacote precisa
-# estar ligado também (o mesmo que o app usa).
+# O produto é dinâmico: app e bundle de testes carregam a mesma imagem em vez
+# de cada um incorporar uma cópia estática das classes do PapagaioCore.
 core = app.package_product_dependencies.find { |d| d.product_name == "PapagaioCore" }
 tests.package_product_dependencies << core if core
 
@@ -67,6 +67,9 @@ tests.build_configurations.each do |cfg|
   s["SWIFT_VERSION"] = "6.0"
   s["MACOSX_DEPLOYMENT_TARGET"] = "26.0"
   s["CODE_SIGN_STYLE"] = "Automatic"
+  # O bundle compila contra os módulos do host sem relinkar PapagaioCore.
+  # Esta busca mantém visíveis os módulos C transitivos do FluidAudio.
+  s["FRAMEWORK_SEARCH_PATHS"] = ["$(inherited)", "$(BUILT_PRODUCTS_DIR)/PackageFrameworks"]
   s.delete("INFOPLIST_FILE")
 end
 
