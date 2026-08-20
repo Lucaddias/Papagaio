@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Erros do transporte MCP (JSON-RPC sobre Streamable HTTP).
 enum ErroMCP: LocalizedError {
@@ -31,6 +32,17 @@ enum ErroMCP: LocalizedError {
 final class ClienteMCP: @unchecked Sendable {
     private var inicializado = false
     private var idSessao: String?
+    private var proximoIDInterno = 1
+    private let travaDeIDs = NSLock()
+
+    /// Ids curtas e crescentes: alguns servidores rejeitam inteiros de 64
+    /// bits fora do alcance de int32 com "Parse error".
+    private func proximoID() -> Int {
+        travaDeIDs.lock(); defer { travaDeIDs.unlock() }
+        let atual = proximoIDInterno
+        proximoIDInterno = atual >= 1_000_000_000 ? 1 : atual + 1
+        return atual
+    }
 
     let url: URL
     private let obterToken: (Bool) async throws -> String
@@ -46,14 +58,14 @@ final class ClienteMCP: @unchecked Sendable {
         try await garantirInicializacao()
         let corpo: [String: Any] = [
             "jsonrpc": "2.0",
-            "id": Int.random(in: 1...Int.max),
+            "id": proximoID(),
             "method": "tools/call",
             "params": [
                 "name": ferramenta,
                 "arguments": argumentos,
             ],
         ]
-        let resposta = try await postar(corpo)
+        let resposta = try await postar(corpo, contexto: "tools/call(\(ferramenta))")
         return try extrairResultado(resposta)
     }
 
@@ -74,7 +86,7 @@ final class ClienteMCP: @unchecked Sendable {
                 ],
             ],
         ]
-        _ = try await postar(corpo)
+        _ = try await postar(corpo, contexto: "initialize")
         inicializado = true
 
         // Sinal de "estou pronto": notificação sem id, não espera resposta.
@@ -82,12 +94,12 @@ final class ClienteMCP: @unchecked Sendable {
             "jsonrpc": "2.0",
             "method": "notifications/initialized",
         ]
-        _ = try? await postar(notificacao)
+        _ = try? await postar(notificacao, contexto: "notifications/initialized")
     }
 
     // MARK: - HTTP
 
-    private func postar(_ mensagem: [String: Any]) async throws -> [String: Any] {
+    private func postar(_ mensagem: [String: Any], contexto: String = "postar") async throws -> [String: Any] {
         var pedido = URLRequest(url: url)
         pedido.httpMethod = "POST"
         pedido.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -103,14 +115,24 @@ final class ClienteMCP: @unchecked Sendable {
         let dados: Data
         do {
             let (corpo, resposta) = try await URLSession.shared.data(for: pedido)
+            let status = (resposta as? HTTPURLResponse)?.statusCode
             if let http = resposta as? HTTPURLResponse {
                 if let sessao = http.value(forHTTPHeaderField: "Mcp-Session-Id") {
                     idSessao = sessao
                 }
-                if http.statusCode != 200 {
-                    throw ErroMCP.protocolo(codigo: http.statusCode, mensagem: HTTPURLResponse.localizedString(forStatusCode: http.statusCode))
-                }
             }
+            // 200 para respostas; 202 é o aceite das notificações (`initialized`),
+            // que vêm com corpo `null` — não há o que parsear.
+            guard status == 200 || status == 202 else {
+                let prefixo = String(data: corpo, encoding: .utf8)?
+                    .prefix(300)
+                    .replacingOccurrences(of: "\n", with: " ⏎ ") ?? "(sem corpo)"
+                Logger(subsystem: "Papagaio", category: "Granola").error(
+                    "MCP-\(contexto, privacy: .public): status=\(status ?? 0) corpo=\(prefixo, privacy: .public)"
+                )
+                throw ErroMCP.protocolo(codigo: status ?? 0, mensagem: HTTPURLResponse.localizedString(forStatusCode: status ?? 0))
+            }
+            if status == 202 { return [:] }
             dados = corpo
         } catch let erro as ErroMCP {
             throw erro
@@ -119,20 +141,41 @@ final class ClienteMCP: @unchecked Sendable {
         }
 
         // O servidor pode responder como SSE (event-stream) ou JSON limpo.
+        // No SSE a primeira linha costuma ser `event: message` antes do
+        // `data:`; em vez de exigir que o corpo comece por `data:`, todas as
+        // linhas são coletadas e apenas os payloads `data:` são unidos.
         let bruto = String(data: dados, encoding: .utf8) ?? ""
-        let texto = bruto.trimmingCharacters(in: .whitespacesAndNewlines)
-        if texto.hasPrefix("data:") {
-            let json = texto
-                .components(separatedBy: "\n")
-                .filter { $0.hasPrefix("data:") }
-                .map { $0.dropFirst(5) }
-                .joined()
-            return try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] ?? [:]
+        let linhas = bruto.components(separatedBy: "\n")
+        let payloadsDeDados = linhas
+            .filter { $0.hasPrefix("data:") }
+            .map { $0.dropFirst(5).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if payloadsDeDados.isEmpty {
+            guard let objeto = try Self.objetoJSON(de: dados, contexto: "resposta limpa") else {
+                throw ErroMCP.respostaInvalida
+            }
+            return objeto
         }
-        guard let objeto = try JSONSerialization.jsonObject(with: dados) as? [String: Any] else {
+        let json = payloadsDeDados.joined(separator: "\n")
+        guard let objeto = try Self.objetoJSON(de: Data(json.utf8), contexto: "stream SSE") else {
             throw ErroMCP.respostaInvalida
         }
         return objeto
+    }
+
+    /// `JSONSerialization` com mensagem contextual em vez do 3840 cru do
+    /// sistema quando o corpo não é JSON.
+    private static func objetoJSON(de dados: Data, contexto: String) throws -> [String: Any]? {
+        do {
+            return try JSONSerialization.jsonObject(with: dados) as? [String: Any]
+        } catch {
+            let texto = String(data: dados.prefix(200), encoding: .utf8)
+            let bruto = dados.prefix(80).map { String(format: "%02x", $0) }.joined()
+            Logger(subsystem: "Papagaio", category: "Granola").error(
+                "MCP: \(contexto, privacy: .public) não é JSON — texto=\(texto ?? "(sem texto)", privacy: .public) bruto=\(bruto, privacy: .public)"
+            )
+            throw ErroMCP.respostaInvalida
+        }
     }
 
     private func extrairResultado(_ corpo: [String: Any]) throws -> Any {
@@ -150,21 +193,38 @@ final class ClienteMCP: @unchecked Sendable {
         }
 
         // `structuredContent` é preferido quando existe; senão o texto da
-        // `content[].text`, que costuma ser JSON serializado como string.
+        // `content[].text`, que costuma ser JSON serializado como string —
+        // possivelmente precedido de um preâmbulo do servidor.
         if let estruturado = resultadoJSON["structuredContent"] {
             return estruturado
         }
         if let conteudos = resultadoJSON["content"] as? [[String: Any]] {
             for item in conteudos {
                 guard (item["type"] as? String) == "text",
-                      let texto = item["text"] as? String
+                      let texto = item["text"] as? String,
+                      !texto.isEmpty
                 else { continue }
-                if let json = try? JSONSerialization.jsonObject(with: Data(texto.utf8)) {
+                if let json = Self.jsonNoTexto(texto) {
                     return json
                 }
                 return texto
             }
         }
         return resultadoJSON
+    }
+
+    /// Tenta decodificar o texto inteiro como JSON e, se falhar, o trecho
+    /// entre o primeiro `{` e o último `}` (o servidor antepõe um preâmbulo
+    /// de aviso aos JSONs reais).
+    private static func jsonNoTexto(_ texto: String) -> Any? {
+        if let json = try? JSONSerialization.jsonObject(with: Data(texto.utf8)) {
+            return json
+        }
+        guard let inicio = texto.firstIndex(of: "{"),
+              let fim = texto.lastIndex(of: "}"),
+              inicio < fim
+        else { return nil }
+        let trecho = texto[inicio...fim]
+        return try? JSONSerialization.jsonObject(with: Data(String(trecho).utf8))
     }
 }
