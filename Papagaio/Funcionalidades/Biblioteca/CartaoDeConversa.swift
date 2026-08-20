@@ -304,6 +304,11 @@ struct CartaoDeConversa: View {
         .onChange(of: arquivo.id.rawValue) { _, _ in
             sincronizarPreferenciasVisuais()
         }
+        .onReceive(NotificationCenter.default.publisher(for: PreferenciasVisuaisDoArquivo.metadadosDidChange)) { notification in
+            if let uuid = notification.object as? UUID, uuid == arquivo.id.rawValue {
+                sincronizarPreferenciasVisuais()
+            }
+        }
         .sheet(isPresented: $editandoInformacoes) {
             EditorDeInformacoesDoCard(
                 modo: .edicao,
