@@ -323,80 +323,42 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    /// Apagar a pasta leva as conversas dela para a lixeira, junto.
-    ///
-    /// A alternativa — apagar só o rótulo e deixar as conversas soltas em
-    /// "Todas" — parece mais gentil e é pior: quem apaga a pasta "Cliente X"
-    /// quer o projeto fora da vista, e encontraria as mesmas conversas
-    /// espalhadas na grade um segundo depois. Na lixeira nada se perde, e a
-    /// pasta ali dentro permite trazer de volta o conjunto ou um arquivo só.
+    /// O ciclo de vida (mover as conversas junto, retrato na lixeira,
+    /// restauração) vive no `PastasDaBiblioteca`; aqui só entra a seleção
+    /// corrente e a invalidação visual.
     private func apagarPasta(_ nome: String) {
         guard let biblioteca else { return }
-        let conversas = biblioteca.arquivos.filter {
-            PreferenciasVisuaisDoArquivo.pasta($0.id) == nome
-        }
-
         if pastaSelecionada == nome { pastaSelecionada = nil }
-
         Task {
-            for arquivo in conversas {
-                await biblioteca.moverParaLixeira(arquivo)
-            }
-            // Depois de mover: `apagarPasta` lê quem ainda tem o rótulo para
-            // montar o retrato, e o rótulo sobrevive à ida para a lixeira.
-            PreferenciasVisuaisDoArquivo.apagarPasta(nome)
+            await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
     private func conversasDa(_ pasta: PastaNaLixeira) -> [Arquivo] {
         guard let biblioteca else { return [] }
-        // A ordem é a da lixeira, não a de `conversas`: é a mesma ordem dos
-        // outros cartões da tela.
-        return biblioteca.arquivosNaLixeira.filter { pasta.conversas.contains($0.id.rawValue) }
+        return PastasDaBiblioteca.conversas(da: pasta, biblioteca: biblioteca)
     }
 
-    /// Devolve a pasta e tudo o que ainda estava dentro dela.
     private func restaurarPasta(_ pasta: PastaNaLixeira) {
         guard let biblioteca else { return }
-        let conversas = conversasDa(pasta)
-
         Task {
-            for arquivo in conversas where await biblioteca.restaurarDaLixeira(arquivo) {
-                LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
-            }
-            LixeiraDePastas.restaurar(pasta)
+            await PastasDaBiblioteca.restaurar(pasta, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
-    /// Traz uma conversa de volta sem restaurar a pasta.
-    ///
-    /// Ela volta para "Todas", sem rótulo: a pasta não existe mais, e inventar
-    /// uma para ela criaria uma pasta que a pessoa não pediu.
     private func restaurarConversaDaPasta(_ arquivo: Arquivo, de pasta: PastaNaLixeira) {
         guard let biblioteca else { return }
         Task {
-            guard await biblioteca.restaurarDaLixeira(arquivo) else { return }
-            LixeiraDePastas.desvincular(arquivo.id)
+            await PastasDaBiblioteca.restaurarConversa(arquivo, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
-    /// As conversas de uma pasta, como arquivos prontos para sair do app.
-    ///
-    /// Um dossiê por conversa — texto com resumo, transcrição e tarefas — e não
-    /// o áudio: "baixar a pasta" quase sempre quer dizer levar o conteúdo para
-    /// um relatório, e o áudio de doze entrevistas são gigabytes que ninguém
-    /// pediu. Quem quer o áudio de uma conversa usa o Compartilhar dela.
     private func pacoteDaPasta(_ nome: String) -> URL? {
         guard let biblioteca else { return nil }
-        let conversas = biblioteca.arquivos
-            .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
-            .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
-
-        guard !conversas.isEmpty else { return nil }
-        return try? DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+        return PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
