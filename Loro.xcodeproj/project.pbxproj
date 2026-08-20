@@ -18,7 +18,22 @@
 		F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */; };
 		FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43957C69D28FDB0507C82E6C /* InterfaceTests.swift */; };
 		PA00000000000000000012 /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
-/* End PBXBuildFile section */
+		PA00000000000000000015 /* PapagaioCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+	/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		PA00000000000000000016 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				PA00000000000000000015 /* PapagaioCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXBuildRule section */
 		31B643F1301D238900EE77BE /* PBXBuildRule */ = {
@@ -179,6 +194,7 @@
 			buildPhases = (
 				PA00000000000000000007 /* Sources */,
 				PA00000000000000000008 /* Frameworks */,
+				PA00000000000000000016 /* Embed Frameworks */,
 				PA00000000000000000009 /* Resources */,
 			);
 			buildRules = (
