@@ -223,7 +223,6 @@ public struct PipelineDeArquivo: Sendable {
         // para a biblioteca existente continuar transcrevendo até sair.
         let microfone = Self.primeiroComConteudo(pasta, [
             Armazenamento.Nome.microfone,
-            Armazenamento.Nome.wavMicrofone,
             Armazenamento.Nome.pcmMicrofone,
         ])
         let sistema = Self.primeiroComConteudo(pasta, [
@@ -246,13 +245,15 @@ public struct PipelineDeArquivo: Sendable {
     }
 
     /// Primeiro candidato que existe com conteúdo — a nova convenção primeiro,
-    /// os legados como fallback natural.
+    /// os legados como fallback natural. Sem nenhum, devolve o **primeiro**
+    /// candidato: o `temConteudo` de quem chama transforma a ausência em `nil`.
+    /// (Antes devolvia o último — enganoso: parecia um fallback com conteúdo.)
     private static func primeiroComConteudo(_ pasta: URL, _ candidatos: [String]) -> URL {
         for nome in candidatos {
             let url = pasta.appendingPathComponent(nome)
             if temConteudo(url) { return url }
         }
-        return pasta.appendingPathComponent(candidatos.last ?? "")
+        return pasta.appendingPathComponent(candidatos.first ?? "")
     }
 
     /// O arquivo único quando não há canais separados: a mixagem legada

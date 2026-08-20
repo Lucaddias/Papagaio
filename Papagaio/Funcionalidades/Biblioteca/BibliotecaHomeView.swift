@@ -924,11 +924,11 @@ struct BibliotecaHomeView: View {
     }
 
     private func alternarMenu(de arquivo: Arquivo) {
+        // A view já vive na main: o salto por DispatchQueue só atrasava o
+        // clique em um runloop sem ganhar nada.
         let proximo: ArquivoID? = menuAberto == arquivo.id ? nil : arquivo.id
-        DispatchQueue.main.async {
-            withAnimation(.snappy(duration: 0.18)) {
-                menuAberto = proximo
-            }
+        withAnimation(.snappy(duration: 0.18)) {
+            menuAberto = proximo
         }
     }
 
