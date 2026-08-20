@@ -1,4 +1,5 @@
 import Foundation
+import PapagaioCore
 import Testing
 @testable import Papagaio
 
@@ -8,6 +9,22 @@ func zonaDaEquipeEhDeterministica() {
         ServicoDeEquipesCloudKit.nomeDaZona(para: "produto-a1b2c3")
             == "equipe.produto-a1b2c3"
     )
+}
+
+@Test("Conversa preserva conteúdo ao preparar o payload CloudKit")
+func conversaCodificaParaSincronizacao() throws {
+    let espaco = EspacoID()
+    let arquivo = Arquivo(
+        titulo: "Planejamento",
+        pastaRelativa: "gravacoes/teste",
+        espaco: espaco,
+        trechos: [Trecho(start: 0, end: 2, texto: "Vamos começar")],
+        notas: [NotaDaConversa(texto: "Decisão", start: 1)]
+    )
+
+    let decodificado = try JSONDecoder().decode(Arquivo.self, from: JSONEncoder().encode(arquivo))
+
+    #expect(decodificado == arquivo)
 }
 
 @Test("Equipe local legada continua decodificável")

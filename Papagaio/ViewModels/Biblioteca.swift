@@ -58,7 +58,9 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
+    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
     private var espaco: EspacoID
+    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -96,20 +98,20 @@ final class Biblioteca {
     /// Troca o acervo exibido sem misturar uma equipe ao perfil pessoal.
     /// Processamentos em curso continuam com o arquivo que os originou; a
     /// troca só limpa a fila visual, que pertence à biblioteca aberta.
-    func usarEspaco(_ novoEspaco: EspacoID) async {
-        guard espaco != novoEspaco else {
-            await carregar()
-            return
+    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
+        let mudouDeEspaco = espaco != novoEspaco
+        self.equipeCloudKit = equipeCloudKit
+        if mudouDeEspaco {
+            filaDeProcessamento.removeAll()
+            espaco = novoEspaco
+            arquivos.removeAll()
+            arquivosNaLixeira.removeAll()
+            fases.removeAll()
+            erros.removeAll()
+            erroDaLixeira = nil
         }
-
-        filaDeProcessamento.removeAll()
-        espaco = novoEspaco
-        arquivos.removeAll()
-        arquivosNaLixeira.removeAll()
-        fases.removeAll()
-        erros.removeAll()
-        erroDaLixeira = nil
         await carregar()
+        await baixarAtualizacoesDaEquipe()
     }
 
     // MARK: - Ciclo de vida
@@ -159,6 +161,7 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
+        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
@@ -197,6 +200,7 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            await sincronizar(movido)
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
@@ -233,6 +237,7 @@ final class Biblioteca {
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
             arquivos.sort { $0.criadoEm > $1.criadoEm }
+            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -258,6 +263,9 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
+            if let equipeCloudKit {
+                try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit)
+            }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
@@ -346,6 +354,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -379,6 +388,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -393,6 +403,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -412,6 +423,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -462,6 +474,7 @@ final class Biblioteca {
 
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            await sincronizar(copia)
             return copia
         } catch {
             try? FileManager.default.removeItem(at: destino)
@@ -630,6 +643,7 @@ final class Biblioteca {
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
             substituir(final)
+            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
@@ -687,6 +701,35 @@ final class Biblioteca {
             arquivos[indice] = arquivo
         } else {
             arquivos.insert(arquivo, at: 0)
+        }
+    }
+
+    private func sincronizar(_ arquivo: Arquivo) async {
+        guard let equipeCloudKit else { return }
+        do {
+            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+        } catch {
+            // O acervo local já foi salvo. A próxima troca de equipe tenta
+            // baixar o estado remoto novamente, sem descartar a edição local.
+            aoNotificar?(
+                "Conversa salva só neste Mac",
+                "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.",
+                .aviso
+            )
+        }
+    }
+
+    private func baixarAtualizacoesDaEquipe() async {
+        guard let equipeCloudKit else { return }
+        do {
+            let remotos = try await sincronizadorCloudKit.baixar(da: equipeCloudKit)
+            for arquivo in remotos {
+                try await repositorio.salvar(arquivo)
+            }
+            await carregar()
+        } catch {
+            // A equipe continua útil offline com a cópia local. A UI de
+            // estado da sincronização entra na fase de acabamento.
         }
     }
 

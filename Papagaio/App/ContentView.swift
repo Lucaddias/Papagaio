@@ -52,6 +52,7 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
+    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -515,9 +516,16 @@ struct ContentView: View {
             quantidadeDeMembros: 1,
             espacoID: UUID().uuidString
         )
-        equipes.append(nova)
-        EquipesDoUsuario.salvar(equipes)
-        usarEquipe(nova)
+        Task { @MainActor in
+            do {
+                let publicada = try await servicoDeEquipesCloudKit.criarWorkspace(para: nova)
+                equipes.append(publicada)
+                EquipesDoUsuario.salvar(equipes)
+                usarEquipe(publicada)
+            } catch {
+                falhaDeAbertura = "Não foi possível criar a equipe no iCloud: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
@@ -537,15 +545,18 @@ struct ContentView: View {
     private func atualizarEspacoDaBiblioteca() {
         guard let biblioteca else { return }
         let espaco: EspacoID
+        let equipeParaSincronizar: EquipeDisponivel?
         if contextoDaConta == .equipe,
            let equipe = equipeAtiva,
            let texto = equipe.espacoID,
            let id = UUID(uuidString: texto) {
             espaco = EspacoID(rawValue: id)
+            equipeParaSincronizar = equipe.zonaCloudKit == nil ? nil : equipe
         } else {
             espaco = Biblioteca.espacoPessoal()
+            equipeParaSincronizar = nil
         }
-        Task { await biblioteca.usarEspaco(espaco) }
+        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
     }
 
     private func sairDoPerfil() {

@@ -16,6 +16,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
     var espacoID: String?
     var zonaCloudKit: String?
     var compartilhamentoCloudKit: String?
+    var bancoCloudKit: String?
 
     init(
         id: String,
@@ -24,7 +25,8 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         quantidadeDeMembros: Int,
         espacoID: String? = nil,
         zonaCloudKit: String? = nil,
-        compartilhamentoCloudKit: String? = nil
+        compartilhamentoCloudKit: String? = nil,
+        bancoCloudKit: String? = nil
     ) {
         self.id = id
         self.nome = nome
@@ -33,5 +35,6 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         self.espacoID = espacoID
         self.zonaCloudKit = zonaCloudKit
         self.compartilhamentoCloudKit = compartilhamentoCloudKit
+        self.bancoCloudKit = bancoCloudKit
     }
 }

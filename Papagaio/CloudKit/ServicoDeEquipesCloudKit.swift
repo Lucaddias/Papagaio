@@ -57,7 +57,8 @@ actor ServicoDeEquipesCloudKit {
             quantidadeDeMembros: equipe.quantidadeDeMembros,
             espacoID: espacoID.uuidString,
             zonaCloudKit: zonaID.zoneName,
-            compartilhamentoCloudKit: compartilhamento.recordID.recordName
+            compartilhamentoCloudKit: compartilhamento.recordID.recordName,
+            bancoCloudKit: BancoCloudKitDaEquipe.privado.rawValue
         )
     }
 
@@ -102,7 +103,8 @@ actor ServicoDeEquipesCloudKit {
             quantidadeDeMembros: 0,
             espacoID: espacoID,
             zonaCloudKit: zonaID.zoneName,
-            compartilhamentoCloudKit: compartilhamento.recordID.recordName
+            compartilhamentoCloudKit: compartilhamento.recordID.recordName,
+            bancoCloudKit: BancoCloudKitDaEquipe.compartilhado.rawValue
         )
     }
 
@@ -148,6 +150,11 @@ actor ServicoDeEquipesCloudKit {
         }
         return CKRecord.ID(recordName: nome, zoneID: zona)
     }
+}
+
+enum BancoCloudKitDaEquipe: String {
+    case privado
+    case compartilhado
 }
 
 enum ErroDeEquipeCloudKit: LocalizedError {
