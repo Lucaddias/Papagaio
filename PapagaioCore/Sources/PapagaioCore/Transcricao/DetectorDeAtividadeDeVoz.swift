@@ -104,19 +104,30 @@ public enum DetectorDeAtividadeDeVoz {
 
             var quadros: [Bool] = []
             quadros.reserveCapacity(amostras.count / tamanhoDoQuadro + 1)
+            // Energia primeiro em todos os quadros (filtro barato); os que
+            // passam vão para o Silero **em lote** — um salto para o ator por
+            // arquivo, no lugar de um por quadro (dezenas de milhares numa
+            // hora de áudio).
+            var indicesComEnergia: [Int] = []
             var inicio = 0
             while inicio < amostras.count {
                 let fim = min(inicio + tamanhoDoQuadro, amostras.count)
                 let quadro = amostras[inicio..<fim]
                 let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
-                var temFala = energia >= limiarDeEnergia
-                if temFala, usaSilero {
-                    // O Silero só é consultado quando a energia já passou — é o
-                    // filtro rápido contra silêncio digital.
-                    temFala = try await sileroVAD.probabilidadeDeFala(quadro: Array(quadro)) >= limiarDeFala
-                }
+                let temFala = energia >= limiarDeEnergia
                 quadros.append(temFala)
+                if temFala { indicesComEnergia.append(quadros.count - 1) }
                 inicio = fim
+            }
+            if usaSilero, !indicesComEnergia.isEmpty {
+                let candidatos = indicesComEnergia.map {
+                    let ini = $0 * tamanhoDoQuadro
+                    return Array(amostras[ini..<min(ini + tamanhoDoQuadro, amostras.count)])
+                }
+                let probabilidades = try await sileroVAD.probabilidadesDeFala(quadros: candidatos)
+                for (indice, probabilidade) in zip(indicesComEnergia, probabilidades) {
+                    quadros[indice] = probabilidade >= limiarDeFala
+                }
             }
             quadroTemFala = quadros
             await filaDoSilero.sair()

@@ -55,6 +55,20 @@ public actor SileroVAD: CicloDeVidaDeModelos.Residente {
         estado = [Float](repeating: 0, count: 2 * 1 * 128)
     }
 
+    /// Probabilidade de fala de um lote de quadros, na mesma ordem.
+    ///
+    /// Um salto para o ator por quadro eram dezenas de milhares de idas e
+    /// vindas numa hora de áudio; o lote corta para um salto por arquivo.
+    /// A ordem das saídas é a das entradas.
+    public func probabilidadesDeFala(quadros: [[Float]]) async throws -> [Float] {
+        var probabilidades: [Float] = []
+        probabilidades.reserveCapacity(quadros.count)
+        for quadro in quadros {
+            probabilidades.append(try await probabilidadeDeFala(quadro: quadro))
+        }
+        return probabilidades
+    }
+
     /// Probabilidade de fala de um quadro. Quadros menores que 512 amostras
     /// (fim de arquivo) são completados com zero; quadros maiores são
     /// processados em fatias de 512, devolvendo a maior probabilidade.
