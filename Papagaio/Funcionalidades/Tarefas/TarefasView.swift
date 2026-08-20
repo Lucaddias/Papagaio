@@ -30,7 +30,7 @@ struct TarefasView: View {
     private var tarefasPorConversa: [TarefasDaConversaGeral] {
         conversas.compactMap { arquivo -> TarefasDaConversaGeral? in
             let tarefas = painelDeTarefas.tarefas(de: arquivo)
-                .sorted(by: ordenarPorDeadline)
+                .sorted(by: OrdenacaoDeTarefas.porDeadline)
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
                 arquivo: arquivo,
@@ -85,12 +85,9 @@ struct TarefasView: View {
         return filtradas.sorted { primeira, segunda in
             switch ordenacao {
             case .deadline:
-                return ordenarPorDeadline(primeira.tarefa, segunda.tarefa)
+                return OrdenacaoDeTarefas.porDeadline(primeira.tarefa, segunda.tarefa)
             case .prioridade:
-                let prioridadeA = prioridadeOrdenacao(primeira.tarefa.prioridade)
-                let prioridadeB = prioridadeOrdenacao(segunda.tarefa.prioridade)
-                if prioridadeA != prioridadeB { return prioridadeA < prioridadeB }
-                return ordenarPorDeadline(primeira.tarefa, segunda.tarefa)
+                return OrdenacaoDeTarefas.porPrioridade(primeira.tarefa, segunda.tarefa)
             }
         }
     }
@@ -540,30 +537,5 @@ extension TarefasView {
             em: tarefa.conversa.arquivo,
             conversaTitulo: tarefa.conversa.titulo
         )
-    }
-
-    private func ordenarPorDeadline(_ primeira: TarefaDaConversa, _ segunda: TarefaDaConversa) -> Bool {
-        switch (primeira.prazo, segunda.prazo) {
-        case let (a?, b?):
-            if a != b { return a < b }
-            if primeira.prioridade != segunda.prioridade {
-                return prioridadeOrdenacao(primeira.prioridade) < prioridadeOrdenacao(segunda.prioridade)
-            }
-            return primeira.titulo.localizedCaseInsensitiveCompare(segunda.titulo) == .orderedAscending
-        case (_?, nil):
-            return true
-        case (nil, _?):
-            return false
-        case (nil, nil):
-            return primeira.titulo.localizedCaseInsensitiveCompare(segunda.titulo) == .orderedAscending
-        }
-    }
-
-    private func prioridadeOrdenacao(_ prioridade: PrioridadeDaTarefa) -> Int {
-        switch prioridade {
-        case .alta: 0
-        case .media: 1
-        case .baixa: 2
-        }
     }
 }

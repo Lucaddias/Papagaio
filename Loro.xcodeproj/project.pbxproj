@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05A1548E9D7F5BC1C9940315 /* OrdenacaoDeTarefasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */; };
 		0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */; };
 		315A68933037714100BDE53D /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
 		637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */; };
@@ -44,6 +45,7 @@
 
 /* Begin PBXFileReference section */
 		1962886877C57566118E7CAC /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OrdenacaoDeTarefasTests.swift; sourceTree = "<group>"; };
 		43957C69D28FDB0507C82E6C /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
 		7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
 		96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InvalidacaoVisualTests.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 				D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */,
 				A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */,
 				96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */,
+				2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */,
 			);
 			path = PapagaioTests;
 			sourceTree = "<group>";
@@ -257,6 +260,7 @@
 				A0B56FD6A3AB3E82D83E1AD6 /* MidiasDaConversaViewModelTests.swift in Sources */,
 				7FBA23D1087E2A55EA51CE38 /* TarefasDoPainelViewModelTests.swift in Sources */,
 				637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */,
+				05A1548E9D7F5BC1C9940315 /* OrdenacaoDeTarefasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
