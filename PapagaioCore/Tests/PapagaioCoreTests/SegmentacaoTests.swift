@@ -153,6 +153,19 @@ func mesclagemRemoveEco() {
     #expect(mesclados.first?.speaker == Speaker.interlocutor)
 }
 
+@Test("Texto igual fora de sobreposição de tempo não é eco — fica nos dois canais")
+func textoIgualSemSobreposicaoNaoEhEco() {
+    // Repetição real da conversa (frase dita de novo minutos depois) não pode
+    // ser confundida com eco: o filtro só olha pares que se sobrepõem no tempo.
+    let microfone = [Trecho(start: 60, end: 64, texto: "vamos aprovar o orçamento", speaker: nil)]
+    let sistema = [Trecho(start: 10, end: 14, texto: "vamos aprovar o orçamento", speaker: nil)]
+
+    let mesclados = Segmentacao.mesclarCanais(microfone: microfone, sistema: sistema)
+
+    #expect(mesclados.count == 2)
+    #expect(Set(mesclados.compactMap(\.speaker)) == [Speaker.eu, Speaker.interlocutor])
+}
+
 @Test("Entrada vazia devolve vazio, sem crashar")
 func agrupamentoVazio() {
     #expect(Segmentacao.agrupar([]).isEmpty)
