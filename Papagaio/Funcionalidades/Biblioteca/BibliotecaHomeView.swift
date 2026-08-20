@@ -33,7 +33,7 @@ struct BibliotecaHomeView: View {
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
     @State private var atalhoVisualSelecionado: AtalhoDaBiblioteca?
-    @State private var versaoDasPreferenciasVisuais = 0
+    @State private var invalidacaoVisual = InvalidacaoVisual()
     @State private var criandoPasta = false
     /// O picker não retém o delegate; sem esta referência o "Salvar em…" some
     /// do painel de compartilhamento.
@@ -207,7 +207,7 @@ struct BibliotecaHomeView: View {
 
     private var arquivosFiltrados: [Arquivo] {
         guard let biblioteca else { return [] }
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let fonte: [Arquivo]
         switch secaoSelecionada {
         case .todos:
@@ -271,13 +271,13 @@ struct BibliotecaHomeView: View {
     }
 
     private var pastasCriadas: [String] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         return PreferenciasVisuaisDoArquivo.pastas()
     }
 
     private var informacoesDasPastas: [InformacaoDaPasta] {
         guard let biblioteca else { return [] }
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
 
         var visiveis = atalhoSelecionado == .favoritos
             ? pastasCriadas.filter { AparenciaDasPastas.favorita($0) }
@@ -313,7 +313,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var midiasNaLixeira: [MidiaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let itens = LixeiraDeMidia.itens()
         guard !termo.isEmpty else { return itens }
@@ -456,7 +456,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var pastasNaLixeira: [PastaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let itens = LixeiraDePastas.itens()
         guard !termo.isEmpty else { return itens }
@@ -464,7 +464,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var tarefasNaLixeira: [TarefaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let tarefas = LixeiraDeTarefas.itens()
         guard !termo.isEmpty else { return tarefas }
@@ -975,7 +975,7 @@ struct BibliotecaHomeView: View {
     }
 
     private func atualizarPreferenciasVisuais() {
-        versaoDasPreferenciasVisuais += 1
+        invalidacaoVisual.marcarMudanca()
     }
 
     private func abrirCriacaoDePasta() {

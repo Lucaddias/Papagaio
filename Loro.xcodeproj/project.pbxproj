@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */; };
+		315A68933037714100BDE53D /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
+		637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */; };
 		7FBA23D1087E2A55EA51CE38 /* TarefasDoPainelViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */; };
 		A0B56FD6A3AB3E82D83E1AD6 /* MidiasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */; };
 		B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB0EFF564744FCC603EE0C3D /* Cocoa.framework */; };
@@ -44,6 +46,7 @@
 		1962886877C57566118E7CAC /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		43957C69D28FDB0507C82E6C /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
 		7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
+		96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InvalidacaoVisualTests.swift; sourceTree = "<group>"; };
 		A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDoPainelViewModelTests.swift; sourceTree = "<group>"; };
 		AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDaConversaViewModelTests.swift; sourceTree = "<group>"; };
 		D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MidiasDaConversaViewModelTests.swift; sourceTree = "<group>"; };
@@ -68,6 +71,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */,
+				315A68933037714100BDE53D /* PapagaioCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -98,8 +102,8 @@
 				AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */,
 				D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */,
 				A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */,
+				96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */,
 			);
-			name = PapagaioTests;
 			path = PapagaioTests;
 			sourceTree = "<group>";
 		};
@@ -252,6 +256,7 @@
 				F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */,
 				A0B56FD6A3AB3E82D83E1AD6 /* MidiasDaConversaViewModelTests.swift in Sources */,
 				7FBA23D1087E2A55EA51CE38 /* TarefasDoPainelViewModelTests.swift in Sources */,
+				637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
