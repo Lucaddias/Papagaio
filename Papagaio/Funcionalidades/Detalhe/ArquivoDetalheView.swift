@@ -180,8 +180,24 @@ struct ArquivoDetalheView: View {
         return reprodutor.duracao <= 0
     }
 
+    /// O AppKit usa um `NSTextView` como field editor de `NSTextField` e
+    /// `TextEditor`. O atalho global não pode roubar a barra de espaço de quem
+    /// está escrevendo uma nota, corrigindo um trecho ou editando metadados.
+    static func atalhoDeReproducaoEstaDisponivel(
+        primeiroRespondedor: NSResponder?
+    ) -> Bool {
+        !(primeiroRespondedor is NSTextView || primeiroRespondedor is NSTextField)
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
+            // O botão sem representação visual registra Space no escopo desta
+            // tela. A ação ainda confere o foco nativo, pois atalhos podem ser
+            // disparados enquanto uma sheet ou um editor de texto está aberto.
+            Button(action: alternarReproducaoComEspaco) { EmptyView() }
+                .keyboardShortcut(.space, modifiers: [])
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 barraDeAcoes
 
@@ -1046,6 +1062,20 @@ struct ArquivoDetalheView: View {
             aoConcluirEdicao: { concluirEdicaoDaPosicao(reprodutor) },
             compacto: compacto
         )
+    }
+
+    private func alternarReproducaoComEspaco() {
+        guard Self.atalhoDeReproducaoEstaDisponivel(
+            primeiroRespondedor: NSApp.keyWindow?.firstResponder
+        ), let reprodutor, reprodutor.duracao > 0 else {
+            return
+        }
+
+        if reprodutor.tocando {
+            reprodutor.pausar()
+        } else {
+            reprodutor.tocar()
+        }
     }
 
     // MARK: - Transcrição

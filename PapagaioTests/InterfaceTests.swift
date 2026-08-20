@@ -5,6 +5,22 @@ import SwiftUI
 import Testing
 @testable import Papagaio
 
+// MARK: - Atalhos e foco
+
+@Test("Space do player não captura um editor de texto")
+@MainActor
+func atalhoDoPlayerRespeitaFocoDeTexto() {
+    #expect(!ArquivoDetalheView.atalhoDeReproducaoEstaDisponivel(
+        primeiroRespondedor: NSTextView()
+    ))
+    #expect(!ArquivoDetalheView.atalhoDeReproducaoEstaDisponivel(
+        primeiroRespondedor: NSTextField()
+    ))
+    #expect(ArquivoDetalheView.atalhoDeReproducaoEstaDisponivel(
+        primeiroRespondedor: nil
+    ))
+}
+
 // MARK: - Estado tipado
 
 // `EstadoDoArquivo` nasceu para acabar com duas classificações incompatíveis da
