@@ -58,9 +58,6 @@ struct ArquivoDetalheView: View {
     @State private var participantesEditados = ""
     @State private var dataEditada = Date()
     @State private var duracaoEditada = ""
-    /// Recarrega a ficha depois de salvar: os metadados vêm de `UserDefaults`,
-    /// que não notifica a view sozinho.
-    @State private var versaoDaFicha = 0
     @State private var ditado = DitadoDeNota()
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
@@ -122,8 +119,7 @@ struct ArquivoDetalheView: View {
     @State private var entrevistadoresDaFicha = ""
     @State private var formatoDaFicha = ""
     private var metadados: MetadadosVisuaisDoArquivo {
-        _ = versaoDaFicha
-        return PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+        PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
     }
     /// Vazio quando não foi preenchido; o cabeçalho assinala isso em vez de
     /// esconder a linha, para o campo não parecer inexistente.
