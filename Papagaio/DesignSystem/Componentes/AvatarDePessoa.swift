@@ -12,6 +12,14 @@ struct AvatarDePessoa: View {
     /// A cor do anel que separa o avatar do fundo.
     var anel: Color = PapagaioTema.superficie
 
+    /// Sem ler este `@Published`, o SwiftUI não tem motivo para recalcular
+    /// este corpo quando a foto muda em outro lugar da árvore de views — a
+    /// foto mora no `UserDefaults`, fora de qualquer estado que este avatar
+    /// declare. Trocar a foto no formulário de edição não redesenhava o
+    /// avatar do cartão na grade: era o mesmo nome, a mesma view por fora, e
+    /// nada ali tinha mudado do ponto de vista do SwiftUI.
+    @ObservedObject private var avisoDeFotos = FotosDePessoas.aviso
+
     /// Cor derivada do nome, e não aleatória: a mesma pessoa recebe sempre o
     /// mesmo tom, em todas as conversas, e isso é metade do reconhecimento.
     private var cor: Color {

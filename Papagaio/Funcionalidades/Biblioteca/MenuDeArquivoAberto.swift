@@ -3,6 +3,11 @@ import SwiftUI
 struct MenuDeArquivoAberto: View {
     let bloqueioDeEdicao: Bool
     let bloqueioDeLixeira: Bool
+    /// A conversa ainda está na fila ou sendo transcrita/resumida — mover
+    /// para a lixeira agora também interrompe esse trabalho, e não só
+    /// descarta um resultado pronto. O item de baixo muda de nome para dizer
+    /// isso, em vez de deixar "Mover para Lixeira" fazer o dobro do que diz.
+    var cancelavel: Bool = false
     let aoEditarAparencia: () -> Void
     let aoRenomear: () -> Void
     let aoBaixar: () -> Void
@@ -37,8 +42,8 @@ struct MenuDeArquivoAberto: View {
                 .padding(.vertical, PapagaioTema.Espaco.minimo)
 
             ItemDoMenuDeArquivo(
-                simbolo: "trash",
-                titulo: "Mover para Lixeira",
+                simbolo: cancelavel ? "xmark.circle" : "trash",
+                titulo: cancelavel ? "Cancelar processamento" : "Mover para Lixeira",
                 destrutivo: true,
                 desabilitado: bloqueioDeLixeira,
                 acao: aoMoverParaLixeira

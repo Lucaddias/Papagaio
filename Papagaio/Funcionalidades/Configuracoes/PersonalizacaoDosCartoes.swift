@@ -102,6 +102,7 @@ private struct FileiraDeCampoDoCartao: View {
 /// exige imaginar nada.
 struct SecaoDePersonalizacaoDosCartoes: View {
     @AppStorage(CamposDoCartao.chave) private var camposBrutos = CamposDoCartao.padrao.rawValue
+    @AppStorage(ModeloDeCartao.chave) private var modeloBruto = ModeloDeCartao.padrao.rawValue
 
     private var campos: Binding<CamposDoCartao> {
         Binding(
@@ -110,54 +111,41 @@ struct SecaoDePersonalizacaoDosCartoes: View {
         )
     }
 
+    private var modelo: ModeloDeCartao {
+        ModeloDeCartao(rawValue: modeloBruto) ?? .padrao
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            // "Restaurar padrão" sobe para a linha do título.
-            //
-            // No pé da seção ele ficava sozinho num canto, longe do que
-            // restaura, e empurrava para baixo tudo o que vinha depois. Ao lado
-            // do título ele é o que é: a ação da seção inteira, disponível sem
-            // precisar rolar até o fim dela.
-            // Centralizado, e não pela linha de base: com um botão de altura
-            // fixa ao lado do título, a base do texto dele não é a base do
-            // botão, e o par ficava desencontrado.
-            HStack(alignment: .center) {
-                Label("Cartões da biblioteca", systemImage: "rectangle.grid.2x2")
-                    .font(PapagaioTema.Tipo.tituloDeSecao)
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-
-                Spacer(minLength: PapagaioTema.Espaco.medio)
-
-                // Botão de verdade, com moldura: como texto solto ele não se
-                // anunciava como clicável, e uma ação que ninguém reconhece
-                // como ação é uma ação que não existe.
-                Button("Restaurar padrão", systemImage: "arrow.uturn.backward") {
-                    withAnimation(.snappy(duration: 0.22)) {
-                        camposBrutos = CamposDoCartao.padrao.rawValue
-                    }
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .help("Voltar aos campos que vêm ligados de fábrica")
-            }
+            Label("Cartões da biblioteca", systemImage: "rectangle.grid.2x2")
+                .font(PapagaioTema.Tipo.tituloDeSecao)
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
 
             SeparadorPapagaio()
 
-            HStack(alignment: .top, spacing: PapagaioTema.Espaco.pagina) {
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-                    Text("Escolha o que aparece nos cartões. Vale para todos.")
-                        .font(PapagaioTema.Tipo.apoio)
-                        .foregroundStyle(PapagaioTema.textoSecundario)
+            // Escolha do modelo, e o que aparece nele.
+            //
+            // Os campos individuais (data, duração, participantes…) saíram
+            // desta tela: cada cartão já tem seu próprio menu para isso
+            // (`PersonalizacaoDoCartao.swift`), e repetir o controle aqui,
+            // atrás de um botão, só empilhava mais uma decisão sobre a
+            // decisão principal — qual modelo usar. O exemplo continua
+            // visível, sempre, logo abaixo de cada modelo — os dois ao
+            // mesmo tempo, não só o que está selecionado agora.
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Text("Modelo do cartão")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
 
-                    ListaDeCamposDoCartao(campos: campos)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.largo) {
+                        opcoesDeModelo
+                    }
+
+                    VStack(spacing: PapagaioTema.Espaco.largo) {
+                        opcoesDeModelo
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // O exemplo à direita, com largura fixa: é uma réplica de um
-                // cartão real, e cartão real tem tamanho. Deixá-lo esticar com
-                // a janela faria o exemplo mentir sobre a proporção justamente
-                // no ponto em que ele existe para não mentir.
-                exemplo
-                    .frame(width: 360)
             }
         }
         .padding(PapagaioTema.Espaco.secao)
@@ -165,28 +153,17 @@ struct SecaoDePersonalizacaoDosCartoes: View {
         .cartaoPapagaio()
     }
 
-    /// O exemplo com seu rótulo, sempre no mesmo canto da seção.
-    private var exemplo: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-            Text("Exemplo")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .textCase(.uppercase)
-
-            cartaoDeExemplo
-        }
-    }
-
-    /// O cartão e a nota abaixo dele.
-    private var cartaoDeExemplo: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-            PreviaDoCartaoDeConversa(campos: campos.wrappedValue)
-
-            Text("O exemplo está com tudo preenchido — os avisos de campo em branco só aparecem em conversas incompletas.")
-                .font(.caption)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var opcoesDeModelo: some View {
+        ForEach(ModeloDeCartao.allCases, id: \.rawValue) { opcao in
+            AmostraDeModeloDeCartao(
+                opcao: opcao,
+                selecionada: modelo == opcao,
+                campos: campos
+            ) {
+                withAnimation(.snappy(duration: 0.18)) {
+                    modeloBruto = opcao.rawValue
+                }
+            }
         }
     }
 }
@@ -199,6 +176,7 @@ struct SecaoDePersonalizacaoDosCartoes: View {
 /// conversa) numa tela de configuração.
 struct PreviaDoCartaoDeConversa: View {
     let campos: CamposDoCartao
+    var modelo: ModeloDeCartao = .comCapa
 
     /// A cor do exemplo. Sem pasta e sem escolha manual, o cartão real cai no
     /// coral da marca — é exatamente esse o caso aqui.
@@ -210,7 +188,16 @@ struct PreviaDoCartaoDeConversa: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            faixa
+            if modelo == .comCapa {
+                faixa
+            } else {
+                cabecalhoCompacto
+
+                Rectangle()
+                    .fill(acento.opacity(0.28))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 1)
+            }
 
             corpo
 
@@ -218,20 +205,48 @@ struct PreviaDoCartaoDeConversa: View {
             // último item da pilha, que dá no mesmo resultado visual.
             rodape
         }
-        // Altura fixa: o exemplo encolher a cada interruptor faria o texto
-        // abaixo dele pular e o botão "Restaurar padrão" mudar de lugar no meio
-        // do ajuste. O cartão perde conteúdo por dentro, não muda de tamanho.
-        // Mesma altura do cartão de verdade, para o exemplo não mentir sobre a
-        // proporção.
+        // Altura fixa, igual ao cartão de verdade, para o exemplo não mentir
+        // sobre a proporção.
         // 360 é o teto da coluna adaptativa da biblioteca — ou seja, a largura
         // de um cartão real em janela cheia, que é onde a pessoa vai ver o
         // resultado. Em 300 o exemplo era o cartão mais estreito possível e
         // ainda deixava a coluna da direita meio vazia.
         .frame(width: 360, height: CartaoDeConversa.alturaDoCartao, alignment: .top)
+        .overlay(alignment: .leading) {
+            if modelo == .compacto {
+                Rectangle().fill(acento).frame(width: 4)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .cartaoPapagaio(borda: acento.opacity(0.35))
         .animation(.snappy(duration: 0.22), value: campos.rawValue)
+        .animation(.snappy(duration: 0.22), value: modelo)
         .accessibilityHidden(true)
+    }
+
+    /// O cabeçalho do modelo compacto no exemplo — mesma lógica do cartão
+    /// real: só o título, a cor sobra para a tarja lateral.
+    private var cabecalhoCompacto: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+            Text("Entrevista com Ana Silva")
+                .font(.system(size: 19, weight: .semibold))
+                .lineLimit(2)
+                .foregroundStyle(PapagaioTema.texto)
+                .frame(height: CartaoDeConversa.alturaDoTituloCompacto, alignment: .top)
+
+            if campos.contains(.descricao) {
+                Text("Primeira rodada de testes do fluxo de cadastro.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(2)
+                    .frame(height: CartaoDeConversa.alturaDaDescricaoCompacta, alignment: .top)
+            }
+        }
+        .padding(.leading, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.medio)
+        .padding(.trailing, PapagaioTema.Espaco.largo)
+        .padding(.top, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.minimo)
+        .padding(.bottom, PapagaioTema.Espaco.medio)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Título no alto, descrição embaixo — as pessoas saíram daqui há tempos,
@@ -302,6 +317,7 @@ struct PreviaDoCartaoDeConversa: View {
                 .frame(height: PapagaioTema.Espaco.medio)
         }
         .padding(PapagaioTema.Espaco.largo)
+        .padding(.leading, modelo == .compacto ? PapagaioTema.Espaco.medio : 0)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
     }
@@ -357,6 +373,170 @@ struct PreviaDoCartaoDeConversa: View {
     private var vao: some View {
         Spacer(minLength: PapagaioTema.Espaco.medio)
             .frame(maxHeight: 34)
+    }
+}
+
+/// A mesma fileira de pasta da grade real (`CartaoDePasta`), só que com dados
+/// de mentira — para mostrar que o modelo escolhido também muda a identidade
+/// das pastas, não só das conversas.
+///
+/// Não reaproveita `CartaoDePasta` pelo mesmo motivo que `PreviaDoCartaoDeConversa`
+/// não reaproveita `CartaoDeConversa`: aquele depende de uma pasta real, com
+/// efeitos colaterais (renomear, apagar) que não fazem sentido numa tela de
+/// configuração.
+struct PreviaDaPasta: View {
+    var modelo: ModeloDeCartao = .comCapa
+
+    private let cor = PapagaioTema.destaque
+
+    private var corDoTexto: Color { cor.textoLegivel }
+
+    var body: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Pesquisa")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(modelo == .comCapa ? corDoTexto : PapagaioTema.texto)
+                    .lineLimit(1)
+
+                Text("8 conversas")
+                    .font(.caption)
+                    .foregroundStyle(modelo == .comCapa ? corDoTexto.opacity(0.8) : PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "ellipsis")
+                .rotationEffect(.degrees(90))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle((modelo == .comCapa ? corDoTexto : PapagaioTema.textoSecundario).opacity(0.85))
+        }
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.leading, modelo == .compacto ? PapagaioTema.Espaco.curto : 0)
+        .frame(width: 360, height: 56)
+        .background { modelo == .comCapa ? AnyView(cor) : AnyView(PapagaioTema.superficie) }
+        // Tarja antes do corte, como no cartão de pasta de verdade — depois
+        // dele ela escapa dos cantos arredondados e parece colada por cima.
+        .overlay(alignment: .leading) {
+            if modelo == .compacto {
+                Rectangle().fill(cor).frame(width: 4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(modelo == .compacto ? cor.opacity(0.35) : .clear, lineWidth: 1)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Botão de modelo de cartão, com uma miniatura esquemática — mesma família
+/// visual da `AmostraDeAparencia` do claro/escuro: uma prévia pequena, o
+/// nome embaixo, e uma moldura que acende quando é a escolha atual.
+private struct AmostraDeModeloDeCartao: View {
+    let opcao: ModeloDeCartao
+    let selecionada: Bool
+    @Binding var campos: CamposDoCartao
+    let acao: () -> Void
+
+    var body: some View {
+        // Um único botão em volta de tudo — miniatura e exemplo — e não mais
+        // só a miniatura. O exemplo é a maior parte visual do card: exigir o
+        // clique justo na faixinha do topo enquanto o resto parecia
+        // clicável (mesma moldura, mesmo hover) era o tipo de alvo que some
+        // debaixo do cursor.
+        Button(action: acao) {
+            VStack(spacing: PapagaioTema.Espaco.medio) {
+                VStack(spacing: PapagaioTema.Espaco.curto) {
+                    miniatura
+
+                    Label(opcao.titulo, systemImage: opcao.simbolo)
+                        .font(PapagaioTema.Tipo.apoio.weight(selecionada ? .semibold : .regular))
+                        .foregroundStyle(selecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                        .lineLimit(1)
+                }
+
+                // O exemplo deste modelo, sempre visível embaixo dele — não
+                // só do modelo selecionado no momento.
+                exemplo
+            }
+            .padding(PapagaioTema.Espaco.medio)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(opcao.descricao)
+        .accessibilityLabel("Modelo \(opcao.titulo)")
+        .accessibilityHint(opcao.descricao)
+        .accessibilityAddTraits(selecionada ? [.isSelected] : [])
+        .background(
+            selecionada ? PapagaioTema.destaqueSuave.opacity(0.55) : Color.clear,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(
+                    selecionada ? PapagaioTema.destaque : PapagaioTema.borda,
+                    lineWidth: selecionada ? 2 : 1
+                )
+        }
+    }
+
+    /// O exemplo deste modelo — sempre o `opcao` deste card, nunca o modelo
+    /// selecionado globalmente, porque os dois cards mostram seu próprio
+    /// exemplo ao mesmo tempo. Sem rótulo "Exemplo": o próprio cartão já diz
+    /// o que é. A pasta entra junto, porque o modelo compacto também muda a
+    /// identidade dela — sem os dois lado a lado, não dava para ver isso
+    /// aqui.
+    private var exemplo: some View {
+        VStack(spacing: PapagaioTema.Espaco.medio) {
+            PreviaDoCartaoDeConversa(campos: campos, modelo: opcao)
+            PreviaDaPasta(modelo: opcao)
+        }
+    }
+
+    /// Um desenho simplificado, não o cartão de verdade — a mesma escolha da
+    /// miniatura de aparência: aqui o que importa é a silhueta do layout, não
+    /// os detalhes que já aparecem no exemplo grande ao lado.
+    private var miniatura: some View {
+        ZStack(alignment: .topLeading) {
+            PapagaioTema.superficie
+
+            if opcao == .comCapa {
+                VStack(alignment: .leading, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(PapagaioTema.destaque.opacity(0.55))
+                        .frame(height: 24)
+
+                    Capsule().fill(PapagaioTema.textoSecundario.opacity(0.35)).frame(width: 38, height: 4)
+                    Capsule().fill(PapagaioTema.textoSecundario.opacity(0.35)).frame(width: 26, height: 4)
+                }
+                .padding(6)
+            } else {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(PapagaioTema.destaque.opacity(0.7))
+                        .frame(width: 4)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Capsule().fill(PapagaioTema.textoSecundario.opacity(0.55)).frame(width: 44, height: 5)
+                        Capsule().fill(PapagaioTema.textoSecundario.opacity(0.35)).frame(width: 30, height: 4)
+                        Capsule().fill(PapagaioTema.textoSecundario.opacity(0.35)).frame(width: 34, height: 4)
+                    }
+                    .padding(.leading, 6)
+                    .padding(.vertical, 8)
+                }
+            }
+        }
+        .frame(height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1)
+        }
+        .accessibilityHidden(true)
     }
 }
 

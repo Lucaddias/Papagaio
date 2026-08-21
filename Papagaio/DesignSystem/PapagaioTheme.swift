@@ -82,6 +82,19 @@ enum PapagaioTema {
         escuro: (0.902, 0.412, 0.396)
     )
 
+    /// Amarelo — "não iniciado" nas tarefas. Distinto de `aviso`, que já é
+    /// mais âmbar/marrom: aqui o pedido foi por um amarelo de fato.
+    static let amarelo = corAdaptativa(
+        claro: (0.702, 0.549, 0.008),
+        escuro: (0.945, 0.784, 0.278)
+    )
+    /// Laranja — "em andamento" nas tarefas. Distinto de `destaque`, que é
+    /// coral, não laranja.
+    static let laranja = corAdaptativa(
+        claro: (0.788, 0.396, 0.086),
+        escuro: (0.976, 0.573, 0.278)
+    )
+
     /// Preenchimento de botão principal, com o par de texto que o acompanha.
     ///
     /// Não dá para usar `destaqueEscuro` e branco nos dois temas: no escuro
@@ -517,18 +530,21 @@ struct SeloDeStatus: View {
     let texto: String
     let simbolo: String
     let estilo: EstiloDoStatus
+    /// `true` no rodapé do cartão compacto: a linha ali já disputa espaço com
+    /// três ícones, e o selo no tamanho padrão empurrava algum deles pra fora.
+    var compacto: Bool = false
 
     var body: some View {
         Label(texto, systemImage: simbolo)
-            .font(PapagaioTema.Tipo.rotulo)
+            .font(compacto ? .caption2.weight(.semibold) : PapagaioTema.Tipo.rotulo)
             .foregroundStyle(estilo.cor)
             .lineLimit(1)
             // Sem isto o selo era espremido pelo irmão ao lado e virava
             // "transcrito e resu…" — o estado do arquivo é justamente o que o
             // cartão precisa comunicar.
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, PapagaioTema.Espaco.medio)
-            .frame(height: PapagaioTema.Altura.compacta)
+            .padding(.horizontal, compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.medio)
+            .frame(height: compacto ? 22 : PapagaioTema.Altura.compacta)
             .background(estilo.fundo, in: Capsule())
     }
 }

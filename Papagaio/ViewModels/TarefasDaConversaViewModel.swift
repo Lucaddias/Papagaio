@@ -21,7 +21,7 @@ final class TarefasDaConversaViewModel {
     var tituloDaTarefa = ""
     var responsavelDaTarefa = ""
     var prioridadeDaTarefa: PrioridadeDaTarefa = .media
-    var statusDaTarefa: StatusDaTarefa = .emAndamento
+    var statusDaTarefa: StatusDaTarefa = .naoIniciado
     var prazoDaTarefa = TarefasDaConversaViewModel.prazoPadrao
 
     /// Avisa a pessoa quando um prazo está perto. Fica como propriedade, e não
@@ -51,7 +51,7 @@ final class TarefasDaConversaViewModel {
             tituloDaConversa: tituloDaConversa,
             dataDaConversa: dataDaConversa
         )
-        let ajustadas = carregadas.map(Self.ajustadaPeloPrazo)
+        let ajustadas = carregadas.map(RegraDePrazoDaTarefa.ajustada)
         tarefas = ajustadas
         // Só grava se a regra de prazo mudou alguma coisa, para não reescrever
         // o arquivo a cada abertura da tela.
@@ -66,7 +66,7 @@ final class TarefasDaConversaViewModel {
         let tituloLimpo = tituloDaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
-        let tarefa = Self.ajustadaPeloPrazo(
+        let tarefa = RegraDePrazoDaTarefa.ajustada(
             TarefaDaConversa(
                 titulo: tituloLimpo,
                 origem: origem,
@@ -93,7 +93,7 @@ final class TarefasDaConversaViewModel {
     func iniciarEdicao(_ tarefa: TarefaDaConversa) {
         tarefaEmEdicaoID = tarefa.id
         tituloDaTarefa = tarefa.titulo
-        responsavelDaTarefa = tarefa.responsavel ?? ""
+        responsavelDaTarefa = tarefa.responsavelValido ?? ""
         prioridadeDaTarefa = tarefa.prioridade
         statusDaTarefa = tarefa.status
         prazoDaTarefa = tarefa.prazo ?? Self.prazoPadrao
@@ -113,7 +113,7 @@ final class TarefasDaConversaViewModel {
         tarefa.prioridade = prioridadeDaTarefa
         tarefa.status = statusDaTarefa
         tarefa.prazo = prazoDaTarefa
-        tarefa = Self.ajustadaPeloPrazo(tarefa)
+        tarefa = RegraDePrazoDaTarefa.ajustada(tarefa)
         tarefas[indice] = tarefa
         salvar()
         notificarPrazoSeNecessario(tarefa)
@@ -136,38 +136,16 @@ final class TarefasDaConversaViewModel {
 
     func mover(_ id: UUID, para destino: DestinoDeTarefa) {
         guard let indice = tarefas.firstIndex(where: { $0.id == id }) else { return }
-        if let prioridade = destino.prioridade {
-            tarefas[indice].prioridade = prioridade
-        }
         tarefas[indice].status = destino.status
-        tarefas[indice] = Self.ajustadaPeloPrazo(tarefas[indice])
+        tarefas[indice] = RegraDePrazoDaTarefa.ajustada(tarefas[indice])
         salvar()
         notificarPrazoSeNecessario(tarefas[indice])
     }
 
     // MARK: - Regra de prazo
 
-    /// Prazo a dois dias ou menos promove a tarefa para prioridade alta. Vale
-    /// tanto na carga quanto em cada edição, senão uma tarefa criada com folga
-    /// nunca subiria de prioridade sozinha.
-    private static func ajustadaPeloPrazo(_ tarefa: TarefaDaConversa) -> TarefaDaConversa {
-        var ajustada = tarefa
-        guard ajustada.status != .concluida, prazoEstaPerto(ajustada.prazo) else { return ajustada }
-        ajustada.prioridade = .alta
-        return ajustada
-    }
-
-    private static func prazoEstaPerto(_ prazo: Date?) -> Bool {
-        guard let prazo else { return false }
-        let calendario = Calendar.current
-        let hoje = calendario.startOfDay(for: Date())
-        let diaDoPrazo = calendario.startOfDay(for: prazo)
-        let dias = calendario.dateComponents([.day], from: hoje, to: diaDoPrazo).day ?? Int.max
-        return dias <= 2
-    }
-
     private func notificarPrazoSeNecessario(_ tarefa: TarefaDaConversa) {
-        guard tarefa.status != .concluida, Self.prazoEstaPerto(tarefa.prazo) else { return }
+        guard tarefa.status != .concluida, RegraDePrazoDaTarefa.prazoEstaPerto(tarefa.prazo) else { return }
         let data = tarefa.prazo?.formatted(.dateTime.day().month().year()) ?? "em breve"
         aoNotificar?(
             "Prazo perto",
@@ -186,7 +164,7 @@ final class TarefasDaConversaViewModel {
         tituloDaTarefa = ""
         responsavelDaTarefa = ""
         prioridadeDaTarefa = .media
-        statusDaTarefa = .emAndamento
+        statusDaTarefa = .naoIniciado
         prazoDaTarefa = Self.prazoPadrao
     }
 

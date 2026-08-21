@@ -12,8 +12,8 @@ struct TarefasDaConversaView: View {
         switch filtro {
         case .tudo:
             tarefas
-        case .prioridadeAlta:
-            tarefas.filter { $0.prioridade == .alta && $0.status != .concluida }
+        case .naoIniciado:
+            tarefas.filter { $0.status == .naoIniciado }
         case .emAndamento:
             tarefas.filter { $0.status == .emAndamento }
         case .concluidas:
@@ -21,12 +21,12 @@ struct TarefasDaConversaView: View {
         }
     }
 
-    private var altas: [TarefaDaConversa] {
-        tarefasFiltradas.filter { $0.prioridade == .alta && $0.status != .concluida }
+    private var naoIniciadas: [TarefaDaConversa] {
+        tarefasFiltradas.filter { $0.status == .naoIniciado }
     }
 
     private var emAndamento: [TarefaDaConversa] {
-        tarefasFiltradas.filter { $0.status == .emAndamento && $0.prioridade != .alta }
+        tarefasFiltradas.filter { $0.status == .emAndamento }
     }
 
     private var concluidas: [TarefaDaConversa] {
@@ -90,7 +90,7 @@ struct TarefasDaConversaView: View {
 
             if tarefasFiltradas.isEmpty {
                 CartaoDeEstadoVazio(
-                    simbolo: "checklist",
+                    simbolo: "list.clipboard",
                     titulo: "Nenhuma tarefa aqui",
                     mensagem: "Use o botão de adicionar para criar uma tarefa nesta conversa."
                 )
@@ -109,11 +109,11 @@ struct TarefasDaConversaView: View {
     private var secoesVisiveis: some View {
         switch filtro {
         case .tudo:
-            secaoAlta(tarefas: altas)
+            secaoNaoIniciado(tarefas: naoIniciadas)
             secaoEmAndamento(tarefas: emAndamento)
             secaoConcluidas(tarefas: concluidas)
-        case .prioridadeAlta:
-            secaoAlta(tarefas: tarefasFiltradas)
+        case .naoIniciado:
+            secaoNaoIniciado(tarefas: tarefasFiltradas)
         case .emAndamento:
             secaoEmAndamento(tarefas: tarefasFiltradas)
         case .concluidas:
@@ -121,12 +121,12 @@ struct TarefasDaConversaView: View {
         }
     }
 
-    private func secaoAlta(tarefas: [TarefaDaConversa]) -> some View {
+    private func secaoNaoIniciado(tarefas: [TarefaDaConversa]) -> some View {
         SecaoDeTarefas(
-            titulo: "Prioridade alta",
-            cor: PapagaioTema.perigo,
+            titulo: "Não iniciado",
+            cor: PapagaioTema.aviso,
             tarefas: tarefas,
-            destino: .alta,
+            destino: .naoIniciado,
             aoAlternarConclusao: aoAlternarConclusao,
             aoEditar: aoEditar,
             aoMover: aoMover

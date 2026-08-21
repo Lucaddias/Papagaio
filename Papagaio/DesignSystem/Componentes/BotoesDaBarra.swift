@@ -103,7 +103,7 @@ struct BotaoDeAtalhoDaBarra: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(selecionado || pairando ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 36, height: PapagaioTema.Altura.compacta)
-                .background(fundo, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                .background(fundo, in: Capsule())
                 .contentShape(Rectangle())
                 .onHover { ativo in
                     pairando = ativo

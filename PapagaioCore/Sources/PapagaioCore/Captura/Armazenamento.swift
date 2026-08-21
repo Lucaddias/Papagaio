@@ -90,8 +90,14 @@ public struct Armazenamento: Sendable {
     }
 
     /// Remove uma pasta de gravação somente quando o caminho persistido tem o
-    /// formato canônico `Gravacoes/<UUID>`. A exclusão definitiva não deve
-    /// aceitar uma string arbitrária do banco como alvo no filesystem.
+    /// formato canônico `Gravacoes/<algo>`, sem componentes de travessia. A
+    /// exclusão definitiva não deve aceitar uma string arbitrária do banco
+    /// como alvo no filesystem.
+    ///
+    /// Antes exigia que o segundo componente fosse um `UUID` — mas
+    /// `renomearParaTitulo` passou a trocar esse componente pelo título da
+    /// conversa, então a validação virou "é um nome de pasta só, sem `/`
+    /// nem `..`", que é o que de fato importa para a exclusão ser segura.
     public func removerGravacao(
         relativa: String,
         _ fm: FileManager = .default
@@ -99,14 +105,68 @@ public struct Armazenamento: Sendable {
         let partes = relativa.split(separator: "/", omittingEmptySubsequences: false)
         guard partes.count == 2,
               partes[0] == Substring(Self.pastaGravacoes),
-              let id = UUID(uuidString: String(partes[1]))
+              !partes[1].isEmpty,
+              partes[1] != ".",
+              partes[1] != ".."
         else {
             throw ErroArmazenamento.caminhoDeGravacaoInvalido(relativa)
         }
 
-        let pasta = pastaDaGravacao(id: id)
+        let pasta = resolver(relativo: relativa)
         guard fm.fileExists(atPath: pasta.path) else { return }
         try fm.removeItem(at: pasta)
+    }
+
+    /// Move a pasta da gravação para um nome derivado do título da conversa,
+    /// em vez do UUID cru — quem clica em "Mostrar no Finder" deve
+    /// reconhecer a pasta pelo nome da entrevista, não por um identificador
+    /// opaco.
+    ///
+    /// Silenciosa por natureza: se a pasta de origem não existir, se o
+    /// caminho recebido não seguir o formato `Gravacoes/<algo>`, ou se a
+    /// movimentação falhar, devolve `relativoAtual` sem alterações — quem
+    /// chama decide o que fazer (normalmente: nada, o nome antigo continua
+    /// válido). Duas conversas com o mesmo título ganham um sufixo numérico,
+    /// como já acontece com anexos de mídia duplicados.
+    public func renomearParaTitulo(
+        relativoAtual: String,
+        titulo: String,
+        _ fm: FileManager = .default
+    ) -> String {
+        guard relativoAtual.hasPrefix("\(Self.pastaGravacoes)/") else { return relativoAtual }
+        let origem = resolver(relativo: relativoAtual)
+        guard fm.fileExists(atPath: origem.path) else { return relativoAtual }
+
+        let base = Self.nomeDePastaSeguro(titulo)
+        var candidato = base
+        var indice = 2
+        while true {
+            let relativoCandidato = "\(Self.pastaGravacoes)/\(candidato)"
+            if relativoCandidato == relativoAtual { return relativoAtual }
+            if !fm.fileExists(atPath: raiz.appendingPathComponent(relativoCandidato).path) {
+                let novoRelativo = relativoCandidato
+                let destino = raiz.appendingPathComponent(novoRelativo, isDirectory: true)
+                do {
+                    try fm.moveItem(at: origem, to: destino)
+                    return novoRelativo
+                } catch {
+                    return relativoAtual
+                }
+            }
+            candidato = "\(base) \(indice)"
+            indice += 1
+        }
+    }
+
+    /// Troca só os caracteres que o Finder não aceita (`/`, `:`, `\`),
+    /// preservando acentos e espaços — a pasta deve continuar legível como
+    /// o título da entrevista.
+    private static func nomeDePastaSeguro(_ texto: String) -> String {
+        let ilegal = CharacterSet(charactersIn: "/:\\")
+        var nome = texto.trimmingCharacters(in: .whitespacesAndNewlines)
+        nome = nome.components(separatedBy: ilegal).joined(separator: "-")
+        if nome.count > 80 { nome = String(nome.prefix(80)) }
+        return nome.isEmpty ? "Conversa" : nome
     }
 
     /// Remove todas as gravações deste container, inclusive pastas órfãs de
