@@ -39,6 +39,12 @@ public enum DetectorDeAtividadeDeVoz {
             ?? URL(fileURLWithPath: "/inexistente/silero_vad.onnx")
     )
 
+    /// Exclusividade de sessão inteira. O ator do Silero serializa chamadas,
+    /// mas cada `await` do laço de quadros reentra nele: dois arquivos
+    /// concorrentes intercalariam `novaSequencia` e quadros, corrompendo o
+    /// `contexto`/`estado` um do outro. A fila garante uma sessão por vez.
+    private static let filaDoSilero = FilaEstrita()
+
     /// Portão de arquivo inteiro — mantido só para quem ainda chama esta API
     /// (ex.: testes). Prefira `janelasDeFala` para transcrição de verdade.
     public static func contemFala(
@@ -76,24 +82,34 @@ public enum DetectorDeAtividadeDeVoz {
         let tamanhoDoQuadro = max(1, Int(duracaoDoQuadro * taxa))
 
         // Sequência nova = contexto e estado do Silero zerados. Sem isto, a
-        // "memória" de fala de um arquivo vazaria para o seguinte.
-        await sileroVAD.novaSequencia()
+        // "memória" de fala de um arquivo vazaria para o seguinte. Tudo entre
+        // o `entrar` e o `sair` é de uma sessão só (ver `filaDoSilero`).
+        await filaDoSilero.entrar()
+        let quadroTemFala: [Bool]
+        do {
+            await sileroVAD.novaSequencia()
 
-        var quadroTemFala: [Bool] = []
-        quadroTemFala.reserveCapacity(amostras.count / tamanhoDoQuadro + 1)
-        var inicio = 0
-        while inicio < amostras.count {
-            let fim = min(inicio + tamanhoDoQuadro, amostras.count)
-            let quadro = amostras[inicio..<fim]
-            let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
-            var temFala = energia >= limiarDeEnergia
-            if temFala {
-                // O Silero só é consultado quando a energia já passou — é o
-                // filtro rápido contra silêncio digital.
-                temFala = try await sileroVAD.probabilidadeDeFala(quadro: Array(quadro)) >= limiarDeFala
+            var quadros: [Bool] = []
+            quadros.reserveCapacity(amostras.count / tamanhoDoQuadro + 1)
+            var inicio = 0
+            while inicio < amostras.count {
+                let fim = min(inicio + tamanhoDoQuadro, amostras.count)
+                let quadro = amostras[inicio..<fim]
+                let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
+                var temFala = energia >= limiarDeEnergia
+                if temFala {
+                    // O Silero só é consultado quando a energia já passou — é o
+                    // filtro rápido contra silêncio digital.
+                    temFala = try await sileroVAD.probabilidadeDeFala(quadro: Array(quadro)) >= limiarDeFala
+                }
+                quadros.append(temFala)
+                inicio = fim
             }
-            quadroTemFala.append(temFala)
-            inicio = fim
+            quadroTemFala = quadros
+            await filaDoSilero.sair()
+        } catch {
+            await filaDoSilero.sair()
+            throw error
         }
 
         var janelas: [JanelaDeFala] = []

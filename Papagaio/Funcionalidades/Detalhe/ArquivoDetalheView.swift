@@ -226,6 +226,13 @@ struct ArquivoDetalheView: View {
             carregarTarefas()
             let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos, secundario: audioSecundario)
             await novo.preparar()
+            // Se a view sumiu no meio do carregamento, o `.task` já foi
+            // cancelado e o `onDisappear` já rodou: atribuir aqui deixaria
+            // vivo um player sem caminho de `encerrar()`.
+            guard !Task.isCancelled else {
+                novo.encerrar()
+                return
+            }
             reprodutor = novo
         }
         .onChange(of: trechos) { _, novos in

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 
 /// Repositório local da biblioteca.
@@ -9,6 +10,10 @@ import SwiftData
 /// todo acesso ao contexto acontece numa mesma fila.
 @ModelActor
 public actor SwiftDataRepository: ArquivoRepository {
+    /// Falhas de persistência que não derrubam a operação, mas não podem ser
+    /// silenciosas (ex.: palavras que não codificaram para JSON).
+    private static let logger = Logger(subsystem: "PapagaioCore", category: "Persistencia")
+
     /// Container local, com o schema completo do app.
     public static func containerLocal(
         nome: String = "Papagaio",
@@ -75,7 +80,22 @@ public actor SwiftDataRepository: ArquivoRepository {
             t.speaker = trecho.speaker
             // Vazio é o mesmo que ausente: transcrições sem palavras guardam
             // `nil`, e a leitura cai no fallback do `Text` inteiro.
-            t.palavrasJSON = trecho.palavras.isEmpty ? nil : try? JSONEncoder().encode(trecho.palavras)
+            //
+            // Falha de codificação **não** pode virar `try?` silencioso: o
+            // trecho era persistido sem timestamps de palavra sem nenhum
+            // sinal, e a navegação palavra a palavra morria sem diagnóstico.
+            if trecho.palavras.isEmpty {
+                t.palavrasJSON = nil
+            } else {
+                do {
+                    t.palavrasJSON = try JSONEncoder().encode(trecho.palavras)
+                } catch {
+                    Self.logger.error(
+                        "Palavras do trecho \(trecho.id.uuidString) não codificaram: \(error.localizedDescription, privacy: .public). O trecho segue sem timestamps."
+                    )
+                    t.palavrasJSON = nil
+                }
+            }
             t.arquivo = persistido
             modelContext.insert(t)
         }
@@ -232,19 +252,32 @@ public actor SwiftDataRepository: ArquivoRepository {
     /// mídia. Deixar o áudio órfão no container é vazamento de disco que a
     /// pessoa não tem como limpar.
     public func apagar(_ id: ArquivoID) async throws {
+        try await apagar(id) { relativo in
+            try Armazenamento.padrao().removerGravacao(relativa: relativo)
+        }
+    }
+
+    /// Mesmo fluxo com a remoção da mídia injetável — os testes simulam a
+    /// falha dela sem tocar o disco real do usuário.
+    func apagar(_ id: ArquivoID, removerMidia: (String) throws -> Void) async throws {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm != nil else {
             throw ErroLixeira.arquivoNaoEstaNaLixeira
         }
 
         let relativo = persistido.pastaRelativa
-        if !relativo.isEmpty {
-            let armazenamento = try Armazenamento.padrao()
-            try armazenamento.removerGravacao(relativa: relativo)
-        }
 
+        // O registro sai do banco **primeiro**, com `save`, e a mídia por
+        // último. Se a remoção da mídia falhar, sobra áudio órfão em disco —
+        // recuperável. A ordem antiga apagava os arquivos antes do `save`:
+        // se ele falhasse, sobrava um registro sem mídia que não toca mais e
+        // que a pessoa não tem como consertar.
         modelContext.delete(persistido)
         try modelContext.save()
+
+        if !relativo.isEmpty {
+            try removerMidia(relativo)
+        }
     }
 
     /// Exclui todos os registros de um espaço, ativos e na lixeira. É usado
@@ -347,9 +380,19 @@ public actor SwiftDataRepository: ArquivoRepository {
                     // `[_TT_…]` do fim do segmento foi **mesclado à última
                     // palavra real** (sem espaço), o que faria o filtro por
                     // `contains("[")` apagar a palavra inteira junto. Aqui a
-                    // cura arranca só o código e mantém a fala:
+                    // cura arranca só o código e mantém a fala. O
+                    // `falanteAcustico` vem junto: sem ele a atribuição da
+                    // diarização sumia em todo reload do banco:
                     palavras: (try? JSONDecoder().decode([Palavra].self, from: pTrecho.palavrasJSON ?? Data()))?
-                        .map { Palavra(id: $0.id, start: $0.start, end: $0.end, texto: curarTextoDePalavraLegada($0.texto)) }
+                        .map { p in
+                            Palavra(
+                                id: p.id,
+                                start: p.start,
+                                end: p.end,
+                                texto: curarTextoDePalavraLegada(p.texto),
+                                falanteAcustico: p.falanteAcustico
+                            )
+                        }
                         .filter { !$0.texto.isEmpty } ?? []
                 )
             }
@@ -390,7 +433,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             criadoEm: p.criadoEm,
             duracao: p.duracao,
             pastaRelativa: p.pastaRelativa,
-            espaco: EspacoID(rawValue: p.espaco?.id ?? UUID()),
+            espaco: p.espaco.map { EspacoID(rawValue: $0.id) } ?? .legado,
             trechos: trechos,
             notas: notas,
             resumo: resumo,
