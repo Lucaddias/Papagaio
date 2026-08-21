@@ -7,8 +7,33 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01A675DF2E96F61483870614 /* PastasDaBibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1565D9043AFCE5CE4EB61BF /* PastasDaBibliotecaTests.swift */; };
+		05A1548E9D7F5BC1C9940315 /* OrdenacaoDeTarefasTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */; };
+		0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */; };
+		315A68933037714100BDE53D /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
+		637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */; };
+		7FBA23D1087E2A55EA51CE38 /* TarefasDoPainelViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */; };
+		A0B56FD6A3AB3E82D83E1AD6 /* MidiasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */; };
+		B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB0EFF564744FCC603EE0C3D /* Cocoa.framework */; };
+		F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */; };
+		FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43957C69D28FDB0507C82E6C /* InterfaceTests.swift */; };
 		PA00000000000000000012 /* PapagaioCore in Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; };
-/* End PBXBuildFile section */
+		PA00000000000000000015 /* PapagaioCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; productRef = PA00000000000000000011 /* PapagaioCore */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+	/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		PA00000000000000000016 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				PA00000000000000000015 /* PapagaioCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXBuildRule section */
 		31B643F1301D238900EE77BE /* PBXBuildRule */ = {
@@ -24,7 +49,27 @@
 		};
 /* End PBXBuildRule section */
 
+/* Begin PBXContainerItemProxy section */
+		DA9199445138523AC741449C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = PA00000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = PA00000000000000000002;
+			remoteInfo = Loro;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
+		1962886877C57566118E7CAC /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OrdenacaoDeTarefasTests.swift; sourceTree = "<group>"; };
+		43957C69D28FDB0507C82E6C /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
+		7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
+		96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InvalidacaoVisualTests.swift; sourceTree = "<group>"; };
+		A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDoPainelViewModelTests.swift; sourceTree = "<group>"; };
+		AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDaConversaViewModelTests.swift; sourceTree = "<group>"; };
+		C1565D9043AFCE5CE4EB61BF /* PastasDaBibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PastasDaBibliotecaTests.swift; sourceTree = "<group>"; };
+		D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MidiasDaConversaViewModelTests.swift; sourceTree = "<group>"; };
+		DB0EFF564744FCC603EE0C3D /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
 		PA00000000000000000006 /* Loro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA00000000000000000013 /* Papagaio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Papagaio.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -32,12 +77,23 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		PA00000000000000000003 /* Papagaio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Papagaio;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		366319D57FE13962BB39209D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B30F91CB25A66D57DB1CAC6D /* Cocoa.framework in Frameworks */,
+				315A68933037714100BDE53D /* PapagaioCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000008 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -49,12 +105,45 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		27C3E6D70B63092078CC6613 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				DB0EFF564744FCC603EE0C3D /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		3EA31F92D3F5820AB8552F68 /* PapagaioTests */ = {
+			isa = PBXGroup;
+			children = (
+				7857DAAEA0A807C6EB4DD79F /* BibliotecaTests.swift */,
+				43957C69D28FDB0507C82E6C /* InterfaceTests.swift */,
+				AF2E7AAEA4E383CC9EBE61B0 /* TarefasDaConversaViewModelTests.swift */,
+				D81E5E910FC22E203F071D0C /* MidiasDaConversaViewModelTests.swift */,
+				A015E506995958081C0DB6C7 /* TarefasDoPainelViewModelTests.swift */,
+				96E1C79989366058F0041815 /* InvalidacaoVisualTests.swift */,
+				2502A44650417CBC47893AC2 /* OrdenacaoDeTarefasTests.swift */,
+				C1565D9043AFCE5CE4EB61BF /* PastasDaBibliotecaTests.swift */,
+			);
+			path = PapagaioTests;
+			sourceTree = "<group>";
+		};
+		D1E41723161B1AFF502172C6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				27C3E6D70B63092078CC6613 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		PA00000000000000000004 = {
 			isa = PBXGroup;
 			children = (
 				PA00000000000000000003 /* Papagaio */,
 				PA00000000000000000014 /* Config */,
 				PA00000000000000000005 /* Products */,
+				D1E41723161B1AFF502172C6 /* Frameworks */,
+				3EA31F92D3F5820AB8552F68 /* PapagaioTests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -62,6 +151,7 @@
 			isa = PBXGroup;
 			children = (
 				PA00000000000000000006 /* Loro.app */,
+				1962886877C57566118E7CAC /* PapagaioTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,12 +167,34 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C3CB7FAE9667FAE9D35E85BE /* PapagaioTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF5E4D477685D57FE3DA1158 /* Build configuration list for PBXNativeTarget "PapagaioTests" */;
+			buildPhases = (
+				368C631C6CE82ABC2C975D89 /* Sources */,
+				366319D57FE13962BB39209D /* Frameworks */,
+				A4C38324449BA0BEA33E7124 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8B775CD426C501B7FEFAD188 /* PBXTargetDependency */,
+			);
+			name = PapagaioTests;
+			packageProductDependencies = (
+				PA00000000000000000011 /* PapagaioCore */,
+			);
+			productName = PapagaioTests;
+			productReference = 1962886877C57566118E7CAC /* PapagaioTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		PA00000000000000000002 /* Loro */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = PA0000000000000000000B /* Build configuration list for PBXNativeTarget "Loro" */;
 			buildPhases = (
 				PA00000000000000000007 /* Sources */,
 				PA00000000000000000008 /* Frameworks */,
+				PA00000000000000000016 /* Embed Frameworks */,
 				PA00000000000000000009 /* Resources */,
 			);
 			buildRules = (
@@ -113,6 +225,11 @@
 				TargetAttributes = {
 					PA00000000000000000002 = {
 						CreatedOnToolsVersion = 27.0;
+						SystemCapabilities = {
+							com.apple.iCloud = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -134,11 +251,19 @@
 			projectRoot = "";
 			targets = (
 				PA00000000000000000002 /* Loro */,
+				C3CB7FAE9667FAE9D35E85BE /* PapagaioTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A4C38324449BA0BEA33E7124 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000009 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -149,6 +274,21 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		368C631C6CE82ABC2C975D89 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0926783BD3D89EC5F635ED92 /* BibliotecaTests.swift in Sources */,
+				FA0AA652DB9CA78F067F37F3 /* InterfaceTests.swift in Sources */,
+				F8CE65CF1A6F6716A7AA21EF /* TarefasDaConversaViewModelTests.swift in Sources */,
+				A0B56FD6A3AB3E82D83E1AD6 /* MidiasDaConversaViewModelTests.swift in Sources */,
+				7FBA23D1087E2A55EA51CE38 /* TarefasDoPainelViewModelTests.swift in Sources */,
+				637A3A5A6C5A25EA3B368A54 /* InvalidacaoVisualTests.swift in Sources */,
+				05A1548E9D7F5BC1C9940315 /* OrdenacaoDeTarefasTests.swift in Sources */,
+				01A675DF2E96F61483870614 /* PastasDaBibliotecaTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		PA00000000000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -158,7 +298,60 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		8B775CD426C501B7FEFAD188 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = Loro;
+			target = PA00000000000000000002 /* Loro */;
+			targetProxy = DA9199445138523AC741449C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		231FABBBA4E752998DC0FDD3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+				);
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+			};
+			name = Release;
+		};
+		FC8CCF66A34A897FA02FD5C1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)/PackageFrameworks",
+				);
+				OTHER_LDFLAGS = (
+					"-undefined",
+					dynamic_lookup,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+			};
+			name = Debug;
+		};
 		PA0000000000000000000C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -218,7 +411,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 67AYPRFZH8;
+				DEVELOPMENT_TEAM = 8CTC75M93B;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -235,7 +428,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio.br;
+				OTHER_LDFLAGS = "-Wl,-export_dynamic";
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -249,7 +444,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 67AYPRFZH8;
+				DEVELOPMENT_TEAM = 8CTC75M93B;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -266,7 +461,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio.br;
+				OTHER_LDFLAGS = "-Wl,-export_dynamic";
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -276,6 +473,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CF5E4D477685D57FE3DA1158 /* Build configuration list for PBXNativeTarget "PapagaioTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				231FABBBA4E752998DC0FDD3 /* Release */,
+				FC8CCF66A34A897FA02FD5C1 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		PA0000000000000000000A /* Build configuration list for PBXProject "Loro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

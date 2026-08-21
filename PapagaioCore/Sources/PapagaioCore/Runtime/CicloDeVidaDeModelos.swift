@@ -95,12 +95,19 @@ public actor CicloDeVidaDeModelos {
             guard let self else { return }
             // Síncrono de propósito: depois deste retorno o processo sai, e uma
             // Task assíncrona não teria tempo de rodar.
+            //
+            // **Com teto**: se o ator estiver ocupado (um descarregamento em
+            // voo, por exemplo), a espera sem timeout travava o encerramento
+            // para sempre. Dois segundos é mais que o suficiente para o
+            // descarregamento normal; passar disso significa que o que deu
+            // para liberar já foi liberado, e um unload parcial na saída é
+            // aceitável — pior é o app que não fecha.
             let espera = DispatchSemaphore(value: 0)
             Task {
                 await self.descarregarTudo()
                 espera.signal()
             }
-            espera.wait()
+            _ = espera.wait(timeout: .now() + 2)
         }
     }
 

@@ -78,6 +78,35 @@ func viciosDeFalaSaem() {
     #expect(texto.contains("orçamento"))
 }
 
+@Test("O verbo 'é' não é tratado como vício de fala")
+func verboEhNaoEhVicio() {
+    // Regressão: "é" (verbo ser) estava na lista de vícios, e "isso é muito
+    // importante" virava "isso muito importante" na citação exibida. As
+    // hesitações ("eh", "ehh") continuam saindo.
+    #expect(
+        ValidacaoDeCitacoes.removerVicios(de: "isso é muito importante para o projeto")
+            == "isso é muito importante para o projeto"
+    )
+    #expect(
+        ValidacaoDeCitacoes.removerVicios(de: "eh a gente fecha o prazo amanhã")
+            == "a gente fecha o prazo amanhã"
+    )
+}
+
+@Test("Vícios compostos saem como par, não palavra por palavra")
+func viciosCompostosSaem() {
+    // Antes eram entradas de duas palavras numa lista de token único — nunca
+    // casavam e não saíam nunca.
+    #expect(
+        ValidacaoDeCitacoes.removerVicios(de: "então assim a gente fecha o prazo amanhã")
+            == "a gente fecha o prazo amanhã"
+    )
+    #expect(
+        ValidacaoDeCitacoes.removerVicios(de: "é assim ó que a gente faz a entrega")
+            == "é que a gente faz a entrega"
+    )
+}
+
 @Test("Acento, caixa e pontuação diferentes ainda localizam a fala")
 func normalizacaoBasicaEhAceita() {
     let variacao = Citacao(

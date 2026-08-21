@@ -41,12 +41,32 @@ public actor SileroVAD: CicloDeVidaDeModelos.Residente {
         self.sessao = SessaoOnnx(modelo: modelo)
     }
 
+    /// O `.onnx` está no lugar? Sem ele a inferência lança `modeloAusente` —
+    /// quem chama usa isto para degradar com aviso em vez de falhar.
+    public func modeloDisponivel() -> Bool {
+        FileManager.default.fileExists(atPath: caminhoDoModelo.path)
+    }
+
     /// Começa uma sequência nova (um arquivo de áudio novo): zera o contexto e
     /// o estado. Chamar sem isso com outro arquivo vazaria a "memória" da fala
     /// anterior.
     public func novaSequencia() {
         contexto = [Float](repeating: 0, count: SileroVAD.contextoEmAmostras)
         estado = [Float](repeating: 0, count: 2 * 1 * 128)
+    }
+
+    /// Probabilidade de fala de um lote de quadros, na mesma ordem.
+    ///
+    /// Um salto para o ator por quadro eram dezenas de milhares de idas e
+    /// vindas numa hora de áudio; o lote corta para um salto por arquivo.
+    /// A ordem das saídas é a das entradas.
+    public func probabilidadesDeFala(quadros: [[Float]]) async throws -> [Float] {
+        var probabilidades: [Float] = []
+        probabilidades.reserveCapacity(quadros.count)
+        for quadro in quadros {
+            probabilidades.append(try await probabilidadeDeFala(quadro: quadro))
+        }
+        return probabilidades
     }
 
     /// Probabilidade de fala de um quadro. Quadros menores que 512 amostras

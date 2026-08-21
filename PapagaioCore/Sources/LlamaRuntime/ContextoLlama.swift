@@ -110,6 +110,20 @@ public actor ContextoLlama {
         return Self.tokenizar(texto, vocab: vocab, adicionarEspeciais: true).count
     }
 
+    /// Conta vários textos numa chamada só.
+    ///
+    /// Um salto para o ator por texto era o custo do `particionar` da engine
+    /// de resumo numa transcrição longa — centenas de idas e vindas. Aqui a
+    /// tokenização roda em lote e volta de uma vez.
+    public func contarTokens(_ textos: [String]) throws -> [Int] {
+        try carregar()
+        guard let modelo = caixa.modelo else { throw ErroLlama.contextoNaoCriado }
+        let vocab = llama_model_get_vocab(modelo)
+        return textos.map {
+            Self.tokenizar($0, vocab: vocab, adicionarEspeciais: true).count
+        }
+    }
+
     /// Gera texto a partir de um prompt, opcionalmente restringindo a saída a
     /// uma gramática GBNF.
     ///
