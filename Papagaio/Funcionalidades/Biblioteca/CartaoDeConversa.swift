@@ -858,6 +858,11 @@ struct CartaoDeConversa: View {
             participantes: quantidade > 0 ? quantidade : nil
         )
 
+        // Antes de sobrescrever: depois, `metadados` já não tem o nome antigo
+        // para comparar, e a foto ficaria presa numa chave que nada mais lê.
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistado, para: novosMetadados.entrevistado)
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistadores, para: novosMetadados.entrevistadores)
+
         metadados = novosMetadados
         PreferenciasVisuaisDoArquivo.definirMetadados(novosMetadados, para: arquivo.id)
         // A duração não é editável no formulário: vem do próprio áudio.

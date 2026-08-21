@@ -477,7 +477,7 @@ extension TarefasView {
         tarefaEmEdicao = tarefa
         conversaDoEditor = tarefa.conversa.id
         tituloDoEditor = tarefa.tarefa.titulo
-        responsavelDoEditor = tarefa.tarefa.responsavel ?? ""
+        responsavelDoEditor = tarefa.tarefa.responsavelValido ?? ""
         prioridadeDoEditor = tarefa.tarefa.prioridade
         statusDoEditor = tarefa.tarefa.status
         prazoDoEditor = tarefa.tarefa.prazo ?? Date()
