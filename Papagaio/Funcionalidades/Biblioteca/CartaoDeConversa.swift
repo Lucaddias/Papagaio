@@ -54,6 +54,7 @@ struct CartaoDeConversa: View {
     @State private var pairandoNaEstrela = false
     @State private var pairandoNaPasta = false
     @State private var pairandoNoMenu = false
+    @State private var pairandoNaInfoDeData = false
     @State private var bannerURL: URL?
     @State private var editandoAparencia = false
     @State private var ajusteDaImagem: AjusteDeImagem = .preencher
@@ -125,6 +126,24 @@ struct CartaoDeConversa: View {
 
     /// A faixa colorida do topo.
     static let alturaDaFaixa: CGFloat = 124
+
+    /// A largura da tarja lateral do modelo compacto, no seu estado mais
+    /// grosso (em processamento). Serve de recuo para o que não pode ficar
+    /// atrás dela, como a linha sob o cabeçalho.
+    static let larguraMaximaDaTarja: CGFloat = 16
+
+    /// A altura reservada para o título no cabeçalho do modelo compacto —
+    /// duas linhas a 25pt cada, sempre a mesma. Título mais curto que isso
+    /// sobra em branco; mais longo corta com reticências. As duas fixas são
+    /// o que garante que a linha divisória caia sempre na mesma altura,
+    /// cartão após cartão — variável, ela pulava de lugar conforme o título
+    /// e a descrição de cada conversa.
+    static let alturaDoTituloCompacto: CGFloat = 50
+
+    /// A altura reservada para a descrição no cabeçalho do modelo compacto —
+    /// duas linhas a 20pt cada, sempre a mesma, tenha a descrição de fato
+    /// duas linhas, uma linha só, ou esteja em branco.
+    static let alturaDaDescricaoCompacta: CGFloat = 40
 
     private var campos: CamposDoCartao {
         get { CamposDoCartao(rawValue: camposBrutos) }
@@ -210,10 +229,18 @@ struct CartaoDeConversa: View {
                     // ponta — sem recuo nenhum, como a linha de baixo.
                     // `maxWidth: .infinity` explícito: sem ele a régua fica
                     // do tamanho do título, que é mais estreito que o cartão.
+                    //
+                    // Recuo à esquerda do tamanho máximo da tarja, e só
+                    // enquanto ela está em processamento: é só nesse estado
+                    // que ela sobe com um trecho de fundo translúcido
+                    // (opacity 0.22), e sem o recuo a linha aparecia
+                    // atravessando esse trecho por trás dela. Parada, a tarja
+                    // é fina e opaca — a linha pode ir ponta a ponta.
                     Rectangle()
-                        .fill(corDeAcento.opacity(0.28))
+                        .fill(progresso != nil ? PapagaioTema.borda : corDeAcento.opacity(0.28))
                         .frame(maxWidth: .infinity)
                         .frame(height: 1)
+                        .padding(.leading, progresso != nil ? Self.larguraMaximaDaTarja : 0)
                 }
 
                 // Espaçamento elástico entre as linhas: o corpo tem altura de
@@ -228,24 +255,17 @@ struct CartaoDeConversa: View {
                     // estaria em quase todos os cartões, o tempo todo, gastando
                     // uma linha para informar o esperado. Fila, processamento e
                     // falha são exceções, e mudam o que dá para fazer ali.
-                    if estado != .transcritoEResumido {
+                    //
+                    // No modelo compacto o selo desceu para o rodapé, ao lado
+                    // da estrela — aqui em cima ele brigava por linha com os
+                    // outros dados. O modelo com capa continua mostrando aqui.
+                    if estado != .transcritoEResumido, modelo == .comCapa {
                         HStack(spacing: PapagaioTema.Espaco.curto) {
                             SeloDeStatus(
                                 texto: estado.descricao,
                                 simbolo: estado.simbolo,
                                 estilo: estado.estilo
                             )
-
-                            // No modelo compacto a tarja lateral mostra o
-                            // andamento, mas só a olho, sem número — quem
-                            // olha o cartão não sabe se são 5% ou 95%. Este
-                            // texto é a mesma conta da tarja, só que lida.
-                            if let progresso, modelo == .compacto {
-                                PorcentagemDoProcessamento(
-                                    inicio: progresso.inicio,
-                                    estimativa: progresso.estimativa
-                                )
-                            }
                         }
                         vao
                     }
@@ -266,18 +286,24 @@ struct CartaoDeConversa: View {
                     // foi, quanto durou, quem estava, de onde veio, como foi.
                     // Enfileirados, dependiam da largura da janela para saber
                     // onde quebravam — e o cartão tem altura de sobra.
+                    // Participantes primeiro: é a resposta a "com quem foi
+                    // essa conversa", a pergunta mais comum ao bater o olho
+                    // na grade — antes de quando foi ou quanto durou.
+                    if campos.contains(.participantes) {
+                        botaoDeParticipantes
+                        vao
+                    }
+
                     if campos.contains(.data) {
-                        linhaDoCorpo("calendar", DataDigitada.textoComHora(de: arquivo.criadoEm))
+                        HStack(spacing: PapagaioTema.Espaco.curto) {
+                            linhaDoCorpo("calendar", DataDigitada.textoComHora(de: arquivo.criadoEm))
+                            botaoInformacoesDeData
+                        }
                         vao
                     }
 
                     if campos.contains(.duracao) {
                         linhaDoCorpo("clock", arquivo.duracao.comoDuracaoPorExtenso)
-                        vao
-                    }
-
-                    if campos.contains(.participantes) {
-                        botaoDeParticipantes
                     }
 
                     // Uma folga fixa no fim, e não um `Spacer` elástico.
@@ -295,7 +321,9 @@ struct CartaoDeConversa: View {
                 // No modelo compacto a tarja de cor mora na borda esquerda do
                 // próprio cartão — sem este respiro extra o texto encostaria
                 // nela. Mesmo recuo do título, para as linhas começarem
-                // alinhadas com ele.
+                // alinhadas com ele — o total (largo + medio = 28pt) já cobre
+                // com folga a tarja mais larga (16pt) do estado em
+                // processamento.
                 .padding(.leading, modelo == .compacto ? PapagaioTema.Espaco.medio : 0)
                 // A barra de atalhos é uma camada sobre o rodapé; sem esta
                 // reserva o último dado passaria por baixo dela.
@@ -336,6 +364,53 @@ struct CartaoDeConversa: View {
         // natural do conteúdo — que é menor que a do cartão — e a barra de
         // atalhos aparecia no meio, flutuando onde o texto acabava.
         .overlay(alignment: .bottom) { barraDeAtalhos }
+        // No modelo compacto, o selo de status sai do rodapé e vai para o
+        // centro do cartão enquanto processa — é a informação mais
+        // importante ali naquele momento, e no canto ela dividia atenção com
+        // três ícones pequenos. No centro, sozinha, ela é a primeira coisa
+        // que se vê.
+        //
+        // O véu escurece o título e os metadados atrás do selo — sem ele o
+        // selo competia com o próprio texto do cartão pela mesma atenção.
+        // Só até o rodapé: os ícones de favoritar/pasta/menu continuam
+        // visíveis e clicáveis por baixo, sem véu nenhum em cima deles.
+        //
+        // O véu ocupa o cartão **inteiro** (`.frame(maxWidth/maxHeight:
+        // .infinity)`), e não só o tamanho do selo — encolhido ao conteúdo,
+        // ele virava uma caixa escura de cantos retos colada atrás do selo,
+        // em vez de esmaecer o cartão ao redor dele.
+        //
+        // Nada aqui recebe toque, exceto o botão "Cancelar": sem
+        // `allowsHitTesting(false)` em cada peça, elas ficariam na frente do
+        // `NavigationLink` e engoliriam o clique que deveria abrir a
+        // conversa (fora do botão) ou cancelar (dentro dele).
+        .overlay {
+            if modelo == .compacto, estado != .transcritoEResumido {
+                ZStack {
+                    PapagaioTema.fundo.opacity(0.6)
+                        .allowsHitTesting(false)
+
+                    VStack(spacing: PapagaioTema.Espaco.medio) {
+                        SeloDeStatus(
+                            texto: estado.descricao,
+                            simbolo: estado.simbolo,
+                            estilo: estado.estilo
+                        )
+                        .allowsHitTesting(false)
+
+                        // Só aparece enquanto há de fato algo para
+                        // interromper — uma conversa que falhou já parou
+                        // sozinha, não faz sentido "cancelar" o que não está
+                        // mais rodando.
+                        if estado.ocupado {
+                            botaoCancelarProcessamento
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, Self.alturaDaBarra)
+            }
+        }
         // A tarja do modelo compacto: sem faixa de capa, é ela que carrega a
         // cor da conversa/pasta — o mesmo papel que a faixa tinha no modelo
         // com capa, só que reduzido a uma lateral. Encostada nos quatro
@@ -353,7 +428,13 @@ struct CartaoDeConversa: View {
         // os ícones do rodapé: contorno é o elemento mais periférico do cartão,
         // e na intensidade dos acentos ele viraria um retângulo colorido em
         // volta de tudo — a grade inteira acabaria listrada.
-        .cartaoPapagaio(borda: corDeAcento.opacity(0.35))
+        //
+        // Em processamento, a moldura volta a ser neutra: quem já é o sinal
+        // colorido ali é a tarja, subindo. Com a borda também colorida, o
+        // cartão inteiro parecia tingido — mais parecido com um cartão de
+        // cor própria do que com o painel neutro (ex.: "Biblioteca de
+        // Conversas") que ele deveria lembrar fora da tarja.
+        .cartaoPapagaio(borda: progresso != nil ? PapagaioTema.borda : corDeAcento.opacity(0.35))
         .onAppear(perform: sincronizarPreferenciasVisuais)
         .onChange(of: arquivo.id.rawValue) { _, _ in
             sincronizarPreferenciasVisuais()
@@ -371,6 +452,7 @@ struct CartaoDeConversa: View {
                 participantes: $participantesEditados,
                 data: $dataEditada,
                 duracao: $duracaoEditada,
+                importadoEm: arquivo.importadoEm,
                 aoCancelar: { editandoInformacoes = false },
                 aoSalvar: salvarInformacoesDoCard
             )
@@ -469,26 +551,34 @@ struct CartaoDeConversa: View {
             Text(titulo)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(PapagaioTema.texto)
-                // Três linhas, e sem encolher: título comprido merece quebrar,
-                // não espremer a fonte até ficar ilegível nem cortar com
-                // reticências. Alguns títulos vão passar de três linhas mesmo
-                // assim — aí é o `.clipped()` do corpo que cede espaço, não o
-                // título que perde palavra.
-                .lineLimit(3)
+                // Duas linhas, com reticências passando disso — não mais
+                // altura livre. Título comprido empurrava a linha divisória
+                // (e tudo abaixo dela) para baixo, cartão a cartão numa
+                // altura diferente; a `.help(titulo)` continua mostrando o
+                // título inteiro ao passar o mouse, para quem precisar ler.
+                .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(height: Self.alturaDoTituloCompacto, alignment: .top)
                 .help(titulo)
 
             // A mesma descrição da faixa do modelo com capa — só que aqui, sem
             // faixa nenhuma, ela é só mais uma linha de texto, na cor
             // secundária do tema.
-            if campos.contains(.descricao), !metadados.descricao.isEmpty {
+            //
+            // Altura fixa de duas linhas, sempre reservada quando o campo
+            // está ligado — tenha a conversa descrição, uma linha só, ou
+            // nenhuma. Sem essa reserva, a linha divisória logo abaixo caía
+            // numa altura diferente em cada cartão, conforme o tamanho da
+            // descrição de cada um: uma bagunça na grade. Passando de duas
+            // linhas, corta com reticências — não empurra a divisória mais
+            // ainda.
+            if campos.contains(.descricao) {
                 Text(metadados.descricao)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: Self.alturaDaDescricaoCompacta, alignment: .top)
             }
         }
         // Recuo maior da esquerda: a tarja de cor mora bem na borda, e rente
@@ -527,6 +617,95 @@ struct CartaoDeConversa: View {
             Rectangle()
                 .fill(corDaTarjaLateral)
                 .frame(width: 4)
+        }
+    }
+
+    /// O jeito de desistir de uma gravação enquanto ela ainda está sendo
+    /// transcrita ou resumida.
+    ///
+    /// Antes disso a única saída era abrir o menu "..." e reconhecer "Mover
+    /// para Lixeira" como também servindo para cancelar — nada dizia isso.
+    /// Aqui a ação certa aparece no centro do cartão, no momento exato em
+    /// que a pergunta "dá pra parar isso?" surge, com o nome que responde a
+    /// ela. É a mesma ação de sempre (`aoMoverParaLixeira`, que já cancela o
+    /// `Task` em andamento antes de mover para a lixeira) — só nomeada para
+    /// quem está processando, e não para quem já processou.
+    ///
+    /// `highPriorityGesture`, e não `Button`: este botão mora dentro do
+    /// `NavigationLink` do cartão (é um overlay sobre ele), e um botão comum
+    /// aninhado ali perderia o toque para o link — a conversa abriria em vez
+    /// de cancelar. Mesmo truque de `botaoDeParticipantes`.
+    private var botaoCancelarProcessamento: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Cancelar")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(PapagaioTema.perigo)
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.vertical, PapagaioTema.Espaco.curto)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule().stroke(PapagaioTema.perigo.opacity(0.4), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+        .highPriorityGesture(TapGesture().onEnded(aoMoverParaLixeira))
+        .help("Cancelar o processamento e mover para a lixeira")
+    }
+
+    /// O "i" ao lado da data, na cor do cartão (a mesma da tarja) — mesma
+    /// lógica de datas que já aparece na lixeira, só que aqui, aberta.
+    ///
+    /// Sempre visível, e não só em arquivos importados: mesmo numa gravação
+    /// normal ele confirma "gravado em" com hora, que a linha de fora só
+    /// mostra até o minuto. Importado, ganha uma segunda linha com a data
+    /// real da importação — a mesma distinção que já existe no cartão da
+    /// lixeira, só que aqui antes de a conversa ser apagada.
+    ///
+    /// `onHover`, como o `BotaoDeAjudaPapagaio`: não precisa de clique para
+    /// abrir, e não disputa o toque com o `NavigationLink` do cartão — só um
+    /// clique dispararia os dois ao mesmo tempo.
+    private var botaoInformacoesDeData: some View {
+        Image(systemName: "info.circle")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(corDeAcento.opacity(pairandoNaInfoDeData ? 1 : 0.65))
+            .frame(width: 20, height: 20)
+            .contentShape(Circle())
+            .onHover { pairandoNaInfoDeData = $0 }
+            .popover(isPresented: $pairandoNaInfoDeData, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                    colunaDeInformacaoDeData(
+                        rotulo: "Gravado em",
+                        valor: DataDigitada.textoComHora(de: arquivo.criadoEm)
+                    )
+                    if let importadoEm = arquivo.importadoEm {
+                        colunaDeInformacaoDeData(
+                            rotulo: "Importado em",
+                            valor: DataDigitada.textoComHora(de: importadoEm)
+                        )
+                    }
+                }
+                .padding(PapagaioTema.Espaco.largo)
+                .frame(width: 240, alignment: .leading)
+            }
+            .accessibilityLabel("Datas da conversa")
+            .help(
+                importado && arquivo.importadoEm != nil
+                    ? "Gravado em \(DataDigitada.texto(de: arquivo.criadoEm)) · Importado em \(DataDigitada.texto(de: arquivo.importadoEm!))"
+                    : "Gravado em \(DataDigitada.texto(de: arquivo.criadoEm))"
+            )
+    }
+
+    private func colunaDeInformacaoDeData(rotulo: String, valor: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(rotulo)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(corDeAcento)
+                .textCase(.uppercase)
+            Text(valor)
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.texto)
         }
     }
 
@@ -765,10 +944,36 @@ struct CartaoDeConversa: View {
            let dominante = CorDominanteDeImagem.cor(de: imagem, chave: arquivo.id.rawValue.uuidString) {
             return dominante.acentoSobreSuperficie
         }
-        // Sem cor e sem imagem não há de onde tirar acento: fica o da marca,
-        // que é o que o app usa quando ninguém escolheu nada.
-        if faixaSemCor { return PapagaioTema.destaqueEscuro }
-        return corDaFaixa.acentoSobreSuperficie
+        // "Sem cor" é uma opção do modelo **com capa**: ela esvazia a faixa
+        // colorida do topo, que só existe nesse modelo. No compacto não há
+        // faixa nenhuma para esvaziar — a tarja lateral sempre mostra cor
+        // (da pasta, ou a de marca), então o resto do cartão (borda, "i" da
+        // data, estrela, pasta no rodapé) tem que concordar com ela. Sem
+        // este `modelo == .comCapa`, uma conversa marcada "sem cor" no
+        // compacto ficava com a tarja azul (da pasta) e tudo o mais em
+        // laranja — a opção nem deveria valer aqui.
+        if modelo == .comCapa {
+            if faixaSemCor {
+                if let pasta { return AparenciaDasPastas.corResolvida(de: pasta).acentoSobreSuperficie }
+                return PapagaioTema.destaqueEscuro
+            }
+            return corDaFaixa.acentoSobreSuperficie
+        }
+        // Compacto ignora `faixaSemCor` por completo, e não só aqui — usa
+        // `corDaFaixaEscolhida`/`corPadraoDaFaixa` direto, sem passar por
+        // `corDaFaixa`: aquela também esvazia para cinza quando `faixaSemCor`
+        // está ligado (é o que o modelo com capa precisa para a faixa
+        // sumir), o que devolveria um acento sem graça mesmo tendo pulado a
+        // checagem aqui em cima.
+        //
+        // E, numa pasta, a pasta vence a cor escolhida à mão — mesma
+        // prioridade de `corDaTarjaLateral` logo abaixo. Sem isto, uma
+        // conversa com cor própria salva (mesmo que "sem cor" nunca tenha
+        // sido marcado) dentro de uma pasta azul mostrava a tarja azul (que
+        // já respeitava essa prioridade) e a borda/ícones na cor escolhida à
+        // mão — as duas cores do mesmo cartão discordando de novo.
+        if let pasta { return AparenciaDasPastas.corResolvida(de: pasta).acentoSobreSuperficie }
+        return (corDaFaixaEscolhida ?? PapagaioTema.destaque).acentoSobreSuperficie
     }
 
     /// A cor da tarja lateral do modelo compacto.
@@ -811,17 +1016,28 @@ struct CartaoDeConversa: View {
             // A linha na cor do cartão, e não no cinza do tema: ela é a costura
             // entre a conversa e o que dá para fazer com ela, e no cinza
             // pertencia à moldura do app em vez de a este cartão.
+            //
+            // Só recuada enquanto a tarja está em processamento (mesmo
+            // motivo da linha do cabeçalho) — parada, ela é fina e opaca, e a
+            // linha vai ponta a ponta como sempre foi.
             Rectangle()
-                .fill(corDeAcento.opacity(0.28))
+                .fill(progresso != nil ? PapagaioTema.borda : corDeAcento.opacity(0.28))
                 .frame(height: 1)
+                .padding(.leading, progresso != nil ? Self.larguraMaximaDaTarja : 0)
 
             // Alinhados à direita, como no Classroom: são ações secundárias, e
             // à esquerda competiriam com a leitura do conteúdo acima.
             HStack(spacing: PapagaioTema.Espaco.medio) {
-                // A pasta ocupa o canto esquerdo do rodapé: é rótulo, não ação,
-                // e aqui ela fica na mesma linha do ícone que a muda, à
-                // direita — o que se lê e o que se altera, lado a lado.
-                if let pastaVisivel {
+                // No modelo compacto, o selo de status agora mora no centro
+                // do cartão (ver overlay do corpo) enquanto processa — o
+                // rodapé, nesse momento, fica só com os ícones à direita.
+                if modelo == .compacto, estado != .transcritoEResumido {
+                    EmptyView()
+                } else if let pastaVisivel {
+                    // A pasta ocupa o canto esquerdo do rodapé: é rótulo, não
+                    // ação, e aqui ela fica na mesma linha do ícone que a
+                    // muda, à direita — o que se lê e o que se altera, lado a
+                    // lado.
                     SeloDaPastaDoCartao(nome: pastaVisivel) { aoAbrirPasta(pastaVisivel) }
                         .padding(.leading, PapagaioTema.Espaco.largo)
                 }
@@ -919,6 +1135,7 @@ struct CartaoDeConversa: View {
             MenuDeArquivoAberto(
                 bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
                 bloqueioDeLixeira: emOperacaoDeLixeira,
+                cancelavel: estado.ocupado,
                 aoEditarAparencia: executarMenu { editandoAparencia = true },
                 aoRenomear: executarMenu(abrirEditorDeInformacoes),
                 aoBaixar: executarMenu(baixar),
@@ -1402,31 +1619,6 @@ struct MetadadoDoCard: View {
 
 
 
-/// A porcentagem do processamento, sozinha — sem barra, sem cor própria.
-///
-/// Existe para o modelo compacto, onde o andamento já é a `TarjaDeProgressoDoCartao`:
-/// ela mostra que algo está acontecendo, mas não diz o número. Ao lado do
-/// selo de status, este texto é a leitura exata da mesma conta.
-struct PorcentagemDoProcessamento: View {
-    let inicio: Date
-    let estimativa: TimeInterval
-
-    var body: some View {
-        TimelineView(.periodic(from: inicio, by: 1)) { contexto in
-            let fracao = BarraDeProgressoDoProcessamento.fracao(
-                decorrido: contexto.date.timeIntervalSince(inicio),
-                estimativa: estimativa
-            )
-
-            Text("\(Int((fracao * 100).rounded()))%")
-                .font(.caption.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .animation(.easeOut(duration: 0.3), value: fracao)
-        }
-    }
-}
-
 /// A tarja lateral do cartão compacto, preenchendo de baixo pra cima
 /// conforme o processamento avança.
 ///
@@ -1439,6 +1631,18 @@ struct TarjaDeProgressoDoCartao: View {
     let inicio: Date
     let estimativa: TimeInterval
 
+    /// O que a tarja mostra agora — separado da fração real (`fracao`,
+    /// calculada a cada tique do relógio) para a barra poder nascer do zero
+    /// e subir até lá, em vez de aparecer já no meio do caminho.
+    ///
+    /// Sem essa separação, um cartão que entra na tela com o processamento
+    /// já em andamento há alguns segundos (rolando a grade, reabrindo o
+    /// app no meio de um resumo) mostrava o número direto em "8%", "15%" —
+    /// como se tivesse pulado etapas. Começando daqui, a primeira coisa que
+    /// se vê é sempre "0%" subindo, e só depois ela acompanha o relógio de
+    /// verdade.
+    @State private var fracaoExibida: Double = 0
+
     var body: some View {
         TimelineView(.periodic(from: inicio, by: 1)) { contexto in
             let fracao = BarraDeProgressoDoProcessamento.fracao(
@@ -1447,17 +1651,65 @@ struct TarjaDeProgressoDoCartao: View {
             )
 
             GeometryReader { geometria in
+                let alturaPreenchida = max(6, geometria.size.height * fracaoExibida)
+
                 ZStack(alignment: .bottom) {
                     Rectangle().fill(cor.opacity(0.22))
 
                     Rectangle()
                         .fill(cor)
-                        .frame(height: max(6, geometria.size.height * fracao))
+                        .frame(height: alturaPreenchida)
+                }
+
+                // O número sobe junto com o preenchimento, e não fica
+                // parado no meio da tarja — é ele quem "anda" com a barra,
+                // não um rótulo estático do lado. `.position`, e não
+                // alinhamento + offset: os dois combinados ficam difíceis de
+                // acertar o sinal certo; posição absoluta é direta.
+                Text("\(Int((fracaoExibida * 100).rounded()))%")
+                    .font(.system(size: 10, weight: .bold))
+                    .monospacedDigit()
+                    // Branco fixo, com uma sombra escura por baixo — e não
+                    // `cor.textoLegivel`. O número não fica só sobre o
+                    // preenchimento sólido: perto do início do
+                    // processamento ele cai sobre a trilha translúcida
+                    // (22% de opacidade), que é um fundo bem mais escuro e
+                    // dessaturado que a cor cheia — contraste calculado para
+                    // uma coisa aparecia errado sobre a outra, e o número
+                    // sumia quase na própria cor da tarja. A sombra garante
+                    // leitura nos dois fundos, sólido ou translúcido.
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 1.5)
+                    .fixedSize()
+                    .rotationEffect(.degrees(-90))
+                    .position(
+                        x: geometria.size.width / 2,
+                        // 12pt abaixo do topo do preenchimento: perto da
+                        // ponta de cima, sem sair da área colorida em quase
+                        // nenhum estágio do andamento.
+                        y: max(12, geometria.size.height - alturaPreenchida + 12)
+                    )
+            }
+            .animation(.easeOut(duration: 0.3), value: fracaoExibida)
+            .onChange(of: fracao) { _, novaFracao in
+                fracaoExibida = novaFracao
+            }
+            .onAppear {
+                guard fracao > 0 else { return }
+                // A entrada é mais lenta que o tique normal (0.3s): 0% até a
+                // fração real é um salto maior que "mais um segundo se
+                // passou", e merece se notar como uma subida, não um pulo.
+                withAnimation(.easeOut(duration: 0.7)) {
+                    fracaoExibida = fracao
                 }
             }
-            .animation(.easeOut(duration: 0.3), value: fracao)
         }
-        .frame(width: 4)
+        // Mais espessa que a tarja parada (4pt): em processamento ela é o
+        // único sinal de que algo está acontecendo, e precisa se notar sem
+        // precisar ler a porcentagem. Ainda dentro do cartão — quem arredonda
+        // as pontas é o `.clipShape` do cartão, então ela nunca escapa do
+        // canto mesmo mais grossa.
+        .frame(width: CartaoDeConversa.larguraMaximaDaTarja)
     }
 }
 

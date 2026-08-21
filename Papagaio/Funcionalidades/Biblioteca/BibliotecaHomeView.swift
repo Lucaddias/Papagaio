@@ -143,12 +143,26 @@ struct BibliotecaHomeView: View {
     /// Texto que se lê uma vez e depois só ocupa a primeira dobra da tela
     /// inicial — mesmo tratamento que a explicação da aba Mídia já tinha
     /// recebido.
+    /// Muda com o filtro: "Pastas" reorganiza, não transcreve — dizer
+    /// "transcrições e insights" enquanto a grade mostra só pastas prometia
+    /// uma coisa e entregava outra.
     private var ajudaDaBiblioteca: some View {
         BotaoDeAjudaPapagaio(
-            texto: "Gerencie suas transcrições e insights de entrevistas.",
+            texto: filtroSelecionado == .pastas
+                ? "Gerencie suas pastas de conversas."
+                : "Gerencie suas transcrições e insights de conversas.",
             ajuda: "Sobre a biblioteca",
             largura: 300
         )
+    }
+
+    /// "Biblioteca de Conversas" sozinho, olhando para uma grade de pastas,
+    /// não dizia o que estava na tela — a pessoa via cartões de pasta, mas o
+    /// título continuava prometendo conversas. O "(Pastas)" fecha essa
+    /// lacuna sem trocar o título principal, que continua sendo o nome da
+    /// seção mesmo dentro do filtro.
+    private var tituloDaBibliotecaComFiltro: String {
+        filtroSelecionado == .pastas ? "Biblioteca de Conversas (Pastas)" : "Biblioteca de Conversas"
     }
 
     private var atalhosDaBiblioteca: some View {
@@ -211,7 +225,7 @@ struct BibliotecaHomeView: View {
         let fonte: [Arquivo]
         switch secaoSelecionada {
         case .todos:
-            let recentes = biblioteca.arquivos.sorted { $0.criadoEm > $1.criadoEm }
+            let recentes = biblioteca.arquivos.sorted { $0.entradaNaBiblioteca > $1.entradaNaBiblioteca }
             if let pastaSelecionada {
                 fonte = recentes.filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == pastaSelecionada }
             } else if filtroSelecionado == .pastas {
@@ -255,13 +269,29 @@ struct BibliotecaHomeView: View {
         // é um rótulo passageiro, não algo pelo que alguém pensa em procurar
         // uma conversa.
         let data = DataDigitada.texto(de: arquivo.criadoEm)
+        // Com a hora também: "17:00" ou "14:32" tem que achar a conversa
+        // certa, do mesmo jeito que a data sozinha já achava.
+        let dataComHora = DataDigitada.textoComHora(de: arquivo.criadoEm)
+        // Igual à linha "3 min 17 s" que já aparece no cartão — quem lembra
+        // "a entrevista de 40 minutos" busca pela duração, não só pelo nome.
+        let duracao = arquivo.duracao.comoDuracaoPorExtenso
+        // Contagem de participantes, no mesmo texto que o cartão mostra
+        // ("2 participantes"): nomes já são cobertos por entrevistado(es)
+        // abaixo, mas "quantos eram" também é uma forma válida de lembrar.
+        let participantes = metadados.participantes.map {
+            $0 == 1 ? "1 participante" : "\($0) participantes"
+        } ?? ""
 
         if titulo.casaComBusca(termo)
             || pastaDaConversa.casaComBusca(termo)
             || metadados.entrevistado.casaComBusca(termo)
             || metadados.entrevistadores.casaComBusca(termo)
             || metadados.descricao.casaComBusca(termo)
-            || data.casaComBusca(termo) {
+            || metadados.formato.casaComBusca(termo)
+            || data.casaComBusca(termo)
+            || dataComHora.casaComBusca(termo)
+            || duracao.casaComBusca(termo)
+            || participantes.casaComBusca(termo) {
             return true
         }
 
@@ -291,7 +321,7 @@ struct BibliotecaHomeView: View {
         case .todos:
             emCaptura
                 ? "Grave, transcreva e revise suas conversas."
-                : "Gerencie suas transcrições e insights de entrevistas."
+                : "Gerencie suas transcrições e insights de conversas."
         case .lixeira:
             "Gerencie conversas excluídas. Itens na lixeira serão removidos permanentemente após 30 dias."
         }
@@ -361,6 +391,10 @@ struct BibliotecaHomeView: View {
         return itens.filter {
             $0.nome.casaComBusca(termo)
                 || $0.conversaTitulo.casaComBusca(termo)
+                // "áudio", "imagem" — o tipo do anexo, para achar "todo
+                // áudio que apaguei" sem lembrar o nome de nenhum arquivo.
+                || $0.tipo.casaComBusca(termo)
+                || DataDigitada.texto(de: $0.apagadoEm).casaComBusca(termo)
         }
     }
 
@@ -507,6 +541,9 @@ struct BibliotecaHomeView: View {
             $0.tarefa.titulo.casaComBusca(termo)
                 || $0.conversaTitulo.casaComBusca(termo)
                 || ($0.tarefa.responsavel?.casaComBusca(termo) ?? false)
+                || ($0.tarefa.descricao?.casaComBusca(termo) ?? false)
+                || ($0.tarefa.prazo.map { DataDigitada.texto(de: $0).casaComBusca(termo) } ?? false)
+                || DataDigitada.texto(de: $0.apagadoEm).casaComBusca(termo)
         }
     }
 
@@ -563,7 +600,7 @@ struct BibliotecaHomeView: View {
     private var cabecalhoDaBiblioteca: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
             HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
-                Text("Biblioteca de Conversas")
+                Text(tituloDaBibliotecaComFiltro)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
 
@@ -631,6 +668,62 @@ struct BibliotecaHomeView: View {
         .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
+    /// O cabeçalho da lixeira, no mesmo molde do cartão de "Biblioteca de
+    /// Conversas": título, um botão "i" com a explicação (em vez do
+    /// subtítulo fixo ocupando uma linha inteira), e as ações à direita —
+    /// tudo dentro do mesmo cartão com borda e sombra, e não solto no fundo
+    /// da janela como um texto qualquer.
+    private var cabecalhoDaLixeira: some View {
+        HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            Text(tituloDaPagina)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+
+            BotaoDeAjudaPapagaio(
+                texto: subtitulo,
+                ajuda: "Sobre a lixeira",
+                largura: 320
+            )
+
+            Spacer(minLength: 16)
+
+            if let biblioteca, biblioteca.processando {
+                SeloDeStatus(
+                    texto: "Processamento em andamento",
+                    simbolo: "waveform",
+                    estilo: .destaque
+                )
+            }
+
+            if let biblioteca {
+                AcoesDaLixeira(
+                    temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
+                    aoRestaurarTudo: {
+                        Task { await biblioteca.restaurarTudoDaLixeira() }
+                        LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                        LixeiraDeMidia.restaurarTudo()
+                        LixeiraDePastas.restaurarTudo()
+                        atualizarPreferenciasVisuais()
+                    },
+                    aoEsvaziar: {
+                        confirmandoEsvaziarLixeira = true
+                    }
+                )
+            }
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
@@ -657,36 +750,7 @@ struct BibliotecaHomeView: View {
                     gradeDeConversas
                         .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
                 } else if !emCaptura {
-                    CabecalhoDePagina(
-                        titulo: tituloDaPagina,
-                        subtitulo: subtitulo
-                    ) {
-                    HStack(spacing: PapagaioTema.Espaco.largo) {
-                        if secaoSelecionada != .todos, let biblioteca {
-                            AcoesDaLixeira(
-                                temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
-                                aoRestaurarTudo: {
-                                    Task { await biblioteca.restaurarTudoDaLixeira() }
-                                    LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
-                                    LixeiraDeMidia.restaurarTudo()
-                                    LixeiraDePastas.restaurarTudo()
-                                    atualizarPreferenciasVisuais()
-                                },
-                                aoEsvaziar: {
-                                    confirmandoEsvaziarLixeira = true
-                                }
-                            )
-                        }
-
-                        if let biblioteca, biblioteca.processando {
-                            SeloDeStatus(
-                                texto: "Processamento em andamento",
-                                simbolo: "waveform",
-                                estilo: .destaque
-                            )
-                        }
-                        }
-                    }
+                    cabecalhoDaLixeira
                 }
 
                 if emCaptura || secaoSelecionada != .todos {
@@ -814,7 +878,15 @@ struct BibliotecaHomeView: View {
     private var gradeDeConversas: some View {
         // `.top`, e não `.center`: centralizado, um cartão mais baixo flutuava
         // no meio da linha e nem topo nem base batiam com o vizinho.
-        let colunas = [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)]
+        //
+        // Quatro colunas fixas, e não `.adaptive`: o pedido foi por uma
+        // fileira sempre com quatro cartões (três de conversa mais o de
+        // adicionar, na primeira) — cartões mais largos, mais
+        // horizontalizados, sem mexer em nada do que tem dentro deles.
+        let colunas = Array(
+            repeating: GridItem(.flexible(minimum: 220), spacing: PapagaioTema.Espaco.largo, alignment: .top),
+            count: 4
+        )
         let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: PapagaioTema.Espaco.secao, alignment: .top)]
 
         switch secaoSelecionada {

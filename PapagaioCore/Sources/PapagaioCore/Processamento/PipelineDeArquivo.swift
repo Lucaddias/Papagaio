@@ -210,7 +210,15 @@ public struct PipelineDeArquivo: Sendable {
             resumo: arquivo.resumo,
             engineTranscricao: arquivo.engineTranscricao,
             engineResumo: arquivo.engineResumo,
-            apagadoEm: arquivo.apagadoEm
+            apagadoEm: arquivo.apagadoEm,
+            // Faltando aqui, todo arquivo importado perdia essa marca assim
+            // que a diarização rodava: a reconstrução usava o inicializador
+            // completo sem passar este campo, que por padrão volta a `nil`
+            // — e com ele sumido, `entradaNaBiblioteca` caía de volta para
+            // `criadoEm` (a data real da gravação, possivelmente antiga).
+            // O cartão não desaparecia de verdade, só ia parar longe do
+            // topo da grade, ordenado pela data errada.
+            importadoEm: arquivo.importadoEm
         )
     }
 

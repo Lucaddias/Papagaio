@@ -86,7 +86,7 @@ struct TarefasDaConversaView: View {
 
             if tarefasFiltradas.isEmpty {
                 CartaoDeEstadoVazio(
-                    simbolo: "checklist",
+                    simbolo: "list.clipboard",
                     titulo: "Nenhuma tarefa aqui",
                     mensagem: "Use o botão de adicionar para criar uma tarefa nesta conversa."
                 )

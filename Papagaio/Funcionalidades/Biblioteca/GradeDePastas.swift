@@ -30,11 +30,13 @@ struct GradeDePastas: View {
             // Pastas, e repetir a palavra a 40pt de distância não informa nada.
             // O botão herda a posição dele, à esquerda, onde a leitura começa.
             if !ocultarCriacao {
+                // Mesma linha de sempre, só que o botão foi para a direita —
+                // o `Spacer` agora vem antes dele, não depois.
                 HStack {
+                    Spacer()
+
                     Button("Nova pasta", systemImage: "folder.badge.plus", action: aoCriarPasta)
                         .buttonStyle(BotaoDeContornoPapagaio())
-
-                    Spacer()
                 }
             }
 
@@ -94,18 +96,57 @@ struct CartaoDePasta: View {
     @State private var menuAberto = false
     @State private var ajuste: AjusteDeImagem = .preencher
 
+    // Mesma escolha dos cartões de conversa: "Com capa" pinta a fileira
+    // inteira na cor da pasta; "Compacto" usa a superfície neutra do cartão
+    // compacto, com a cor só na tarja da esquerda — a identidade das pastas
+    // acompanha a dos cartões, e não fica descombinando quando a pessoa troca
+    // o modelo em Configurações.
+    @AppStorage(ModeloDeCartao.chave) private var modeloBruto = ModeloDeCartao.padrao.rawValue
+
+    private var modelo: ModeloDeCartao {
+        ModeloDeCartao(rawValue: modeloBruto) ?? .padrao
+    }
+
     private var imagem: NSImage? {
         guard capa != nil else { return nil }
         return AparenciaDasPastas.imagem(de: pasta.nome)
     }
 
-    /// A cor do texto da fileira.
+    /// A cor do texto da fileira no modelo "Com capa".
     ///
     /// Sem cor, a fileira é a própria superfície do tema — que já é escura no
     /// modo escuro. `textoLegivel` mede uma cor fixa e não enxerga a troca de
     /// aparência; aqui o certo é a cor de texto do tema.
     private var corDoTexto: Color {
         semCor ? PapagaioTema.texto : cor.textoLegivel
+    }
+
+    /// A cor do nome da pasta, nos dois modelos.
+    ///
+    /// "Com capa" com imagem é sempre branco (o véu escuro garante o
+    /// contraste); sem imagem, segue `corDoTexto`. No compacto o fundo é
+    /// neutro — mesma cor de texto de qualquer outro cartão desse modelo.
+    private var corDoTextoPrincipal: Color {
+        guard modelo == .comCapa else { return PapagaioTema.texto }
+        return imagem == nil ? corDoTexto : .white
+    }
+
+    private var corDoTextoSecundario: Color {
+        guard modelo == .comCapa else { return PapagaioTema.textoSecundario }
+        return (imagem == nil ? corDoTexto : .white).opacity(0.8)
+    }
+
+    /// A borda da fileira: no compacto ela é a mesma moldura sutil dos
+    /// cartões de conversa desse modelo, e não a lógica de "sem cor e sem
+    /// imagem" que só faz sentido quando o fundo é a cor da pasta.
+    private var corDaBorda: Color {
+        if selecionado {
+            return modelo == .comCapa ? corDoTexto.opacity(0.7) : PapagaioTema.destaque
+        }
+        if modelo == .compacto {
+            return cor.opacity(0.35)
+        }
+        return semCor && imagem == nil ? PapagaioTema.borda : .clear
     }
 
     var body: some View {
@@ -118,15 +159,22 @@ struct CartaoDePasta: View {
             // quatro por linha e a lista inteira fica visível de uma vez —
             // que é o que se quer de um índice.
             HStack(spacing: PapagaioTema.Espaco.medio) {
-                marca
+                // No modelo compacto a cor já mora na tarja da esquerda — o
+                // quadradinho repetiria a mesma informação duas vezes na
+                // mesma fileira.
+                if modelo == .comCapa {
+                    marca
+                }
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(pasta.nome)
                         .font(.callout.weight(.semibold))
                         // Com imagem no fundo, o texto é sempre claro: o véu
                         // escuro garante o contraste, e a cor da pasta não diz
-                        // mais nada sobre o que está atrás do nome.
-                        .foregroundStyle(imagem == nil ? corDoTexto : .white)
+                        // mais nada sobre o que está atrás do nome. No modelo
+                        // compacto o fundo é neutro, então o texto usa a cor
+                        // de texto do tema, como qualquer outro cartão dele.
+                        .foregroundStyle(corDoTextoPrincipal)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -135,7 +183,7 @@ struct CartaoDePasta: View {
                     // responder "vale a pena abrir esta?".
                     Text(textoDaQuantidade)
                         .font(.caption)
-                        .foregroundStyle((imagem == nil ? corDoTexto : .white).opacity(0.8))
+                        .foregroundStyle(corDoTextoSecundario)
                         .lineLimit(1)
                 }
 
@@ -144,9 +192,15 @@ struct CartaoDePasta: View {
                 menuDaPasta
             }
             .padding(.horizontal, PapagaioTema.Espaco.medio)
+            // No compacto, a tarja mora na borda esquerda do cartão — o mesmo
+            // recuo extra que o cartão de conversa dá ao título, para o texto
+            // não encostar nela.
+            .padding(.leading, modelo == .compacto ? PapagaioTema.Espaco.curto : 0)
             .frame(height: 56)
             .frame(maxWidth: .infinity)
-            // A fileira **é** a cor da pasta.
+            // A fileira **é** a cor da pasta no modelo "Com capa"; no
+            // compacto ela é a mesma superfície neutra do cartão de conversa
+            // compacto — a cor sobra para a tarja.
             //
             // Com a cor presa ao quadradinho de 34pt, era preciso caçar o
             // ícone para saber de quem era a linha; pintada, a pasta se
@@ -154,16 +208,32 @@ struct CartaoDePasta: View {
             // `background { }` com `clipShape`, e não `background(_:in:)`: a
             // versão com forma só aceita `ShapeStyle`, e aqui o fundo pode ser
             // uma imagem — que é uma View.
-            .background { fundo }
+            .background {
+                if modelo == .comCapa {
+                    fundo
+                } else {
+                    PapagaioTema.superficie
+                }
+            }
+            // A tarja **antes** do `.clipShape`, e não depois.
+            //
+            // Depois dele, a tarja é um retângulo reto por cima de um
+            // cartão já arredondado — ela ultrapassa os cantos em vez de
+            // acompanhá-los, e parece uma linha colada por cima, e não uma
+            // borda que pertence ao cartão. Antes do corte, ela é recortada
+            // junto com o resto: os cantos dela arredondam com os do
+            // cartão, exatamente como já acontece na tarja dos cartões de
+            // conversa e nos cartões de tarefa.
+            .overlay(alignment: .leading) {
+                if modelo == .compacto {
+                    Rectangle().fill(cor).frame(width: 4)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                     .stroke(
-                        selecionado
-                            ? corDoTexto.opacity(0.7)
-                            // Sem cor e sem imagem, a fileira é quase a cor do
-                            // painel atrás dela: sem um contorno, some.
-                            : (semCor && imagem == nil ? PapagaioTema.borda : .clear),
+                        corDaBorda,
                         lineWidth: selecionado ? 2 : 1
                     )
             }
@@ -224,7 +294,7 @@ struct CartaoDePasta: View {
                 Image(systemName: "ellipsis")
                     .rotationEffect(.degrees(90))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle((imagem == nil ? corDoTexto : .white).opacity(0.85))
+                    .foregroundStyle(corDoTextoSecundario.opacity(0.85))
                     .frame(width: 28, height: 28)
                     .contentShape(Rectangle())
             }
@@ -406,10 +476,18 @@ struct CabecalhoDaPastaAberta: View {
             Button(action: aoVoltar) {
                 Label("Pastas", systemImage: "chevron.left")
                     .font(.callout.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    // Na cor da pasta aberta, e não mais fixo no coral da
+                    // marca — o mesmo acento que já identifica essa pasta no
+                    // ícone e na fileira da grade. A cor **crua**, e não
+                    // `textoLegivel`: essa variante é pensada pra texto em
+                    // cima da cor sólida, não pra ler sobre o fundo quase
+                    // escuro que a cápsula tem aqui (foi o que ficou ilegível
+                    // com amarelo — `textoLegivel` de amarelo é escuro, e
+                    // escuro sobre um fundo já escuro some).
+                    .foregroundStyle(semCor ? PapagaioTema.destaqueEscuro : cor)
                     .padding(.horizontal, PapagaioTema.Espaco.medio)
                     .frame(height: PapagaioTema.Altura.compacta)
-                    .background(PapagaioTema.destaque.opacity(0.12), in: Capsule())
+                    .background((semCor ? PapagaioTema.destaque : cor).opacity(0.12), in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)

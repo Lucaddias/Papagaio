@@ -21,7 +21,7 @@ struct NovaTarefaDaConversaSheet: View {
 
         var simbolo: String {
             switch self {
-            case .criacao: "checklist"
+            case .criacao: "list.clipboard"
             case .edicao: "pencil"
             }
         }

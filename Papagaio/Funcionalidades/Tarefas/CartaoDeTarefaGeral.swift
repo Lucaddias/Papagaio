@@ -8,14 +8,27 @@ struct CartaoDeTarefaGeral: View {
 
     private var concluida: Bool { tarefa.tarefa.status == .concluida }
 
+    /// A cor da tarja lateral segue o status, não a prioridade — a mesma cor
+    /// da coluna em que o cartão está (amarelo, laranja ou verde), para o
+    /// cartão continuar dizendo "onde ele está" mesmo fora do quadro
+    /// (arrastado, numa busca, etc.). A prioridade continua no selo, que é o
+    /// lugar certo pra esse dado.
+    private var corDeStatus: Color {
+        tarefa.tarefa.status.cor
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack {
-                // Só a prioridade — que é dado da tarefa, escolhido por
-                // alguém. O status já está dito pela coluna em que o cartão
-                // está; repeti-lo aqui em cima era a mesma informação duas
-                // vezes na mesma tela.
-                SeloDePrioridade(prioridade: tarefa.tarefa.prioridade)
+                // Prioridade enquanto a tarefa está aberta — dado de quem
+                // criou a tarefa. Concluída, a prioridade já não importa mais
+                // pra ninguém decidir o que fazer primeiro; o selo vira o
+                // status, que é o que passou a ser verdade sobre ela.
+                if concluida {
+                    SeloDeStatusDaTarefa(status: .concluida)
+                } else {
+                    SeloDePrioridade(prioridade: tarefa.tarefa.prioridade)
+                }
                 Spacer()
                 Menu {
                     Button("Editar", systemImage: "pencil", action: aoEditar)
@@ -55,7 +68,10 @@ struct CartaoDeTarefaGeral: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(PapagaioTema.Espaco.largo)
+        // Recuo extra à esquerda: a tarja de cor mora encostada na borda do
+        // cartão, e sem este respiro o texto ficaria colado nela.
+        .padding(.leading, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.curto)
+        .padding([.top, .trailing, .bottom], PapagaioTema.Espaco.largo)
         // A grade fica muito mais fácil de varrer quando cada tarefa ocupa o
         // mesmo retângulo; título longo é truncado nas duas linhas acima.
         // Mais baixo que antes: sem o selo de status e sem a linha do
@@ -65,6 +81,19 @@ struct CartaoDeTarefaGeral: View {
         // campo) fazia este cartão parecer um componente pequeno, não a
         // mesma superfície do cartão de conversa ao lado dele na Biblioteca.
         .cartaoPapagaio()
+        .overlay(alignment: .leading) {
+            // A cor da coluna virou tarja: antes só o selo de prioridade
+            // dizia algo colorido, e as três colunas do quadro ficavam
+            // visualmente idênticas — só o rótulo de texto separava uma da
+            // outra.
+            Rectangle()
+                .fill(corDeStatus)
+                .frame(width: 4)
+        }
+        // Depois da tarja, e não antes: é o `.clipShape` no fim da cadeia
+        // que arredonda a pontinha dela junto com o resto do cartão — antes
+        // dele, a tarja é um retângulo reto que escapava dos cantos.
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .shadow(color: PapagaioTema.destaque.opacity(0.08), radius: 10, y: 6)
     }
 

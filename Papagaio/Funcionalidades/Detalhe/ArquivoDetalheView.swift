@@ -277,6 +277,7 @@ struct ArquivoDetalheView: View {
                 participantes: $participantesEditados,
                 data: $dataEditada,
                 duracao: $duracaoEditada,
+                importadoEm: arquivo.importadoEm,
                 aoCancelar: { editandoInformacoes = false },
                 aoSalvar: salvarInformacoesDaConversa
             )
@@ -511,6 +512,16 @@ struct ArquivoDetalheView: View {
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
+
+                // Só em arquivos importados: a data acima já é a da
+                // gravação em si (lida do arquivo original) — esta linha diz
+                // quando ele entrou no app, que pode ser um dia bem diferente.
+                if importado, let importadoEm = arquivo.importadoEm {
+                    dadoDaFicha(
+                        "Importado em \(DataDigitada.texto(de: importadoEm))",
+                        simbolo: "square.and.arrow.down"
+                    )
+                }
             }
         }
         .padding(PapagaioTema.Espaco.largo)

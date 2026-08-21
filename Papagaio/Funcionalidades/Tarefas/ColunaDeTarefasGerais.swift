@@ -79,9 +79,16 @@ struct ColunaDeTarefasGerais: View {
             .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 320, alignment: .top)
         }
         .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 390, alignment: .top)
-        // Padding fixo: alternar 0/10 no `isTargeted` remedia a coluna inteira a
-        // cada entrada e saída do cursor, e era isso que travava o arrasto.
-        .padding(compacto ? 4 : 10)
+        // Só vertical — na horizontal, este recuo desalinhava a tarja dos
+        // cartões (e o próprio cabeçalho "NÃO INICIADO") em relação a tudo
+        // mais na página: "Todas as tarefas" acima, os cards de conversa,
+        // a margem da própria janela. Sem ele, a borda esquerda da coluna
+        // cai exatamente onde cai a de todo o resto.
+        //
+        // Padding vertical fixo: alternar 0/10 no `isTargeted` remedia a
+        // coluna inteira a cada entrada e saída do cursor, e era isso que
+        // travava o arrasto.
+        .padding(.vertical, compacto ? 4 : 10)
         .contentShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
         .background(
             recebendoDrop ? cor.opacity(0.10) : Color.clear,
