@@ -13,6 +13,8 @@ struct LinhaDeTranscricao: View {
     /// Animação do destaque de palavra, vinda do container (respeita o modo de
     /// reduzir movimento).
     let animacao: Animation?
+    /// Nomes escolhidos para as vozes desta conversa — ver `RotuloDeVoz`.
+    let nomesDeVoz: [String: String]
     let aoTocarLinha: () -> Void
     let aoTocarPalavra: (Palavra) -> Void
 
@@ -37,7 +39,7 @@ struct LinhaDeTranscricao: View {
                         // (ver a regra dos dois rótulos em SegmentoDeFalante).
                         if trecho.temVozesDistintas,
                            let acustico = trecho.falanteAcusticoDominante {
-                            Text(Self.rotuloDe(acustico))
+                            Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                                 .font(.caption)
                                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                                 .padding(.horizontal, PapagaioTema.Espaco.minimo)
@@ -83,16 +85,6 @@ struct LinhaDeTranscricao: View {
         }
         .accessibilityHint("Inicia a reprodução a partir de \(trecho.start.faladoPorExtenso).")
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
-    }
-
-    /// Traduz o rótulo do FluidAudio ("S1") para o que um humano entende
-    /// ("Voz 1"). Rótulo acústico só serve para comparar vozes da mesma
-    /// gravação — nunca é um nome de pessoa.
-    private static func rotuloDe(_ falanteAcustico: String) -> String {
-        if falanteAcustico.hasPrefix("S"), let numero = Int(falanteAcustico.dropFirst()) {
-            return "Voz \(numero)"
-        }
-        return "Voz \(falanteAcustico)"
     }
 
     @ViewBuilder
