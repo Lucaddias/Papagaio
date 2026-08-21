@@ -117,43 +117,21 @@ struct SecaoDePersonalizacaoDosCartoes: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            // "Restaurar padrão" sobe para a linha do título.
-            //
-            // No pé da seção ele ficava sozinho num canto, longe do que
-            // restaura, e empurrava para baixo tudo o que vinha depois. Ao lado
-            // do título ele é o que é: a ação da seção inteira, disponível sem
-            // precisar rolar até o fim dela.
-            // Centralizado, e não pela linha de base: com um botão de altura
-            // fixa ao lado do título, a base do texto dele não é a base do
-            // botão, e o par ficava desencontrado.
-            HStack(alignment: .center) {
-                Label("Cartões da biblioteca", systemImage: "rectangle.grid.2x2")
-                    .font(PapagaioTema.Tipo.tituloDeSecao)
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-
-                Spacer(minLength: PapagaioTema.Espaco.medio)
-
-                // Botão de verdade, com moldura: como texto solto ele não se
-                // anunciava como clicável, e uma ação que ninguém reconhece
-                // como ação é uma ação que não existe.
-                Button("Restaurar padrão", systemImage: "arrow.uturn.backward") {
-                    withAnimation(.snappy(duration: 0.22)) {
-                        camposBrutos = CamposDoCartao.padrao.rawValue
-                    }
-                }
-                .buttonStyle(BotaoDeContornoPapagaio())
-                .help("Voltar aos campos que vêm ligados de fábrica")
-            }
+            Label("Cartões da biblioteca", systemImage: "rectangle.grid.2x2")
+                .font(PapagaioTema.Tipo.tituloDeSecao)
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
 
             SeparadorPapagaio()
 
             // Escolha do modelo, e o que aparece nele.
             //
-            // A lista de campos mora dentro de cada card de modelo, atrás
-            // de um botão — fixa na tela, ela competia com a escolha em si.
-            // O exemplo, não: cada card mostra o seu próprio, sempre visível
-            // logo abaixo dele — os dois modelos ao mesmo tempo, não só o
-            // que está selecionado agora.
+            // Os campos individuais (data, duração, participantes…) saíram
+            // desta tela: cada cartão já tem seu próprio menu para isso
+            // (`PersonalizacaoDoCartao.swift`), e repetir o controle aqui,
+            // atrás de um botão, só empilhava mais uma decisão sobre a
+            // decisão principal — qual modelo usar. O exemplo continua
+            // visível, sempre, logo abaixo de cada modelo — os dois ao
+            // mesmo tempo, não só o que está selecionado agora.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
                 Text("Modelo do cartão")
                     .font(.callout.weight(.semibold))
@@ -227,11 +205,8 @@ struct PreviaDoCartaoDeConversa: View {
             // último item da pilha, que dá no mesmo resultado visual.
             rodape
         }
-        // Altura fixa: o exemplo encolher a cada interruptor faria o texto
-        // abaixo dele pular e o botão "Restaurar padrão" mudar de lugar no meio
-        // do ajuste. O cartão perde conteúdo por dentro, não muda de tamanho.
-        // Mesma altura do cartão de verdade, para o exemplo não mentir sobre a
-        // proporção.
+        // Altura fixa, igual ao cartão de verdade, para o exemplo não mentir
+        // sobre a proporção.
         // 360 é o teto da coluna adaptativa da biblioteca — ou seja, a largura
         // de um cartão real em janela cheia, que é onde a pessoa vai ver o
         // resultado. Em 300 o exemplo era o cartão mais estreito possível e
@@ -255,14 +230,16 @@ struct PreviaDoCartaoDeConversa: View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
             Text("Entrevista com Ana Silva")
                 .font(.system(size: 19, weight: .semibold))
-                .lineLimit(3)
+                .lineLimit(2)
                 .foregroundStyle(PapagaioTema.texto)
+                .frame(height: CartaoDeConversa.alturaDoTituloCompacto, alignment: .top)
 
             if campos.contains(.descricao) {
                 Text("Primeira rodada de testes do fluxo de cadastro.")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineLimit(2)
+                    .frame(height: CartaoDeConversa.alturaDaDescricaoCompacta, alignment: .top)
             }
         }
         .padding(.leading, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.medio)
@@ -399,6 +376,62 @@ struct PreviaDoCartaoDeConversa: View {
     }
 }
 
+/// A mesma fileira de pasta da grade real (`CartaoDePasta`), só que com dados
+/// de mentira — para mostrar que o modelo escolhido também muda a identidade
+/// das pastas, não só das conversas.
+///
+/// Não reaproveita `CartaoDePasta` pelo mesmo motivo que `PreviaDoCartaoDeConversa`
+/// não reaproveita `CartaoDeConversa`: aquele depende de uma pasta real, com
+/// efeitos colaterais (renomear, apagar) que não fazem sentido numa tela de
+/// configuração.
+struct PreviaDaPasta: View {
+    var modelo: ModeloDeCartao = .comCapa
+
+    private let cor = PapagaioTema.destaque
+
+    private var corDoTexto: Color { cor.textoLegivel }
+
+    var body: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Pesquisa")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(modelo == .comCapa ? corDoTexto : PapagaioTema.texto)
+                    .lineLimit(1)
+
+                Text("8 conversas")
+                    .font(.caption)
+                    .foregroundStyle(modelo == .comCapa ? corDoTexto.opacity(0.8) : PapagaioTema.textoSecundario)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            Image(systemName: "ellipsis")
+                .rotationEffect(.degrees(90))
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle((modelo == .comCapa ? corDoTexto : PapagaioTema.textoSecundario).opacity(0.85))
+        }
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.leading, modelo == .compacto ? PapagaioTema.Espaco.curto : 0)
+        .frame(width: 360, height: 56)
+        .background { modelo == .comCapa ? AnyView(cor) : AnyView(PapagaioTema.superficie) }
+        // Tarja antes do corte, como no cartão de pasta de verdade — depois
+        // dele ela escapa dos cantos arredondados e parece colada por cima.
+        .overlay(alignment: .leading) {
+            if modelo == .compacto {
+                Rectangle().fill(cor).frame(width: 4)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                .stroke(modelo == .compacto ? cor.opacity(0.35) : .clear, lineWidth: 1)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// Botão de modelo de cartão, com uma miniatura esquemática — mesma família
 /// visual da `AmostraDeAparencia` do claro/escuro: uma prévia pequena, o
 /// nome embaixo, e uma moldura que acende quando é a escolha atual.
@@ -408,11 +441,14 @@ private struct AmostraDeModeloDeCartao: View {
     @Binding var campos: CamposDoCartao
     let acao: () -> Void
 
-    @State private var mostrandoCampos = false
-
     var body: some View {
-        VStack(spacing: PapagaioTema.Espaco.medio) {
-            Button(action: acao) {
+        // Um único botão em volta de tudo — miniatura e exemplo — e não mais
+        // só a miniatura. O exemplo é a maior parte visual do card: exigir o
+        // clique justo na faixinha do topo enquanto o resto parecia
+        // clicável (mesma moldura, mesmo hover) era o tipo de alvo que some
+        // debaixo do cursor.
+        Button(action: acao) {
+            VStack(spacing: PapagaioTema.Espaco.medio) {
                 VStack(spacing: PapagaioTema.Espaco.curto) {
                     miniatura
 
@@ -421,22 +457,20 @@ private struct AmostraDeModeloDeCartao: View {
                         .foregroundStyle(selecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                         .lineLimit(1)
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(opcao.descricao)
-            .accessibilityLabel("Modelo \(opcao.titulo)")
-            .accessibilityHint(opcao.descricao)
-            .accessibilityAddTraits(selecionada ? [.isSelected] : [])
 
-            // O exemplo deste modelo, sempre visível embaixo dele — não só
-            // do modelo selecionado no momento, e não atrás de clique. O
-            // botão de campos mora encostado no canto dele, e não como uma
-            // linha própria: é um ajuste do exemplo, não um passo separado.
-            exemplo
+                // O exemplo deste modelo, sempre visível embaixo dele — não
+                // só do modelo selecionado no momento.
+                exemplo
+            }
+            .padding(PapagaioTema.Espaco.medio)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
-        .padding(PapagaioTema.Espaco.medio)
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .help(opcao.descricao)
+        .accessibilityLabel("Modelo \(opcao.titulo)")
+        .accessibilityHint(opcao.descricao)
+        .accessibilityAddTraits(selecionada ? [.isSelected] : [])
         .background(
             selecionada ? PapagaioTema.destaqueSuave.opacity(0.55) : Color.clear,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
@@ -450,51 +484,16 @@ private struct AmostraDeModeloDeCartao: View {
         }
     }
 
-    /// Só a lista de campos — o exemplo mora fixo na tela principal, ao
-    /// lado dos cards de modelo, e não some quando este popover fecha.
-    private var popoverDeCampos: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-            Text("Campos do modelo \(opcao.titulo.lowercased())")
-                .font(.headline)
-                .foregroundStyle(PapagaioTema.texto)
-
-            Text("Escolha o que aparece nos cartões. Vale para todos.")
-                .font(PapagaioTema.Tipo.apoio)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-
-            ListaDeCamposDoCartao(campos: $campos)
-        }
-        .padding(PapagaioTema.Espaco.medio)
-        .frame(width: 360)
-    }
-
     /// O exemplo deste modelo — sempre o `opcao` deste card, nunca o modelo
     /// selecionado globalmente, porque os dois cards mostram seu próprio
     /// exemplo ao mesmo tempo. Sem rótulo "Exemplo": o próprio cartão já diz
-    /// o que é. O botão de campos vira só um ícone — mas fora do cartão, e
-    /// não sobreposto a ele: por cima, ele tapava o próprio conteúdo que
-    /// ajusta e parecia parte do exemplo, não um controle da tela.
+    /// o que é. A pasta entra junto, porque o modelo compacto também muda a
+    /// identidade dela — sem os dois lado a lado, não dava para ver isso
+    /// aqui.
     private var exemplo: some View {
-        VStack(alignment: .trailing, spacing: PapagaioTema.Espaco.curto) {
-            Button {
-                mostrandoCampos = true
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                    .frame(width: 30, height: 30)
-                    .background(PapagaioTema.superficie, in: Circle())
-                    .overlay { Circle().stroke(PapagaioTema.borda, lineWidth: 1) }
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Personalizar campos")
-            .accessibilityLabel("Personalizar campos do modelo \(opcao.titulo)")
-            .popover(isPresented: $mostrandoCampos, arrowEdge: .bottom) {
-                popoverDeCampos
-            }
-
+        VStack(spacing: PapagaioTema.Espaco.medio) {
             PreviaDoCartaoDeConversa(campos: campos, modelo: opcao)
+            PreviaDaPasta(modelo: opcao)
         }
     }
 

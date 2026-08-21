@@ -33,11 +33,5 @@ struct SeloDeStatusDaTarefa: View {
             .background(cor.opacity(0.12), in: Capsule())
     }
 
-    private var cor: Color {
-        switch status {
-        case .naoIniciado: PapagaioTema.aviso
-        case .emAndamento: PapagaioTema.destaque
-        case .concluida: PapagaioTema.sucesso
-        }
-    }
+    private var cor: Color { status.cor }
 }

@@ -12,6 +12,11 @@ struct EditorDeInformacoesDoCard: View {
     @Binding var participantes: String
     @Binding var data: Date
     @Binding var duracao: String
+    /// Só em arquivos importados: quando o arquivo entrou no app, distinto
+    /// de `data` — que aqui já é a data real da gravação, lida do arquivo
+    /// original. Somente leitura: é um registro do que aconteceu, não algo
+    /// que se edita.
+    var importadoEm: Date? = nil
     let aoCancelar: () -> Void
     let aoSalvar: () -> Void
 
@@ -262,7 +267,19 @@ struct EditorDeInformacoesDoCard: View {
 
     private var campoDeData: some View {
         campo("Data") {
-            CampoDeDataPapagaio(data: $data, rotuloAcessivel: "Data da entrevista")
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                CampoDeDataPapagaio(data: $data, rotuloAcessivel: "Data da entrevista")
+
+                // Só aparece em arquivos importados: aqui "Data" já é a data
+                // real da gravação, e esta legenda deixa claro que ela não é
+                // o dia em que o arquivo apareceu na biblioteca — os dois
+                // podem ser bem diferentes.
+                if let importadoEm {
+                    Text("Importado para o app em \(DataDigitada.texto(de: importadoEm))")
+                        .font(.caption)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+            }
         }
     }
 

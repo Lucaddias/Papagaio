@@ -24,9 +24,14 @@ final class GravadorViewModel {
 
     /// Entrega o áudio pronto para quem persiste e processa (`Biblioteca`).
     /// A gravação em si não sabe o que é um `Arquivo` — só produz bytes.
+    ///
+    /// `dataDeGravacao` é `nil` numa gravação normal (o instante é agora
+    /// mesmo, não há nada a distinguir) e vem preenchido só na importação,
+    /// com a data real lida do arquivo original — ver `importar(_:)`.
     var aoProduzirAudio: (@MainActor (_ titulo: String, _ pastaRelativa: String,
                                       _ duracao: TimeInterval,
-                                      _ notas: [NotaDaConversa]) async -> Void)?
+                                      _ notas: [NotaDaConversa],
+                                      _ dataDeGravacao: Date?) async -> Void)?
 
     /// Amostras de nível para a waveform ao vivo, ~20 Hz, janela de ~6 s.
     private(set) var waveform: [Float] = []
@@ -202,7 +207,8 @@ final class GravadorViewModel {
                 Self.tituloParaAgora(),
                 resultado.pastaRelativa,
                 resultado.duracao,
-                Self.notasParaArquivo(notas)
+                Self.notasParaArquivo(notas),
+                nil
             )
         } else if !notasDaGravacao.isEmpty {
             avisos.append(
@@ -359,7 +365,8 @@ final class GravadorViewModel {
             avisos = ["Arquivo importado: um canal só, sem separação de falante."]
             estado = .ocioso
             await aoProduzirAudio?(
-                importado.tituloSugerido, importado.pastaRelativa, importado.duracao, []
+                importado.tituloSugerido, importado.pastaRelativa, importado.duracao, [],
+                importado.dataOriginal
             )
         } catch {
             estado = .falhou(Self.mensagemAmigavelDeImportacao(error))

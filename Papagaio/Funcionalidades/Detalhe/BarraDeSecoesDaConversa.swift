@@ -20,7 +20,7 @@ enum SecaoDoDetalhe: String, CaseIterable, Identifiable {
         case .transcricao: "text.quote"
         case .notas: "note.text"
         case .midia: "photo.on.rectangle"
-        case .tarefas: "checklist"
+        case .tarefas: "list.clipboard"
         }
     }
 }

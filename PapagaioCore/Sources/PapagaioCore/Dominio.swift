@@ -301,6 +301,23 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
     /// registro está na lixeira: seus dados e áudio ainda existem e podem ser
     /// restaurados antes da exclusão definitiva.
     public var apagadoEm: Date?
+    /// Só em arquivos importados: o momento em que a pessoa trouxe o arquivo
+    /// para dentro do app — distinto de `criadoEm`, que numa importação passa
+    /// a valer a data real da gravação (lida do próprio arquivo em disco,
+    /// quando disponível), e não o instante da importação.
+    ///
+    /// `nil` numa gravação feita pelo microfone: ali as duas datas são a
+    /// mesma coisa, e um segundo campo só repetiria `criadoEm`.
+    public var importadoEm: Date?
+
+    /// O critério certo para ordenar "mais recente primeiro" na biblioteca.
+    ///
+    /// Não é `criadoEm`: numa importação, `criadoEm` passou a valer a data
+    /// real da gravação, que pode ser dias ou meses no passado — ordenar por
+    /// ela jogava um arquivo recém-importado para o meio da grade, longe de
+    /// onde a pessoa acabou de agir. Esta é a data do **gesto** (gravar ou
+    /// importar), que é o que "recente" quer dizer numa lista de atividade.
+    public var entradaNaBiblioteca: Date { importadoEm ?? criadoEm }
 
     public init(
         id: ArquivoID = ArquivoID(),
@@ -314,7 +331,8 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         resumo: Resumo? = nil,
         engineTranscricao: String? = nil,
         engineResumo: String? = nil,
-        apagadoEm: Date? = nil
+        apagadoEm: Date? = nil,
+        importadoEm: Date? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -328,5 +346,6 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         self.engineTranscricao = engineTranscricao
         self.engineResumo = engineResumo
         self.apagadoEm = apagadoEm
+        self.importadoEm = importadoEm
     }
 }

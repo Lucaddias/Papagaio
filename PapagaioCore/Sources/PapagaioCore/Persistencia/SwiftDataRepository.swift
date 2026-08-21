@@ -38,6 +38,7 @@ public actor SwiftDataRepository: ArquivoRepository {
 
         persistido.titulo = a.titulo
         persistido.criadoEm = a.criadoEm
+        persistido.importadoEm = a.importadoEm
         persistido.duracao = a.duracao
         persistido.pastaRelativa = a.pastaRelativa
         persistido.engineTranscricao = a.engineTranscricao
@@ -174,7 +175,11 @@ public actor SwiftDataRepository: ArquivoRepository {
                 .filter { $0.apagadoEm == nil }
         )
 
-        porCorpo.sort { $0.criadoEm > $1.criadoEm }
+        // `importadoEm ?? criadoEm`, e não só `criadoEm`: numa importação
+        // `criadoEm` vale a data real da gravação, que pode estar longe no
+        // passado — resultado de busca deve vir ordenado por quando entrou
+        // na biblioteca, não por quando foi gravado.
+        porCorpo.sort { ($0.importadoEm ?? $0.criadoEm) > ($1.importadoEm ?? $1.criadoEm) }
         return (bucketA + porCorpo).map(Self.paraDominio)
     }
 
@@ -391,7 +396,8 @@ public actor SwiftDataRepository: ArquivoRepository {
             resumo: resumo,
             engineTranscricao: p.engineTranscricao,
             engineResumo: p.engineResumo,
-            apagadoEm: p.apagadoEm
+            apagadoEm: p.apagadoEm,
+            importadoEm: p.importadoEm
         )
     }
 }
