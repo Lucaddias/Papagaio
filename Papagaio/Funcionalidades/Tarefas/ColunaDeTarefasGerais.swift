@@ -4,18 +4,19 @@ struct ColunaDeTarefasGerais: View {
     let titulo: String
     let cor: Color
     let tarefas: [TarefaGeral]
+    /// Para onde uma tarefa vai ao ser solta nesta coluna.
+    ///
+    /// Vem de quem monta a coluna, e não adivinhado do `titulo` por texto: a
+    /// adivinhação já causou uma coluna "Prioridade alta" sobrescrever a
+    /// prioridade da tarefa, e um título trocado bastaria para o destino errar
+    /// de novo silenciosamente.
+    let destino: DestinoDeTarefa
     let aoEditar: (TarefaGeral) -> Void
     let aoAlternarConclusao: (TarefaGeral) -> Void
     let aoExcluir: (TarefaGeral) -> Void
     let aoMover: (String, DestinoDeTarefa) -> Void
     let compacto: Bool
     @State private var recebendoDrop = false
-
-    private var destino: DestinoDeTarefa {
-        if titulo.localizedCaseInsensitiveContains("alta") { return .alta }
-        if titulo.localizedCaseInsensitiveContains("conclu") { return .concluida }
-        return .emAndamento
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {

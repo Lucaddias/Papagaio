@@ -21,7 +21,7 @@ final class TarefasDaConversaViewModel {
     var tituloDaTarefa = ""
     var responsavelDaTarefa = ""
     var prioridadeDaTarefa: PrioridadeDaTarefa = .media
-    var statusDaTarefa: StatusDaTarefa = .emAndamento
+    var statusDaTarefa: StatusDaTarefa = .naoIniciado
     var prazoDaTarefa = TarefasDaConversaViewModel.prazoPadrao
 
     /// Avisa a pessoa quando um prazo está perto. Fica como propriedade, e não
@@ -136,9 +136,6 @@ final class TarefasDaConversaViewModel {
 
     func mover(_ id: UUID, para destino: DestinoDeTarefa) {
         guard let indice = tarefas.firstIndex(where: { $0.id == id }) else { return }
-        if let prioridade = destino.prioridade {
-            tarefas[indice].prioridade = prioridade
-        }
         tarefas[indice].status = destino.status
         tarefas[indice] = RegraDePrazoDaTarefa.ajustada(tarefas[indice])
         salvar()
@@ -167,7 +164,7 @@ final class TarefasDaConversaViewModel {
         tituloDaTarefa = ""
         responsavelDaTarefa = ""
         prioridadeDaTarefa = .media
-        statusDaTarefa = .emAndamento
+        statusDaTarefa = .naoIniciado
         prazoDaTarefa = Self.prazoPadrao
     }
 

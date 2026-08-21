@@ -145,9 +145,13 @@ enum PapagaioTema {
 
     // MARK: - Formas
 
-    /// Dois raios. Card usa 16, qualquer controle usa 8; selos são cápsulas.
-    static let raioDeCard: CGFloat = 16
-    static let raioDeControle: CGFloat = 8
+    /// Dois raios. Card usa 22, qualquer controle usa 10; selos são cápsulas.
+    ///
+    /// Eram 16 e 8 — cantos discretos demais perto dos controles em cápsula
+    /// (busca, atalhos, perfil) que já viviam ao lado. Um pouco mais
+    /// arredondado deixa cartão e barra com a mesma família de forma.
+    static let raioDeCard: CGFloat = 22
+    static let raioDeControle: CGFloat = 10
 
     // MARK: - Larguras
 

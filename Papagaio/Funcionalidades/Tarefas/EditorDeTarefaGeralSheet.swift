@@ -11,6 +11,7 @@ struct EditorDeTarefaGeralSheet: View {
     let conversas: [Arquivo]
     @Binding var conversaSelecionada: ArquivoID?
     @Binding var titulo: String
+    @Binding var descricao: String
     @Binding var responsavel: String
     @Binding var prioridade: PrioridadeDaTarefa
     @Binding var status: StatusDaTarefa
@@ -40,7 +41,7 @@ struct EditorDeTarefaGeralSheet: View {
                     Text(modo == .criacao ? "Nova tarefa" : "Editar tarefa")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
-                    Text("Escolha a conversa, prioridade, responsável e data limite.")
+                    Text("Escolha a conversa, descreva a tarefa e defina prioridade, responsável e data limite.")
                         .font(.callout)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                 }
@@ -85,6 +86,37 @@ struct EditorDeTarefaGeralSheet: View {
                     .padding(.horizontal, PapagaioTema.Espaco.medio)
                     .frame(height: PapagaioTema.Altura.padrao)
                     .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                            .stroke(PapagaioTema.borda, lineWidth: 1)
+                    }
+            }
+
+            campo("Descrição") {
+                // Fundo e borda no próprio `TextEditor`, e não num `ZStack` ao
+                // redor — mesmo padrão do editor de trecho corrigido, na tela
+                // de detalhe. Com a caixa aplicada a um irmão, o recuo interno
+                // que o `TextEditor` já tem por conta própria não batia com o
+                // do rótulo por cima, e o cursor nascia fora da caixa.
+                TextEditor(text: $descricao)
+                    .font(.body)
+                    .foregroundStyle(PapagaioTema.texto)
+                    .scrollContentBackground(.hidden)
+                    .textEditorStyle(.plain)
+                    .padding(.horizontal, PapagaioTema.Espaco.curto)
+                    .padding(.vertical, PapagaioTema.Espaco.curto)
+                    .frame(height: 88)
+                    .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        if descricao.isEmpty {
+                            Text("Detalhes, contexto ou o que precisa ser feito")
+                                .font(.body)
+                                .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.7))
+                                .padding(.horizontal, PapagaioTema.Espaco.curto + 5)
+                                .padding(.vertical, PapagaioTema.Espaco.curto + 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
                     .overlay {
                         RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                             .stroke(PapagaioTema.borda, lineWidth: 1)

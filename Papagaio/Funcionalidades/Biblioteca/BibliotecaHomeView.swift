@@ -256,34 +256,34 @@ struct BibliotecaHomeView: View {
         // uma conversa.
         let data = DataDigitada.texto(de: arquivo.criadoEm)
 
-        if titulo.localizedCaseInsensitiveContains(termo)
-            || pastaDaConversa.localizedCaseInsensitiveContains(termo)
-            || metadados.entrevistado.localizedCaseInsensitiveContains(termo)
-            || metadados.entrevistadores.localizedCaseInsensitiveContains(termo)
-            || metadados.descricao.localizedCaseInsensitiveContains(termo)
-            || data.localizedCaseInsensitiveContains(termo) {
+        if titulo.casaComBusca(termo)
+            || pastaDaConversa.casaComBusca(termo)
+            || metadados.entrevistado.casaComBusca(termo)
+            || metadados.entrevistadores.casaComBusca(termo)
+            || metadados.descricao.casaComBusca(termo)
+            || data.casaComBusca(termo) {
             return true
         }
 
         if let resumo = arquivo.resumo {
-            if resumo.visaoGeral.localizedCaseInsensitiveContains(termo) { return true }
+            if resumo.visaoGeral.casaComBusca(termo) { return true }
             if resumo.temas.contains(where: {
-                $0.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.detalhe.localizedCaseInsensitiveContains(termo)
+                $0.titulo.casaComBusca(termo)
+                    || $0.detalhe.casaComBusca(termo)
             }) { return true }
-            if resumo.citacoes.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) }) {
+            if resumo.citacoes.contains(where: { $0.texto.casaComBusca(termo) }) {
                 return true
             }
             if resumo.proximosPassos.contains(where: {
-                $0.descricao.localizedCaseInsensitiveContains(termo)
+                $0.descricao.casaComBusca(termo)
             }) { return true }
         }
 
-        if arquivo.trechos.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) }) {
+        if arquivo.trechos.contains(where: { $0.texto.casaComBusca(termo) }) {
             return true
         }
 
-        return arquivo.notas.contains(where: { $0.texto.localizedCaseInsensitiveContains(termo) })
+        return arquivo.notas.contains(where: { $0.texto.casaComBusca(termo) })
     }
 
     private var subtitulo: String {
@@ -330,7 +330,7 @@ struct BibliotecaHomeView: View {
         // de criar e se quer encontrar.
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         if !termo.isEmpty {
-            visiveis = visiveis.filter { $0.localizedCaseInsensitiveContains(termo) }
+            visiveis = visiveis.filter { $0.casaComBusca(termo) }
         }
 
         let informacoes = visiveis.map { pasta in
@@ -359,8 +359,8 @@ struct BibliotecaHomeView: View {
         let itens = LixeiraDeMidia.itens()
         guard !termo.isEmpty else { return itens }
         return itens.filter {
-            $0.nome.localizedCaseInsensitiveContains(termo)
-                || $0.conversaTitulo.localizedCaseInsensitiveContains(termo)
+            $0.nome.casaComBusca(termo)
+                || $0.conversaTitulo.casaComBusca(termo)
         }
     }
 
@@ -495,7 +495,7 @@ struct BibliotecaHomeView: View {
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let itens = LixeiraDePastas.itens()
         guard !termo.isEmpty else { return itens }
-        return itens.filter { $0.nome.localizedCaseInsensitiveContains(termo) }
+        return itens.filter { $0.nome.casaComBusca(termo) }
     }
 
     private var tarefasNaLixeira: [TarefaNaLixeira] {
@@ -504,9 +504,9 @@ struct BibliotecaHomeView: View {
         let tarefas = LixeiraDeTarefas.itens()
         guard !termo.isEmpty else { return tarefas }
         return tarefas.filter {
-            $0.tarefa.titulo.localizedCaseInsensitiveContains(termo)
-                || $0.conversaTitulo.localizedCaseInsensitiveContains(termo)
-                || ($0.tarefa.responsavel?.localizedCaseInsensitiveContains(termo) ?? false)
+            $0.tarefa.titulo.casaComBusca(termo)
+                || $0.conversaTitulo.casaComBusca(termo)
+                || ($0.tarefa.responsavel?.casaComBusca(termo) ?? false)
         }
     }
 
@@ -551,13 +551,16 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    /// Título, filtros e grade dentro de um painel só.
+    /// Título, filtros e pastas encontradas — só o cabeçalho, num painel
+    /// próprio.
     ///
-    /// É o "cardzão" do Classroom: a grade não flutua sobre o fundo da janela,
-    /// ela mora numa superfície com nome. O ganho não é decorativo — o painel
-    /// delimita o que o título e os filtros governam, e separa a biblioteca do
-    /// que aparece fora dela, como o aviso de download dos modelos.
-    private var painelDaBiblioteca: some View {
+    /// A grade de conversas **não** mora aqui dentro. Antes ela vivia no
+    /// mesmo painel do título e dos filtros, e as duas coisas liam como um
+    /// bloco só — um retângulo enorme sem separação nenhuma entre "o que
+    /// filtra" e "o que foi filtrado". Cabeçalho e grade são duas seções,
+    /// não uma: o cabeçalho fica num cartão com nome, a grade solta por
+    /// baixo dele, com o mesmo respiro que qualquer outra seção da página.
+    private var cabecalhoDaBiblioteca: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
             HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
                 Text("Biblioteca de Conversas")
@@ -611,9 +614,6 @@ struct BibliotecaHomeView: View {
                     )
                 }
             }
-
-            gradeDeConversas
-                .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
         }
         .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -652,7 +652,10 @@ struct BibliotecaHomeView: View {
                         )
                     }
 
-                    painelDaBiblioteca
+                    cabecalhoDaBiblioteca
+
+                    gradeDeConversas
+                        .simultaneousGesture(TapGesture().onEnded { limparAtalhoVisual() })
                 } else if !emCaptura {
                     CabecalhoDePagina(
                         titulo: tituloDaPagina,

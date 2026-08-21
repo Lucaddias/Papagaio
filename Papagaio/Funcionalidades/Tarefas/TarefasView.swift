@@ -14,9 +14,10 @@ struct TarefasView: View {
     @State private var tarefaEmEdicao: TarefaGeral?
     @State private var conversaDoEditor: ArquivoID?
     @State private var tituloDoEditor = ""
+    @State private var descricaoDoEditor = ""
     @State private var responsavelDoEditor = ""
     @State private var prioridadeDoEditor: PrioridadeDaTarefa = .media
-    @State private var statusDoEditor: StatusDaTarefa = .emAndamento
+    @State private var statusDoEditor: StatusDaTarefa = .naoIniciado
     @State private var prazoDoEditor = Date()
     @State private var larguraDoQuadro: CGFloat?
     @State private var scrollViewDoKanban: NSScrollView?
@@ -52,10 +53,10 @@ struct TarefasView: View {
         guard !termo.isEmpty else { return filtradasPorSelecao }
         return filtradasPorSelecao.compactMap { conversa in
             let tarefas = conversa.tarefas.filter {
-                conversa.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.origem.localizedCaseInsensitiveContains(termo)
-                    || ($0.responsavel?.localizedCaseInsensitiveContains(termo) ?? false)
+                conversa.titulo.casaComBusca(termo)
+                    || $0.titulo.casaComBusca(termo)
+                    || $0.origem.casaComBusca(termo)
+                    || ($0.responsavel?.casaComBusca(termo) ?? false)
             }
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
@@ -94,12 +95,15 @@ struct TarefasView: View {
         }
     }
 
-    private var tarefasDePrioridadeAlta: [TarefaGeral] {
-        tarefasVisiveis.filter { $0.tarefa.prioridade == .alta && $0.tarefa.status != .concluida }
+    /// Onde toda tarefa nova começa. Prioridade é etiqueta, não filtro desta
+    /// coluna — uma tarefa de prioridade Alta que ninguém começou ainda mora
+    /// aqui, não numa coluna própria.
+    private var tarefasNaoIniciadas: [TarefaGeral] {
+        tarefasVisiveis.filter { $0.tarefa.status == .naoIniciado }
     }
 
     private var tarefasEmAndamento: [TarefaGeral] {
-        tarefasVisiveis.filter { $0.tarefa.status == .emAndamento && $0.tarefa.prioridade != .alta }
+        tarefasVisiveis.filter { $0.tarefa.status == .emAndamento }
     }
 
     private var tarefasConcluidas: [TarefaGeral] {
@@ -171,6 +175,7 @@ struct TarefasView: View {
                 conversas: conversas,
                 conversaSelecionada: $conversaDoEditor,
                 titulo: $tituloDoEditor,
+                descricao: $descricaoDoEditor,
                 responsavel: $responsavelDoEditor,
                 prioridade: $prioridadeDoEditor,
                 status: $statusDoEditor,
@@ -240,9 +245,9 @@ struct TarefasView: View {
                     : AnyLayout(VStackLayout(alignment: .leading, spacing: PapagaioTema.Espaco.medio))
 
                 arranjo {
-                    coluna(titulo: "Prioridade alta", cor: PapagaioTema.perigo, tarefas: tarefasDePrioridadeAlta)
-                    coluna(titulo: "Em andamento", cor: PapagaioTema.destaque, tarefas: tarefasEmAndamento)
-                    coluna(titulo: "Concluídas", cor: PapagaioTema.textoSecundario, tarefas: tarefasConcluidas)
+                    coluna(titulo: "Não iniciado", cor: PapagaioTema.aviso, tarefas: tarefasNaoIniciadas, destino: .naoIniciado)
+                    coluna(titulo: "Em andamento", cor: PapagaioTema.destaque, tarefas: tarefasEmAndamento, destino: .emAndamento)
+                    coluna(titulo: "Concluídas", cor: PapagaioTema.sucesso, tarefas: tarefasConcluidas, destino: .concluida)
                 }
             }
         }
@@ -347,11 +352,12 @@ struct TarefasView: View {
         return conversasSelecionadas.isEmpty ? "Todas as tarefas" : "\(conversasSelecionadas.count) conversas selecionadas"
     }
 
-    private func coluna(titulo: String, cor: Color, tarefas: [TarefaGeral]) -> some View {
+    private func coluna(titulo: String, cor: Color, tarefas: [TarefaGeral], destino: DestinoDeTarefa) -> some View {
         ColunaDeTarefasGerais(
             titulo: titulo,
             cor: cor,
             tarefas: tarefas,
+            destino: destino,
             aoEditar: abrirEdicao,
             aoAlternarConclusao: alternarConclusao,
             aoExcluir: excluirTarefa,
@@ -359,7 +365,7 @@ struct TarefasView: View {
             compacto: !cabeEmColunas
         )
             .frame(maxWidth: .infinity, alignment: .top)
-            .id("kanban-\(titulo == "Prioridade alta" ? "prioridade" : titulo == "Concluídas" ? "concluidas" : "andamento")")
+            .id("kanban-\(titulo)")
     }
 
 }
@@ -466,9 +472,10 @@ extension TarefasView {
         tarefaEmEdicao = nil
         conversaDoEditor = conversasSelecionadas.first ?? conversas.first?.id
         tituloDoEditor = ""
+        descricaoDoEditor = ""
         responsavelDoEditor = ""
         prioridadeDoEditor = .media
-        statusDoEditor = .emAndamento
+        statusDoEditor = .naoIniciado
         prazoDoEditor = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         exibindoEditor = true
     }
@@ -477,6 +484,7 @@ extension TarefasView {
         tarefaEmEdicao = tarefa
         conversaDoEditor = tarefa.conversa.id
         tituloDoEditor = tarefa.tarefa.titulo
+        descricaoDoEditor = tarefa.tarefa.descricao ?? ""
         responsavelDoEditor = tarefa.tarefa.responsavelValido ?? ""
         prioridadeDoEditor = tarefa.tarefa.prioridade
         statusDoEditor = tarefa.tarefa.status
@@ -492,6 +500,8 @@ extension TarefasView {
         let titulo = tituloDoEditor.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !titulo.isEmpty else { return }
 
+        let descricao = descricaoDoEditor.trimmingCharacters(in: .whitespacesAndNewlines)
+
         var tarefas = TarefasGeraisStore.carregar(arquivo)
         let tarefaAtualizada = TarefaDaConversa(
             id: tarefaEmEdicao?.tarefa.id ?? UUID(),
@@ -500,7 +510,8 @@ extension TarefasView {
             prioridade: prioridadeDoEditor,
             status: statusDoEditor,
             responsavel: responsavelDoEditor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : responsavelDoEditor,
-            prazo: prazoDoEditor
+            prazo: prazoDoEditor,
+            descricao: descricao.isEmpty ? nil : descricao
         )
 
         if let tarefaEmEdicao,
@@ -525,9 +536,6 @@ extension TarefasView {
         guard let tarefa = tarefasVisiveis.first(where: { $0.id == id }) else { return }
         atualizar(tarefa) { editada in
             editada.status = destino.status
-            if let prioridade = destino.prioridade {
-                editada.prioridade = prioridade
-            }
         }
     }
 
