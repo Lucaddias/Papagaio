@@ -25,10 +25,7 @@ struct ConfiguracoesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                CabecalhoDePagina(
-                    titulo: "Configurações",
-                    subtitulo: "Aparência do app, os cartões da biblioteca e quando as transcrições começam."
-                )
+                cabecalhoDeConfiguracoes
 
                 secaoDeAparencia
 
@@ -43,6 +40,37 @@ struct ConfiguracoesView: View {
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
         }
         .background(PapagaioTema.fundo)
+    }
+
+    /// O cabeçalho da tela, no mesmo molde do cartão de "Biblioteca de
+    /// Conversas" e do de "Lixeira": título e um botão "i" com a explicação
+    /// — em vez do subtítulo fixo, texto que se lê uma vez e depois só
+    /// ocupa espaço — dentro de um cartão com borda e sombra.
+    private var cabecalhoDeConfiguracoes: some View {
+        HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            Text("Configurações")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+
+            BotaoDeAjudaPapagaio(
+                texto: "Aparência do app, os cartões da biblioteca e quando as transcrições começam.",
+                ajuda: "Sobre Configurações",
+                largura: 300
+            )
+
+            Spacer(minLength: 0)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
     private var secaoDeAparencia: some View {

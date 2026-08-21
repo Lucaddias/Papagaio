@@ -46,8 +46,14 @@ enum MidiasDaConversa {
         )
     }
 
-    static func copiar(_ origem: URL, para pastaDaConversa: URL) throws -> URL {
-        let pastaDeMidia = pastaDaConversa.appendingPathComponent("Midia", isDirectory: true)
+    /// Copia o anexo para dentro de uma subpasta nomeada com o título da
+    /// conversa — não "Midia" genérico — para que quem abrir "Mostrar no
+    /// Finder" reconheça a pasta de cara, sem cair num UUID sem sentido.
+    static func copiar(_ origem: URL, para pastaDaConversa: URL, tituloDaConversa: String) throws -> URL {
+        let pastaDeMidia = pastaDaConversa.appendingPathComponent(
+            NomeDeArquivoSeguro.gerar(de: tituloDaConversa),
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(at: pastaDeMidia, withIntermediateDirectories: true)
 
         let nomeUnico = nomeDisponivel(para: origem.lastPathComponent, em: pastaDeMidia)
@@ -57,9 +63,10 @@ enum MidiasDaConversa {
     }
 
     static func apagarArquivoSalvo(_ anexo: AnexoDeMidiaDaConversa, pastaDaConversa: URL) throws {
-        let pastaDeMidia = pastaDaConversa.appendingPathComponent("Midia", isDirectory: true)
+        // A subpasta muda de nome com o título da conversa, então a checagem
+        // de segurança é só: o arquivo está dentro da pasta desta conversa?
         let caminhoPadronizado = anexo.url.standardizedFileURL.path
-        guard caminhoPadronizado.hasPrefix(pastaDeMidia.standardizedFileURL.path) else { return }
+        guard caminhoPadronizado.hasPrefix(pastaDaConversa.standardizedFileURL.path) else { return }
         if FileManager.default.fileExists(atPath: anexo.url.path) {
             try FileManager.default.removeItem(at: anexo.url)
         }

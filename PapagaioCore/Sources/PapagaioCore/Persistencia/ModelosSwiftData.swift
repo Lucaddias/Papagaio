@@ -48,6 +48,13 @@ public final class ArquivoPersistido {
     /// Opcional para manter a migração leve: arquivos locais não têm.
     public var idExterno: String?
 
+    /// Só em arquivos importados: quando a pessoa trouxe o arquivo para
+    /// dentro do app. `criadoEm`, nesse caso, guarda a data real da
+    /// gravação (lida do arquivo em disco); esta guarda a data do gesto de
+    /// importar. `nil` numa gravação feita pelo microfone, e também `nil`
+    /// em qualquer registro salvo antes deste campo existir.
+    public var importadoEm: Date?
+
     /// Título e visão geral do resumo. O resto do `Resumo` vira `InsightPersistido`.
     ///
     /// **Não opcionais, com default.** Um `String?` obrigaria o predicado de

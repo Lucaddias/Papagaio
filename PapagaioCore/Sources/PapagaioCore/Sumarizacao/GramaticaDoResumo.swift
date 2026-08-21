@@ -36,16 +36,10 @@ public enum GramaticaDoResumo {
     discutidos, com pelo menos 4 a 6 frases. Seja direto e realista, sem termos corporativos \
     vazios como "sinergia" ou "disrupção". Não comprima: uma reunião de 1 hora merece um \
     resumo proporcional ao conteúdo discutido.
-    - "temas": lista DETALHADA de {"titulo", "detalhe"} para CADA assunto relevante discutido. \
-    Identifique todos os tópicos, não apenas os principais. Para cada tema:
-        - "titulo": assunto objetivo, sem floreios
-        - "detalhe": comece com "[Ponto Principal]" ou "[Ponto Secundário]" e use \
-    bullet points hierárquicos: cada ponto começa com "• " e cada subponto com "  ◦ ". \
-    Separe os pontos com "\\n". Registre o dilema, argumentos de cada lado, dados concretos, \
-    decisões, prazos e pendências. Mínimo de 3 pontos principais por tema, cada um com \
-    pelo menos um subponto de contexto. \
-    Ponto Principal = peso direto na tomada de decisão ou rumo do projeto. \
-    Ponto Secundário = mencionado mas sem impacto imediato nas decisões.
+    - "temas": lista de {"titulo", "detalhe"} com os assuntos discutidos. Para cada tema:
+        - "titulo": assunto objetivo e curto
+        - "detalhe": máximo 1 a 2 frases curtas. Apenas a conclusão ou decisão principal. \
+    Sem repetir o que já está na visão geral. Seja breve e direto.
     - "citacoes": no máximo 3 falas MARCANTES, copiadas LITERALMENTE da transcrição — \
     {"texto", "speaker", "start"}, com "start" em segundos. \
     Marcante é a fala que carrega ideia, conselho, decisão, conclusão, aprendizado ou \

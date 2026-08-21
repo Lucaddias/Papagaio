@@ -12,6 +12,13 @@ public struct EspacoID: Hashable, Sendable, Codable, RawRepresentable {
     public let rawValue: UUID
     public init(rawValue: UUID) { self.rawValue = rawValue }
     public init() { self.rawValue = UUID() }
+
+    /// Fallback fixo para registro legado sem a relação de espaço. Não pode
+    /// ser um `UUID()` novo a cada leitura: o mesmo arquivo trocaria de espaço
+    /// toda vez que fosse relido do banco.
+    public static let legado = EspacoID(
+        rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    )
 }
 
 // MARK: - Palavra
@@ -301,6 +308,23 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
     /// registro está na lixeira: seus dados e áudio ainda existem e podem ser
     /// restaurados antes da exclusão definitiva.
     public var apagadoEm: Date?
+    /// Só em arquivos importados: o momento em que a pessoa trouxe o arquivo
+    /// para dentro do app — distinto de `criadoEm`, que numa importação passa
+    /// a valer a data real da gravação (lida do próprio arquivo em disco,
+    /// quando disponível), e não o instante da importação.
+    ///
+    /// `nil` numa gravação feita pelo microfone: ali as duas datas são a
+    /// mesma coisa, e um segundo campo só repetiria `criadoEm`.
+    public var importadoEm: Date?
+
+    /// O critério certo para ordenar "mais recente primeiro" na biblioteca.
+    ///
+    /// Não é `criadoEm`: numa importação, `criadoEm` passou a valer a data
+    /// real da gravação, que pode ser dias ou meses no passado — ordenar por
+    /// ela jogava um arquivo recém-importado para o meio da grade, longe de
+    /// onde a pessoa acabou de agir. Esta é a data do **gesto** (gravar ou
+    /// importar), que é o que "recente" quer dizer numa lista de atividade.
+    public var entradaNaBiblioteca: Date { importadoEm ?? criadoEm }
 
     /// Identificador da reunião na fonte externa de onde o arquivo veio
     /// (ex.: `"granola:2bf21a40"`). `nil` para gravações e importações de
@@ -327,7 +351,8 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         engineTranscricao: String? = nil,
         engineResumo: String? = nil,
         apagadoEm: Date? = nil,
-        idExterno: String? = nil
+        idExterno: String? = nil,
+        importadoEm: Date? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -342,5 +367,6 @@ public struct Arquivo: Sendable, Identifiable, Equatable {
         self.engineResumo = engineResumo
         self.apagadoEm = apagadoEm
         self.idExterno = idExterno
+        self.importadoEm = importadoEm
     }
 }

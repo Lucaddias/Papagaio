@@ -33,22 +33,6 @@ struct CartaoDaLixeira: View {
         return ("ARQUIVO", "doc")
     }
 
-    private var dataCurta: String {
-        arquivo.criadoEm.formatted(.dateTime.day().month(.abbreviated))
-            .uppercased()
-            .replacingOccurrences(of: ".", with: "")
-    }
-
-    private var duracaoCurta: String {
-        let total = Int(max(0, arquivo.duracao.rounded()))
-        if total < 60 { return "\(max(1, total)) SEG" }
-        let minutos = total / 60
-        if minutos < 60 { return "\(minutos) MIN" }
-        let horas = minutos / 60
-        let resto = minutos % 60
-        return resto == 0 ? "\(horas) H" : "\(horas) H \(resto) MIN"
-    }
-
     private var prazoDeExclusao: String {
         guard let apagadoEm = arquivo.apagadoEm,
               let limite = Calendar.current.date(byAdding: .day, value: 30, to: apagadoEm)
@@ -119,18 +103,46 @@ struct CartaoDaLixeira: View {
 
             SeparadorPapagaio()
 
-            HStack(spacing: PapagaioTema.Espaco.largo) {
-                Label(dataCurta, systemImage: "calendar")
-                Label(duracaoCurta, systemImage: "clock")
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                // Exatamente a mesma data e duração do cartão da biblioteca —
+                // `DataDigitada.textoComHora` e `comoDuracaoPorExtenso`, e não
+                // um formato próprio da lixeira. A conversa aqui é a mesma
+                // que já apareceu lá; mostrar as datas de outro jeito faria
+                // parecer um dado diferente, quando é o mesmo dado, só
+                // noutro lugar.
+                HStack(spacing: PapagaioTema.Espaco.largo) {
+                    Label(DataDigitada.textoComHora(de: arquivo.criadoEm), systemImage: "calendar")
+                    Label(arquivo.duracao.comoDuracaoPorExtenso, systemImage: "clock")
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                Text(prazoDeExclusao)
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(PapagaioTema.perigo)
+                    Text(prazoDeExclusao)
+                        .font(.callout.weight(.bold))
+                        .foregroundStyle(PapagaioTema.perigo)
+                }
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
+
+                // O que aconteceu com o arquivo depois de gravado: se foi
+                // importado, quando — e quando foi para a lixeira. As duas
+                // são datas reais e independentes uma da outra: importar e
+                // apagar não precisam ter acontecido no mesmo dia, alguém
+                // pode ter importado um arquivo e só semanas depois decidido
+                // apagá-lo. Cada uma mostra a data que de fato lhe pertence,
+                // não uma suposição de que elas coincidem.
+                if arquivo.importadoEm != nil || arquivo.apagadoEm != nil {
+                    HStack(spacing: PapagaioTema.Espaco.medio) {
+                        if let importadoEm = arquivo.importadoEm {
+                            Text("Importado em \(DataDigitada.texto(de: importadoEm))")
+                        }
+                        if let apagadoEm = arquivo.apagadoEm {
+                            Text("Apagado em \(DataDigitada.texto(de: apagadoEm))")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.55))
+                }
             }
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.62))
         }
         .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, minHeight: 310, alignment: .topLeading)

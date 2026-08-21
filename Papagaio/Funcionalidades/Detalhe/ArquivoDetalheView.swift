@@ -49,7 +49,7 @@ struct ArquivoDetalheView: View {
     @State private var tituloDaNovaTarefa = ""
     @State private var responsavelDaNovaTarefa = ""
     @State private var prioridadeDaNovaTarefa: PrioridadeDaTarefa = .media
-    @State private var statusDaNovaTarefa: StatusDaTarefa = .emAndamento
+    @State private var statusDaNovaTarefa: StatusDaTarefa = .naoIniciado
     @State private var prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     @State private var mostrandoEdicaoDeTarefa = false
     @State private var tarefaEmEdicaoID: UUID?
@@ -226,6 +226,13 @@ struct ArquivoDetalheView: View {
             carregarTarefas()
             let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos, secundario: audioSecundario)
             await novo.preparar()
+            // Se a view sumiu no meio do carregamento, o `.task` já foi
+            // cancelado e o `onDisappear` já rodou: atribuir aqui deixaria
+            // vivo um player sem caminho de `encerrar()`.
+            guard !Task.isCancelled else {
+                novo.encerrar()
+                return
+            }
             reprodutor = novo
         }
         .onChange(of: trechos) { _, novos in
@@ -277,6 +284,7 @@ struct ArquivoDetalheView: View {
                 participantes: $participantesEditados,
                 data: $dataEditada,
                 duracao: $duracaoEditada,
+                importadoEm: arquivo.importadoEm,
                 aoCancelar: { editandoInformacoes = false },
                 aoSalvar: salvarInformacoesDaConversa
             )
@@ -511,6 +519,16 @@ struct ArquivoDetalheView: View {
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
+
+                // Só em arquivos importados: a data acima já é a da
+                // gravação em si (lida do arquivo original) — esta linha diz
+                // quando ele entrou no app, que pode ser um dia bem diferente.
+                if importado, let importadoEm = arquivo.importadoEm {
+                    dadoDaFicha(
+                        "Importado em \(DataDigitada.texto(de: importadoEm))",
+                        simbolo: "square.and.arrow.down"
+                    )
+                }
             }
         }
         .padding(PapagaioTema.Espaco.largo)
@@ -634,11 +652,19 @@ struct ArquivoDetalheView: View {
             nomesInformados(entrevistadoEditado) + nomesInformados(entrevistadoresEditados)
         )
 
+        // Antes de sobrescrever: depois, os metadados antigos já não estão
+        // por aqui para comparar, e a foto ficaria presa numa chave que nada
+        // mais lê.
+        let entrevistadoLimpo = entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entrevistadoresLimpos = entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines)
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistado, para: entrevistadoLimpo)
+        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistadores, para: entrevistadoresLimpos)
+
         PreferenciasVisuaisDoArquivo.definirMetadados(
             MetadadosVisuaisDoArquivo(
-                entrevistado: entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
+                entrevistado: entrevistadoLimpo,
                 emailDoEntrevistado: emailDoEntrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
-                entrevistadores: entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines),
+                entrevistadores: entrevistadoresLimpos,
                 emailDosEntrevistadores: emailDosEntrevistadoresEditado.trimmingCharacters(in: .whitespacesAndNewlines),
                 descricao: descricaoEditada.trimmingCharacters(in: .whitespacesAndNewlines),
                 formato: formatoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -772,14 +798,6 @@ struct ArquivoDetalheView: View {
                     }
                 }
 
-                if !resumo.citacoes.isEmpty {
-                    secao("Citações") {
-                        ForEach(Array(resumo.citacoes.enumerated()), id: \.offset) { _, citacao in
-                            citacaoClicavel(citacao)
-                        }
-                    }
-                }
-
             }
             // O card acompanha a janela (até o limite de página) em vez de ficar
             // preso a 720pt: em tela cheia sobrava um vazio enorme à direita.
@@ -818,44 +836,6 @@ struct ArquivoDetalheView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, PapagaioTema.Espaco.curto)
-    }
-
-    /// A citação tem âncora de tempo — clicar leva o áudio até a origem dela.
-    /// O `start` vem do modelo e pode ser inventado (R-14), então só vira botão
-    /// quando cai dentro da duração do arquivo.
-    @ViewBuilder
-    private func citacaoClicavel(_ citacao: Citacao) -> some View {
-        let ancora = citacao.start.flatMap { inicio in
-            trechos.contains { inicio >= $0.start && inicio <= $0.end } ? inicio : nil
-        }
-        // `maxWidth: .infinity` no bloco inteiro: antes cada citação encolhia
-        // até o tamanho do seu próprio texto, e a coluna ficava com a borda
-        // direita serrilhada — quatro caixas de larguras diferentes empilhadas.
-        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-            Rectangle()
-                .frame(width: 3)
-                .foregroundStyle(PapagaioTema.destaque)
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text(citacao.texto)
-                    .font(PapagaioTema.Tipo.apoio)
-                    .italic()
-                    .foregroundStyle(PapagaioTema.texto)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let ancora {
-                    Button(ancora.comoRelogio) {
-                        Task { await reprodutor?.saltar(paraSegundo: ancora) }
-                    }
-                    .buttonStyle(.link)
-                    .font(PapagaioTema.Tipo.legenda)
-                    .tint(PapagaioTema.destaqueEscuro)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(PapagaioTema.Espaco.medio)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     // MARK: - Mídia
@@ -928,7 +908,7 @@ struct ArquivoDetalheView: View {
         }
 
         do {
-            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa)
+            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa, tituloDaConversa: titulo)
             let anexo = try MidiasDaConversa.anexo(para: destino)
             var atualizados = anexosDeMidia.filter { $0.url != anexo.url }
             atualizados.append(anexo)
@@ -1080,7 +1060,7 @@ struct ArquivoDetalheView: View {
         tituloDaNovaTarefa = ""
         responsavelDaNovaTarefa = ""
         prioridadeDaNovaTarefa = .media
-        statusDaNovaTarefa = .emAndamento
+        statusDaNovaTarefa = .naoIniciado
         prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
     }
 
@@ -1097,9 +1077,6 @@ struct ArquivoDetalheView: View {
 
     private func moverTarefa(_ id: UUID, para destino: DestinoDeTarefa) {
         guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == id }) else { return }
-        if let prioridade = destino.prioridade {
-            tarefasDaConversa[indice].prioridade = prioridade
-        }
         tarefasDaConversa[indice].status = destino.status
         tarefasDaConversa[indice] = tarefaAjustadaPeloPrazo(tarefasDaConversa[indice])
         salvarTarefas()

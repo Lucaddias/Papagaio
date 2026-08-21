@@ -140,12 +140,8 @@ struct LinhaDeTarefaDaConversa: View {
 
     private var responsavelDaTarefa: some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
-            if let responsavel = tarefa.responsavel, !responsavel.isEmpty {
-                Text(iniciais(de: responsavel))
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(PapagaioTema.texto)
-                    .frame(width: 30, height: 30)
-                    .background(PapagaioTema.destaqueSuave, in: Circle())
+            if let responsavel = tarefa.responsavelValido {
+                AvatarDePessoa(nome: responsavel, diametro: 30)
 
                 Text(responsavel)
                     .font(.callout.weight(.semibold))

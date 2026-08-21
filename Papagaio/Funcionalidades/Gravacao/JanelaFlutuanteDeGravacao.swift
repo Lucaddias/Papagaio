@@ -31,6 +31,10 @@ final class JanelaFlutuanteDeGravacao {
 
     func exibir(gravador: GravadorViewModel, aoAbrirNoApp: @escaping () -> Void) {
         if let painel {
+            // A aparência pode ter mudado em Configurações desde a última
+            // vez que o painel apareceu — sem atualizar aqui, ele ficava
+            // preso na aparência de quando nasceu até o app reiniciar.
+            painel.appearance = aparenciaAtual.nsAppearance
             painel.orderFrontRegardless()
             return
         }
@@ -39,6 +43,10 @@ final class JanelaFlutuanteDeGravacao {
             gravador: gravador,
             aoAbrirNoApp: aoAbrirNoApp
         )
+        // `.preferredColorScheme` só vale dentro do próprio `NSHostingView`:
+        // este painel vive fora da hierarquia do `ContentView`, então nunca
+        // herdava a escolha manual de tema — só a aparência real do Mac.
+        .preferredColorScheme(aparenciaAtual.esquemaPreferido)
 
         let novo = NSPanel(
             contentRect: NSRect(origin: .zero, size: Self.tamanhoInicial),
@@ -57,11 +65,24 @@ final class JanelaFlutuanteDeGravacao {
         novo.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         novo.minSize = Self.tamanhoMinimo
         novo.maxSize = Self.tamanhoMaximo
+        // As cores do `PapagaioTema` resolvem contra a `NSAppearance` da
+        // janela, não contra o `colorScheme` do SwiftUI — sem isto, mesmo
+        // com o `.preferredColorScheme` acima, o fundo e os controles do
+        // painel continuavam claros num Mac claro, aparência forçada ou não.
+        novo.appearance = aparenciaAtual.nsAppearance
         novo.contentView = NSHostingView(rootView: conteudo)
 
         posicionar(novo)
         novo.orderFrontRegardless()
         painel = novo
+    }
+
+    /// Lida direto do `UserDefaults`, e não via `@AppStorage`: esta classe
+    /// não é uma `View`, e o painel pode ser mostrado sem que nenhuma tela
+    /// SwiftUI esteja de olho nesse valor no momento.
+    private var aparenciaAtual: AparenciaDoApp {
+        let bruta = UserDefaults.standard.string(forKey: "aparenciaDoApp") ?? AparenciaDoApp.sistema.rawValue
+        return AparenciaDoApp(rawValue: bruta) ?? .sistema
     }
 
     func esconder() {

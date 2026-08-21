@@ -18,8 +18,8 @@ enum TarefasDaConversa {
                 titulo: passo.descricao,
                 origem: tituloDaConversa,
                 prioridade: indice < 2 ? .alta : .media,
-                status: .emAndamento,
-                responsavel: passo.responsavel,
+                status: .naoIniciado,
+                responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
                 prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa)
             )
         }

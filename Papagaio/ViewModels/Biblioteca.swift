@@ -102,19 +102,28 @@ final class Biblioteca {
     /// pessoa iniciar pela aba Transcrição. As notas são criadas antes da fila,
     /// para que os saves do pipeline apenas as preservem junto de transcrição
     /// e resumo.
+    /// - Parameter dataDeGravacao: `nil` numa gravação normal — o arquivo
+    ///   nasce agora, e `criadoEm` já é a data certa. Numa importação, é a
+    ///   data real lida do arquivo original (ver `ImportadorAudio`): o
+    ///   arquivo passa a ser datado de quando foi **gravado**, não de
+    ///   quando entrou no app — e `importadoEm` guarda este segundo
+    ///   instante à parte, para a interface poder mostrar os dois.
     @discardableResult
     func registrar(
         titulo: String,
         pastaRelativa: String,
         duracao: TimeInterval,
-        notas: [NotaDaConversa] = []
+        notas: [NotaDaConversa] = [],
+        dataDeGravacao: Date? = nil
     ) async -> Arquivo? {
         let arquivo = Arquivo(
             titulo: titulo,
+            criadoEm: dataDeGravacao ?? Date(),
             duracao: duracao,
             pastaRelativa: pastaRelativa,
             espaco: espaco,
-            notas: notas
+            notas: notas,
+            importadoEm: dataDeGravacao != nil ? Date() : nil
         )
         do {
             try await repositorio.salvar(arquivo)
@@ -193,6 +202,23 @@ final class Biblioteca {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
         else { return }
 
+        // Marcado **antes** de cancelar, e não depois.
+        //
+        // `cancelarProcessamentoDoArquivo` espera o `Task` em curso parar de
+        // verdade — e whisper/Qwen não são interrompíveis no meio de uma
+        // chamada, então essa espera pode levar um tempo real. Se a marca só
+        // viesse depois, existia uma janela em que `fases[chave]` já tinha
+        // sido limpo (lá dentro de `cancelarProcessamentoDoArquivo`) mas
+        // `operacoesDeLixeiraEmAndamento` ainda não continha o arquivo: o
+        // cartão, sem fase e sem saber que está sendo cancelado, caía no
+        // estado padrão "pronto para transcrever" — que nem mostra o botão
+        // de cancelar (só aparece com `estado.ocupado`) — em vez do
+        // indicador de "Movendo para a lixeira…". Marcando primeiro, o
+        // cartão já entra esmaecido com o spinner assim que o botão é
+        // clicado, sem passar por esse estado intermediário confuso.
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
+
         await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
@@ -205,8 +231,6 @@ final class Biblioteca {
         iniciadoEm[chave] = nil
         erros[chave] = nil
         erroDaLixeira = nil
-        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
-        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
 
         do {
             try await repositorio.moverParaLixeira(arquivo.id)
@@ -251,7 +275,7 @@ final class Biblioteca {
             restaurado.apagadoEm = nil
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
-            arquivos.sort { $0.criadoEm > $1.criadoEm }
+            arquivos.sort { $0.entradaNaBiblioteca > $1.entradaNaBiblioteca }
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -341,6 +365,18 @@ final class Biblioteca {
 
     // MARK: - Edição de arquivos
 
+    /// Move a pasta da gravação no disco para acompanhar o título, assim que
+    /// ele existe — "Mostrar no Finder" deve abrir num lugar reconhecível,
+    /// não num UUID. Falha em mover a pasta não pode derrubar quem chamou:
+    /// o título continua salvo mesmo que a pasta fique com o nome antigo.
+    private func renomearPastaSeNecessario(_ arquivo: inout Arquivo) {
+        let novaRelativa = armazenamento.renomearParaTitulo(
+            relativoAtual: arquivo.pastaRelativa,
+            titulo: arquivo.resumo?.titulo ?? arquivo.titulo
+        )
+        arquivo.pastaRelativa = novaRelativa
+    }
+
     func renomear(_ arquivo: Arquivo, para novoTitulo: String) async {
         let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty,
@@ -358,6 +394,7 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
+        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
@@ -391,6 +428,7 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
+        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
@@ -636,7 +674,7 @@ final class Biblioteca {
         )
 
         do {
-            let final = try await pipeline.processar(arquivo) { fase in
+            var final = try await pipeline.processar(arquivo) { fase in
                 Task { @MainActor [weak self] in
                     guard self?.identificadorDaExecucao == execucao else { return }
                     self?.fases[chave] = fase
@@ -645,6 +683,11 @@ final class Biblioteca {
             guard identificadorDaExecucao == execucao,
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
+            // O resumo acabou de chegar com um título de verdade — é agora
+            // que a pasta, até aqui nomeada pelo UUID, ganha o nome da
+            // conversa.
+            renomearPastaSeNecessario(&final)
+            try? await repositorio.salvar(final)
             substituir(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {

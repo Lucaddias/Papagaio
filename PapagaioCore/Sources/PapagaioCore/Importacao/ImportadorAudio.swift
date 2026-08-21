@@ -19,6 +19,11 @@ public struct ImportadorAudio: Sendable {
         public let duracao: TimeInterval
         public let bytes: Int
         public let tituloSugerido: String
+        /// Quando a gravação em si aconteceu, lida do arquivo original — e
+        /// não o instante da importação. Um arquivo trazido de outro app ou
+        /// de um gravador externo já tem sua própria data; usar `Date()`
+        /// aqui faria toda importação parecer ter sido gravada agora mesmo.
+        public let dataOriginal: Date
     }
 
     private let armazenamento: Armazenamento
@@ -71,7 +76,22 @@ public struct ImportadorAudio: Sendable {
             pastaRelativa: Armazenamento.caminhoRelativo(id: id),
             duracao: segundos,
             bytes: bytes,
-            tituloSugerido: origem.deletingPathExtension().lastPathComponent
+            tituloSugerido: origem.deletingPathExtension().lastPathComponent,
+            dataOriginal: dataDeGravacao(de: origem)
         )
+    }
+
+    /// A data de criação do arquivo original — lida **antes** de copiar, do
+    /// arquivo que ainda está fora do container.
+    ///
+    /// `.creationDate` é o que mais se aproxima de "quando isso foi
+    /// gravado": é o carimbo que o gravador, o AirDrop ou o Finder deram ao
+    /// arquivo ao criá-lo. Nem todo sistema de arquivos preserva esse campo
+    /// ao copiar de outro lugar (alguns só preservam a modificação), então
+    /// cai para `.contentModificationDate` quando falta — e para agora
+    /// mesmo só se nem isso existir, o que na prática não acontece.
+    private func dataDeGravacao(de origem: URL) -> Date {
+        let valores = try? origem.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        return valores?.creationDate ?? valores?.contentModificationDate ?? Date()
     }
 }

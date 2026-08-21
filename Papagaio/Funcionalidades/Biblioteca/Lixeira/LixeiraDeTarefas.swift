@@ -71,7 +71,7 @@ struct CartaoDaTarefaNaLixeira: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
             HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-                Label("TAREFA", systemImage: "checklist")
+                Label("TAREFA", systemImage: "list.clipboard")
                     .font(.callout.weight(.bold))
                     .foregroundStyle(PapagaioTema.textoSobrePrimario)
                     .padding(.horizontal, PapagaioTema.Espaco.medio)

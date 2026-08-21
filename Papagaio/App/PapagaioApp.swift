@@ -29,6 +29,12 @@ struct PapagaioApp: App {
         // Também antes das views: campos de cartão criados nesta versão nascem
         // ligados para quem já tinha personalizado a grade.
         CamposDoCartao.ligarCamposNovos()
+
+        // Idem: tarefas gravadas antes de "Não iniciado" existir nasceram
+        // marcadas "Em andamento" pelo único padrão que havia então. Sem esta
+        // migração, o painel de tarefas mostraria como "em progresso" um monte
+        // de tarefa que ninguém tinha nem aberto ainda.
+        MigracaoDeStatusDeTarefas.executarUmaVez()
     }
 
     var body: some Scene {

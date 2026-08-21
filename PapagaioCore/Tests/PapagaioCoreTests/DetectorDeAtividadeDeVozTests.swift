@@ -2,6 +2,23 @@ import Foundation
 import Testing
 @testable import PapagaioCore
 
+/// Conta entradas simultâneas numa seção crítica de teste.
+private actor GuardaDeSobreposicao {
+    private var dentro = 0
+    private(set) var sobreposicoes = 0
+    private(set) var visitas = 0
+
+    func entrar() {
+        dentro += 1
+        visitas += 1
+        if dentro > 1 { sobreposicoes += 1 }
+    }
+
+    func sair() {
+        dentro -= 1
+    }
+}
+
 /// VAD por Silero (M.1): distingue fala real de sinais que só têm energia.
 /// Fala real tem que passar; DC, tom, ruído branco e rosa têm que ser
 /// rejeitados mesmo com energia acima do limiar — é exatamente a garantia
@@ -73,6 +90,76 @@ struct DetectorDeAtividadeDeVozTests {
         var ruido = RuidoDeterministico(seed: 42)
         let rosa = ruido.rosa(16_000 * 2, alvoRms: 0.02)
         #expect(!(try await DetectorDeAtividadeDeVoz.contemFala(nas: rosa)))
+    }
+
+}
+
+/// Isolamento de sessões concorrentes do VAD.
+///
+/// **Fora** da suíte `.serialized` acima de propósito: os testes daqui só
+/// provam alguma coisa se o swift-testing rodá-los em paralelo com os outros
+/// testes do Silero — é a concorrência real que o entrelaçamento de quadros
+/// precisa para acontecer.
+@Suite("Isolamento de sessões do VAD")
+struct IsolamentoDeSessoesDoVADTests {
+    private func carregarFixture(_ nome: String) async throws -> [Float] {
+        let pasta = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures")
+        return try await DecodificadorDeAudio.amostras(
+            de: pasta.appendingPathComponent(nome)
+        )
+    }
+
+    @Test("Fila do VAD nunca deixa duas sessões ao mesmo tempo")
+    func filaDoVADSerializaSessoes() async {
+        // Regressão: o Silero é um ator só com estado de sequência
+        // (`contexto`, `estado`); duas sessões concorrentes se entrelaçam
+        // nas esperas e corrompem o estado uma da outra. A fila tem que
+        // garantir exclusão mútua da sessão inteira.
+        let fila = FilaEstrita()
+        let guarda = GuardaDeSobreposicao()
+
+        await withTaskGroup(of: Void.self) { grupo in
+            for _ in 0..<8 {
+                grupo.addTask {
+                    await fila.entrar()
+                    await guarda.entrar()
+                    try? await Task.sleep(for: .milliseconds(2))
+                    await guarda.sair()
+                    await fila.sair()
+                }
+            }
+        }
+
+        #expect(await guarda.sobreposicoes == 0)
+        #expect(await guarda.visitas == 8)
+    }
+
+    @Test("Sessões de VAD concorrentes dão o mesmo resultado que sequenciais")
+    func sessoesConcorrentesNaoSeCorrompem() async throws {
+        let fala = try await carregarFixture("fala_ola_mundo.wav")
+        // Segunda entrada: repetições da fala emendadas — passa no portão de
+        // energia e rende dezenas de consultas ao Silero, para as duas
+        // sessões disputarem o estado do modelo de verdade.
+        var sobrecarga: [Float] = []
+        for _ in 0..<6 { sobrecarga.append(contentsOf: fala) }
+
+        let base = try await DetectorDeAtividadeDeVoz.janelasDeFala(nas: fala)
+        let baseSobrecarga = try await DetectorDeAtividadeDeVoz.janelasDeFala(nas: sobrecarga)
+        #expect(!base.isEmpty)
+
+        // Várias rodadas com as duas entradas ao mesmo tempo: o resultado de
+        // cada uma precisa ser o do processamento isolado. Sem a fila, o
+        // `novaSequencia` e os quadros de uma sessão zeram/alteram o estado
+        // da outra no meio.
+        for _ in 0..<4 {
+            async let concorrenteA = DetectorDeAtividadeDeVoz.janelasDeFala(nas: fala)
+            async let concorrenteB = DetectorDeAtividadeDeVoz.janelasDeFala(nas: sobrecarga)
+            let (resultadoA, resultadoB) = try await (concorrenteA, concorrenteB)
+            #expect(resultadoA == base)
+            #expect(resultadoB == baseSobrecarga)
+        }
     }
 }
 
