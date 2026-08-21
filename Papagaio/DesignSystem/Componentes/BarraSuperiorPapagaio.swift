@@ -41,9 +41,22 @@ struct BarraSuperiorPapagaioView: View {
     /// Agora ela se resolve sozinha em três estágios: completa; sem o rótulo da
     /// conta; e, no mais apertado, com os dois grupos de ícones fundidos num
     /// menu "⋯". Nenhuma ação fica inalcançável em nenhuma largura.
-    /// Fora da gravação e fora do painel de tarefas — nas duas a busca não tem
-    /// o que fazer.
-    private var exibindoBusca: Bool { !gravando && !tarefasSelecionada }
+    /// Fora da gravação, e fora de Configurações — ali não há nada para a
+    /// busca filtrar, é uma tela de preferências, não uma lista. O painel de
+    /// tarefas continua incluído: já filtra pelo termo digitado (nome da
+    /// conversa e nome da tarefa), então esconder a busca ali só escondia
+    /// uma funcionalidade que já existia.
+    private var exibindoBusca: Bool { !gravando && !configuracoesSelecionada }
+
+    /// "Buscar conversas…" não servia em nenhuma das outras duas telas com
+    /// busca: no painel de tarefas o termo casa o nome da tarefa, e na
+    /// lixeira ele também alcança mídia e tarefas apagadas — dizer só
+    /// "conversas" ali prometia menos do que a busca de fato cobre.
+    private var placeholderDeBusca: String {
+        if tarefasSelecionada { return "Buscar tarefas…" }
+        if lixeiraSelecionada { return "Buscar na lixeira…" }
+        return "Buscar conversas…"
+    }
 
     /// Só centraliza quando sobra largura para os três blocos conviverem: a
     /// busca no meio, o voltar à esquerda e conta mais ações à direita.
@@ -100,9 +113,8 @@ struct BarraSuperiorPapagaioView: View {
             }
         }
         // Gravando, a barra some inteira e sobra só o botão de voltar: buscar
-        // conversas ou trocar de seção no meio de uma captura só tira a pessoa
-        // da tela em que ela está trabalhando. No painel de tarefas some
-        // também — não há conversa nenhuma para buscar ali.
+        // ou trocar de seção no meio de uma captura só tira a pessoa da tela
+        // em que ela está trabalhando.
         // A busca centralizada é uma sobreposição, e sobreposição não empurra
         // ninguém: em janela estreita ela passava por cima dos botões da
         // direita. Por isso a largura decide o layout — centralizada quando há
@@ -159,17 +171,6 @@ struct BarraSuperiorPapagaioView: View {
                 )
             }
 
-            Button(action: aoAbrirConfiguracoes) {
-                BotaoDeIconeDaBarra(
-                    simbolo: "gearshape",
-                    legenda: "Configurações",
-                    legendaAtiva: $legendaAtiva,
-                    selecionado: configuracoesSelecionada
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Configurações")
-
             Button(action: aoAbrirLixeira) {
                 BotaoDeIconeDaBarra(
                     simbolo: "trash",
@@ -206,7 +207,6 @@ struct BarraSuperiorPapagaioView: View {
                     systemImage: "bell"
                 )
             }
-            Button("Configurações", systemImage: "gearshape", action: aoAbrirConfiguracoes)
             Button("Lixeira", systemImage: "trash", action: aoAbrirLixeira)
         } label: {
             Image(systemName: "ellipsis")
@@ -323,11 +323,29 @@ struct BarraSuperiorPapagaioView: View {
                     aoGerenciarEquipe()
                 }
 
+                // Saiu da fileira de ícones ao lado de Lixeira/Tarefas/
+                // Biblioteca: aqueles três têm busca, e Configurações não —
+                // ficar lado a lado prometia o mesmo tipo de tela para os
+                // quatro, e a busca sumia sozinha ao entrar ali, como se
+                // tivesse quebrado. Aqui, dentro do menu de conta, ela não
+                // promete nada que não cumpre.
+                Button("Configurações", systemImage: "gearshape") {
+                    exibindoMenuDePerfil = false
+                    aoAbrirConfiguracoes()
+                }
+
                 Button("Sair", role: .destructive) {
                     exibindoMenuDePerfil = false
                     aoSair()
                 }
             } else {
+                Button("Configurações", systemImage: "gearshape") {
+                    exibindoMenuDePerfil = false
+                    aoAbrirConfiguracoes()
+                }
+
+                Divider()
+
                 Button("Entrar com Apple") {
                     exibindoMenuDePerfil = false
                     aoEntrar()
@@ -343,16 +361,31 @@ struct BarraSuperiorPapagaioView: View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(PapagaioTema.textoSecundario)
-            TextField("Buscar conversas…", text: $consulta)
+            // O placeholder muda com a tela: "conversas" não dizia nada de
+            // útil no painel de tarefas, onde o termo casa é o nome da
+            // tarefa (ou da conversa que a gerou) — nem na lixeira, onde a
+            // busca também alcança mídia e tarefas apagadas, não só
+            // conversas.
+            TextField(placeholderDeBusca, text: $consulta)
                 .textFieldStyle(.plain)
                 .foregroundStyle(PapagaioTema.texto)
-                .accessibilityLabel("Buscar conversas")
+                .accessibilityLabel(placeholderDeBusca)
         }
         // Único elemento elástico da barra: cresce até 620 e cede até 100.
         // Sem `layoutPriority` — ele deve ser servido depois dos grupos de
         // ícones, que são `fixedSize` e não têm como encolher em troca.
         .frame(minWidth: 100, idealWidth: 520, maxWidth: 620)
-        .molduraDeControlePapagaio()
+        // Cápsula, como os atalhos e o botão de perfil ao lado —
+        // `molduraDeControlePapagaio()` desenha um retângulo de cantos só
+        // discretamente arredondados (o raio padrão de qualquer controle do
+        // app), e aqui ela ficava a única peça quadrada no meio de tudo o
+        // mais redondo da barra.
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .frame(height: PapagaioTema.Altura.padrao)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule().stroke(PapagaioTema.borda, lineWidth: 1)
+        }
     }
 
     private var atalhos: some View {
@@ -383,13 +416,12 @@ struct BarraSuperiorPapagaioView: View {
         }
         .padding(.horizontal, PapagaioTema.Espaco.minimo)
         .frame(height: PapagaioTema.Altura.padrao)
-        .background(
-            PapagaioTema.superficie,
-            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-        )
+        // Cápsula, como o campo de busca e o botão de perfil ao lado — não
+        // um retângulo de cantos arredondados. Era o único componente
+        // quadrado no meio de tudo o mais redondo da barra.
+        .background(PapagaioTema.superficie, in: Capsule())
         .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1)
+            Capsule().stroke(PapagaioTema.borda, lineWidth: 1)
         }
         .fixedSize()
     }

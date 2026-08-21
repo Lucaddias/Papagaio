@@ -21,7 +21,10 @@ enum LixeiraDeMidia {
         conversaTitulo: String,
         pastaDaConversa: URL
     ) throws {
-        let pasta = pastaDaConversa.appendingPathComponent(nomeDaPasta, isDirectory: true)
+        let pasta = pastaDaConversa.appendingPathComponent(
+            "\(NomeDeArquivoSeguro.gerar(de: conversaTitulo)) (excluídos)",
+            isDirectory: true
+        )
         try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
 
         // Prefixo com UUID: dois "gravacao.m4a" apagados em momentos
@@ -120,5 +123,4 @@ enum LixeiraDeMidia {
     }
 
     private static let chave = "midiaNaLixeira"
-    private static let nomeDaPasta = "MidiaNaLixeira"
 }

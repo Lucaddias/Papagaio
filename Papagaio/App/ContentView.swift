@@ -231,7 +231,14 @@ struct ContentView: View {
     private var barraSuperior: some View {
         BarraSuperiorPapagaioView(
             consulta: $consulta, legendaAtiva: $legendaDaBarra,
-            exibindoBotaoVoltar: !naTelaInicial,
+            // Sem o chevron nas Tarefas nem na Lixeira: as duas já têm um
+            // atalho próprio na barra ("Biblioteca" e "Lixeira", ao lado da
+            // busca), então o botão de voltar virava um segundo caminho
+            // para o mesmo lugar — redundante, e não obrigatório como é
+            // numa conversa aberta ou na captura.
+            exibindoBotaoVoltar: !naTelaInicial
+                && telaSelecionada != .tarefas
+                && !(telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira),
             bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
             tarefasSelecionada: telaSelecionada == .tarefas,
             configuracoesSelecionada: telaSelecionada == .configuracoes,
@@ -300,12 +307,13 @@ struct ContentView: View {
             // A gravação entrega o áudio; a biblioteca salva e processa. Esta
             // ligação permanece na raiz para não desaparecer ao redesenhar uma
             // subview de biblioteca.
-            modelo.aoProduzirAudio = { titulo, pasta, duracao, notas in
+            modelo.aoProduzirAudio = { titulo, pasta, duracao, notas, dataDeGravacao in
                 if let arquivo = await nova.registrar(
                     titulo: titulo,
                     pastaRelativa: pasta,
                     duracao: duracao,
-                    notas: notas
+                    notas: notas,
+                    dataDeGravacao: dataDeGravacao
                 ) {
                     if let pastaDaBibliotecaSelecionada {
                         PreferenciasVisuaisDoArquivo.definirPasta(
@@ -365,6 +373,14 @@ struct ContentView: View {
             formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
             participantes: quantidade
         )
+
+        // Antes de sobrescrever: depois, os metadados antigos já não estão
+        // por aqui para comparar, e a foto ficaria presa numa chave que nada
+        // mais lê.
+        let metadadosAntigos = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+        FotosDePessoas.migrarAoEditarNomes(de: metadadosAntigos.entrevistado, para: metadados.entrevistado)
+        FotosDePessoas.migrarAoEditarNomes(de: metadadosAntigos.entrevistadores, para: metadados.entrevistadores)
+
         PreferenciasVisuaisDoArquivo.definirMetadados(metadados, para: arquivo.id)
 
         // A duração não é editável na ficha: continua sendo a do próprio áudio.

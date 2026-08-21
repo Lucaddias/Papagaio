@@ -5,7 +5,15 @@ enum TarefasGeraisStore {
     static func carregar(_ arquivo: Arquivo) -> [TarefaDaConversa] {
         if let dados = UserDefaults.standard.data(forKey: chave(arquivo.id)),
            let tarefas = try? JSONDecoder().decode([TarefaDaConversa].self, from: dados) {
-            return tarefas
+            // Reaplicada a cada carga, e não só na criação: sem isto, uma
+            // tarefa cujo prazo foi ficando perto só subia de prioridade se
+            // alguém reabrisse a tela da conversa — a aba geral de Tarefas,
+            // que lê direto daqui, nunca via a promoção.
+            let ajustadas = tarefas.map(RegraDePrazoDaTarefa.ajustada)
+            if ajustadas != tarefas {
+                salvar(ajustadas, para: arquivo.id)
+            }
+            return ajustadas
         }
 
         let titulo = arquivo.resumo?.titulo ?? arquivo.titulo
@@ -14,8 +22,8 @@ enum TarefasGeraisStore {
                 titulo: passo.descricao,
                 origem: titulo,
                 prioridade: indice < 2 ? .alta : .media,
-                status: .emAndamento,
-                responsavel: passo.responsavel,
+                status: .naoIniciado,
+                responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
                 prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm)
             )
         }

@@ -32,7 +32,7 @@ struct CartaoDeAnexoDeMidia: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .buttonStyle(.plain)
-            .help("Abrir \(anexo.nome)")
+            .help("Mostrar \(anexo.nome) no Finder")
 
             Spacer(minLength: 0)
 

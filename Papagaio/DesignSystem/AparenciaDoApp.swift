@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Tema escolhido pelo usuário em Configurações.
@@ -44,6 +45,25 @@ enum AparenciaDoApp: String, CaseIterable, Identifiable {
         case .sistema: nil
         case .claro: .light
         case .escuro: .dark
+        }
+    }
+
+    /// A mesma escolha, só que para janelas feitas em AppKit puro (o painel
+    /// flutuante de gravação, por exemplo).
+    ///
+    /// `.preferredColorScheme` só afeta o ambiente do SwiftUI — quem decide a
+    /// aparência de verdade de uma janela (e das cores dinâmicas do
+    /// `PapagaioTema`, que resolvem contra a `NSAppearance` da janela, não
+    /// contra o `colorScheme` do SwiftUI) é a própria `NSWindow`/`NSPanel`.
+    /// Uma janela hospedada fora da hierarquia do `ContentView` — como o
+    /// painel flutuante, que vive no seu próprio `NSHostingView` — nunca
+    /// herda o `.preferredColorScheme` da janela principal, e sem isto ela
+    /// seguia a aparência real do Mac mesmo com o app forçado no escuro.
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .sistema: nil
+        case .claro: NSAppearance(named: .aqua)
+        case .escuro: NSAppearance(named: .darkAqua)
         }
     }
 }

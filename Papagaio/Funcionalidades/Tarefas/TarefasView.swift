@@ -14,15 +14,19 @@ struct TarefasView: View {
     @State private var tarefaEmEdicao: TarefaGeral?
     @State private var conversaDoEditor: ArquivoID?
     @State private var tituloDoEditor = ""
+    @State private var descricaoDoEditor = ""
     @State private var responsavelDoEditor = ""
     @State private var prioridadeDoEditor: PrioridadeDaTarefa = .media
-    @State private var statusDoEditor: StatusDaTarefa = .emAndamento
+    @State private var statusDoEditor: StatusDaTarefa = .naoIniciado
     @State private var prazoDoEditor = Date()
     @State private var larguraDoQuadro: CGFloat?
     @State private var scrollViewDoKanban: NSScrollView?
+    /// Altura real do cabeçalho (título + cards de conversa), para a zona de
+    /// rolagem automática do arraste nunca cobrir nada clicável ali em cima.
+    @State private var alturaDoCabecalho: CGFloat = 0
 
     private var conversas: [Arquivo] {
-        biblioteca?.arquivos.sorted { $0.criadoEm > $1.criadoEm } ?? []
+        biblioteca?.arquivos.sorted { $0.entradaNaBiblioteca > $1.entradaNaBiblioteca } ?? []
     }
 
     private var tarefasPorConversa: [TarefasDaConversaGeral] {
@@ -50,12 +54,21 @@ struct TarefasView: View {
         }
 
         guard !termo.isEmpty else { return filtradasPorSelecao }
+        // A mesma lógica da busca na Biblioteca: título, descrição, data e
+        // duração da conversa, além do que já era buscado na própria tarefa
+        // (título, origem, responsável) e, agora, o prazo e a descrição dela.
         return filtradasPorSelecao.compactMap { conversa in
+            let dataDaConversa = DataDigitada.texto(de: conversa.arquivo.criadoEm)
+            let duracaoDaConversa = conversa.arquivo.duracao.comoDuracaoPorExtenso
             let tarefas = conversa.tarefas.filter {
-                conversa.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.titulo.localizedCaseInsensitiveContains(termo)
-                    || $0.origem.localizedCaseInsensitiveContains(termo)
-                    || ($0.responsavel?.localizedCaseInsensitiveContains(termo) ?? false)
+                conversa.titulo.casaComBusca(termo)
+                    || dataDaConversa.casaComBusca(termo)
+                    || duracaoDaConversa.casaComBusca(termo)
+                    || $0.titulo.casaComBusca(termo)
+                    || $0.origem.casaComBusca(termo)
+                    || ($0.responsavel?.casaComBusca(termo) ?? false)
+                    || ($0.descricao?.casaComBusca(termo) ?? false)
+                    || ($0.prazo.map { DataDigitada.texto(de: $0).casaComBusca(termo) } ?? false)
             }
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
@@ -94,12 +107,15 @@ struct TarefasView: View {
         }
     }
 
-    private var tarefasDePrioridadeAlta: [TarefaGeral] {
-        tarefasVisiveis.filter { $0.tarefa.prioridade == .alta && $0.tarefa.status != .concluida }
+    /// Onde toda tarefa nova começa. Prioridade é etiqueta, não filtro desta
+    /// coluna — uma tarefa de prioridade Alta que ninguém começou ainda mora
+    /// aqui, não numa coluna própria.
+    private var tarefasNaoIniciadas: [TarefaGeral] {
+        tarefasVisiveis.filter { $0.tarefa.status == .naoIniciado }
     }
 
     private var tarefasEmAndamento: [TarefaGeral] {
-        tarefasVisiveis.filter { $0.tarefa.status == .emAndamento && $0.tarefa.prioridade != .alta }
+        tarefasVisiveis.filter { $0.tarefa.status == .emAndamento }
     }
 
     private var tarefasConcluidas: [TarefaGeral] {
@@ -109,15 +125,22 @@ struct TarefasView: View {
     var body: some View {
         ScrollView {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                        Text("Painel de Tarefas")
-                            .font(PapagaioTema.Tipo.tituloDePagina)
-                            .foregroundStyle(PapagaioTema.texto)
+                    // Medido, e não estimado: um número fixo (88pt) cobria o
+                    // cabeçalho num teste e sobrava por cima dos cards de
+                    // "Todas as conversas" no seguinte — o cabeçalho muda de
+                    // altura com o conteúdo (com ou sem os cards de
+                    // conversa, com ou sem quebra de linha no título). Com a
+                    // altura real medida aqui, a zona de rolagem começa
+                    // sempre depois do que há para clicar, não importa a
+                    // altura.
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
+                        cabecalhoDoPainel
 
-                        Text("Gerencie as ações geradas a partir das suas conversas.")
-                            .font(.title3)
-                            .foregroundStyle(PapagaioTema.textoSecundario)
+                        if !tarefasPorConversa.isEmpty {
+                            seletorDeConversas
+                        }
                     }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { alturaDoCabecalho = $0 }
 
                     if tarefasPorConversa.isEmpty {
                         CartaoDeEstadoVazio(
@@ -128,7 +151,6 @@ struct TarefasView: View {
                         .frame(maxWidth: .infinity, minHeight: 300)
                         .cartaoPapagaio()
                     } else {
-                        seletorDeConversas
                         kanbanDeTarefas
                     }
                 }
@@ -145,7 +167,16 @@ struct TarefasView: View {
                 // Uma lista em colunas também pode ficar maior que a janela.
                 // Arrastar para o topo precisa acompanhar o card em qualquer
                 // largura, não apenas no Kanban vertical.
+                //
+                // Com recuo do topo, medido de verdade: sem ele, esta zona
+                // (mesmo invisível) cobria o cabeçalho da página inteiro —
+                // botão "i", cards de "Todas as conversas" e tudo — e essas
+                // áreas paravam de responder a clique, roubadas por esta
+                // camada por cima delas. O recuo deixa tudo isso livre e
+                // ainda sobra zona suficiente perto do topo do quadro pra
+                // rolagem durante o arraste continuar funcionando.
                 ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoKanban, direcao: .cima)
+                    .padding(.top, PapagaioTema.espacamentoDePagina + alturaDoCabecalho + PapagaioTema.Espaco.pagina)
             }
             .overlay(alignment: .bottom) {
                 ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoKanban, direcao: .baixo)
@@ -171,6 +202,7 @@ struct TarefasView: View {
                 conversas: conversas,
                 conversaSelecionada: $conversaDoEditor,
                 titulo: $tituloDoEditor,
+                descricao: $descricaoDoEditor,
                 responsavel: $responsavelDoEditor,
                 prioridade: $prioridadeDoEditor,
                 status: $statusDoEditor,
@@ -179,6 +211,38 @@ struct TarefasView: View {
                 aoSalvar: salvarTarefaDoEditor
             )
         }
+    }
+
+    /// O título dentro de um cartão próprio — mesmo tratamento do cabeçalho
+    /// da Biblioteca, que também vive separado da grade abaixo dele.
+    private var cabecalhoDoPainel: some View {
+        // O "i" no lugar do subtítulo fixo — mesmo tratamento que a
+        // Biblioteca já usa: a explicação aparece ao passar o mouse, e não
+        // ocupa uma linha inteira que só se lê uma vez.
+        HStack(alignment: .center, spacing: PapagaioTema.Espaco.curto) {
+            Text("Painel de Tarefas")
+                .font(PapagaioTema.Tipo.tituloDePagina)
+                .foregroundStyle(PapagaioTema.texto)
+
+            BotaoDeAjudaPapagaio(
+                texto: "Gerencie as tarefas geradas a partir das suas conversas.",
+                ajuda: "Sobre o painel de tarefas",
+                largura: 280
+            )
+
+            Spacer(minLength: 0)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
     private var seletorDeConversas: some View {
@@ -240,9 +304,9 @@ struct TarefasView: View {
                     : AnyLayout(VStackLayout(alignment: .leading, spacing: PapagaioTema.Espaco.medio))
 
                 arranjo {
-                    coluna(titulo: "Prioridade alta", cor: PapagaioTema.perigo, tarefas: tarefasDePrioridadeAlta)
-                    coluna(titulo: "Em andamento", cor: PapagaioTema.destaque, tarefas: tarefasEmAndamento)
-                    coluna(titulo: "Concluídas", cor: PapagaioTema.textoSecundario, tarefas: tarefasConcluidas)
+                    coluna(titulo: "Não iniciado", cor: StatusDaTarefa.naoIniciado.cor, tarefas: tarefasNaoIniciadas, destino: .naoIniciado)
+                    coluna(titulo: "Em andamento", cor: StatusDaTarefa.emAndamento.cor, tarefas: tarefasEmAndamento, destino: .emAndamento)
+                    coluna(titulo: "Concluídas", cor: StatusDaTarefa.concluida.cor, tarefas: tarefasConcluidas, destino: .concluida)
                 }
             }
         }
@@ -272,7 +336,7 @@ struct TarefasView: View {
 
     private var resumoDoKanban: some View {
         HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
-            Label(tituloDoKanban, systemImage: "bubble.left.and.text.bubble.right")
+            Label(tituloDoKanban, systemImage: "list.clipboard")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(PapagaioTema.texto)
                 .lineLimit(1)
@@ -347,11 +411,12 @@ struct TarefasView: View {
         return conversasSelecionadas.isEmpty ? "Todas as tarefas" : "\(conversasSelecionadas.count) conversas selecionadas"
     }
 
-    private func coluna(titulo: String, cor: Color, tarefas: [TarefaGeral]) -> some View {
+    private func coluna(titulo: String, cor: Color, tarefas: [TarefaGeral], destino: DestinoDeTarefa) -> some View {
         ColunaDeTarefasGerais(
             titulo: titulo,
             cor: cor,
             tarefas: tarefas,
+            destino: destino,
             aoEditar: abrirEdicao,
             aoAlternarConclusao: alternarConclusao,
             aoExcluir: excluirTarefa,
@@ -359,7 +424,7 @@ struct TarefasView: View {
             compacto: !cabeEmColunas
         )
             .frame(maxWidth: .infinity, alignment: .top)
-            .id("kanban-\(titulo == "Prioridade alta" ? "prioridade" : titulo == "Concluídas" ? "concluidas" : "andamento")")
+            .id("kanban-\(titulo)")
     }
 
 }
@@ -466,9 +531,10 @@ extension TarefasView {
         tarefaEmEdicao = nil
         conversaDoEditor = conversasSelecionadas.first ?? conversas.first?.id
         tituloDoEditor = ""
+        descricaoDoEditor = ""
         responsavelDoEditor = ""
         prioridadeDoEditor = .media
-        statusDoEditor = .emAndamento
+        statusDoEditor = .naoIniciado
         prazoDoEditor = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
         exibindoEditor = true
     }
@@ -477,7 +543,8 @@ extension TarefasView {
         tarefaEmEdicao = tarefa
         conversaDoEditor = tarefa.conversa.id
         tituloDoEditor = tarefa.tarefa.titulo
-        responsavelDoEditor = tarefa.tarefa.responsavel ?? ""
+        descricaoDoEditor = tarefa.tarefa.descricao ?? ""
+        responsavelDoEditor = tarefa.tarefa.responsavelValido ?? ""
         prioridadeDoEditor = tarefa.tarefa.prioridade
         statusDoEditor = tarefa.tarefa.status
         prazoDoEditor = tarefa.tarefa.prazo ?? Date()
@@ -492,6 +559,8 @@ extension TarefasView {
         let titulo = tituloDoEditor.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !titulo.isEmpty else { return }
 
+        let descricao = descricaoDoEditor.trimmingCharacters(in: .whitespacesAndNewlines)
+
         var tarefas = TarefasGeraisStore.carregar(arquivo)
         let tarefaAtualizada = TarefaDaConversa(
             id: tarefaEmEdicao?.tarefa.id ?? UUID(),
@@ -500,7 +569,8 @@ extension TarefasView {
             prioridade: prioridadeDoEditor,
             status: statusDoEditor,
             responsavel: responsavelDoEditor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : responsavelDoEditor,
-            prazo: prazoDoEditor
+            prazo: prazoDoEditor,
+            descricao: descricao.isEmpty ? nil : descricao
         )
 
         if let tarefaEmEdicao,
@@ -525,9 +595,6 @@ extension TarefasView {
         guard let tarefa = tarefasVisiveis.first(where: { $0.id == id }) else { return }
         atualizar(tarefa) { editada in
             editada.status = destino.status
-            if let prioridade = destino.prioridade {
-                editada.prioridade = prioridade
-            }
         }
     }
 

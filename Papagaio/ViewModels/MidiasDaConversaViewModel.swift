@@ -20,10 +20,14 @@ final class MidiasDaConversaViewModel {
     /// de origem deixaria o anexo quebrado assim que a pessoa movesse o
     /// arquivo original.
     private let pastaDaConversa: URL
+    /// Nomeia a subpasta de mídia — para que "Mostrar no Finder" caia numa
+    /// pasta reconhecível pelo título, não por um UUID.
+    private let tituloDaConversa: String
 
-    init(arquivoID: ArquivoID, pastaDaConversa: URL) {
+    init(arquivoID: ArquivoID, pastaDaConversa: URL, tituloDaConversa: String) {
         self.arquivoID = arquivoID
         self.pastaDaConversa = pastaDaConversa
+        self.tituloDaConversa = tituloDaConversa
     }
 
     func carregar() {
@@ -54,7 +58,7 @@ final class MidiasDaConversaViewModel {
         }
 
         do {
-            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa)
+            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa, tituloDaConversa: tituloDaConversa)
             let anexo = try MidiasDaConversa.anexo(para: destino)
             var atualizados = anexos.filter { $0.url != anexo.url }
             atualizados.append(anexo)
