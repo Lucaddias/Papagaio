@@ -12,6 +12,13 @@ public struct EspacoID: Hashable, Sendable, Codable, RawRepresentable {
     public let rawValue: UUID
     public init(rawValue: UUID) { self.rawValue = rawValue }
     public init() { self.rawValue = UUID() }
+
+    /// Fallback fixo para registro legado sem a relação de espaço. Não pode
+    /// ser um `UUID()` novo a cada leitura: o mesmo arquivo trocaria de espaço
+    /// toda vez que fosse relido do banco.
+    public static let legado = EspacoID(
+        rawValue: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    )
 }
 
 // MARK: - Palavra

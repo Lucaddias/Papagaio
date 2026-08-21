@@ -1,6 +1,7 @@
 @preconcurrency import AudioToolbox
 import CoreAudio
 import Foundation
+import os
 
 /// Captura do áudio do sistema via Core Audio Process Taps (macOS 14.4+).
 ///
@@ -120,8 +121,17 @@ final class SystemAudioTap {
         }
         aggregateDeviceID = newAggregateID
 
-        // Formato real do tap — lido depois de criado, não assumido.
-        let format = try tapFormat()
+        // Formato real do tap — lido depois de criado, não assumido. Falhar
+        // aqui precisa do `cleanupAll`: neste ponto o process tap e o
+        // aggregate device já existem, e propagar o erro sem destruí-los os
+        // vazava no Core Audio (a classe não tem `deinit`).
+        let format: AudioStreamBasicDescription
+        do {
+            format = try tapFormat()
+        } catch {
+            cleanupAll()
+            throw error
+        }
 
         let trackWriter: SystemTrackWriter
         do {
@@ -160,6 +170,21 @@ final class SystemAudioTap {
         }
 
         isRunning = true
+    }
+
+    /// Pausa a escrita do canal do sistema.
+    ///
+    /// O `AVAudioRecorder` do microfone pausa de verdade; o tap não tem como
+    /// parar o stream sem derrubar o aggregate device. Sem este corte, o
+    /// arquivo do sistema acumula o tempo de pausa e os dois canais se
+    /// desalinham para sempre — a duração vem do `currentTime` do recorder,
+    /// que exclui a pausa.
+    func pausar() {
+        callbackState?.pausar()
+    }
+
+    func continuar() {
+        callbackState?.continuar()
     }
 
     @discardableResult
@@ -322,7 +347,10 @@ final class SystemAudioTap {
 /// entrega o `AudioBuffer` emprestado ao `ExtAudioFileWriteAsync`. O arquivo
 /// é CAF/PCM, portanto não há compressão nem alocação de `AVAudioPCMBuffer`
 /// em tempo real.
-private final class SystemTrackWriter {
+///
+/// Interno (não `private`) para os testes de pausa poderem medir os frames
+/// que de fato chegam ao arquivo.
+final class SystemTrackWriter {
     private var file: ExtAudioFileRef?
 
     init(url: URL, format: AudioStreamBasicDescription) throws {
@@ -369,11 +397,26 @@ private final class SystemTrackWriter {
         var list = AudioBufferList(mNumberBuffers: 1, mBuffers: buffer)
         _ = ExtAudioFileWriteAsync(file, frames, &list)
     }
+
+    /// Fecha o arquivo garantindo que a fila assíncrona do
+    /// `ExtAudioFileWriteAsync` foi despejada — o `dispose` é a única chamada
+    /// com essa garantia. Em produção isto acontece no `deinit` (via `stop`);
+    /// os testes precisam do arquivo completo antes de lê-lo.
+    func finalizar() {
+        guard let file else { return }
+        ExtAudioFileDispose(file)
+        self.file = nil
+    }
 }
 
 /// Estado mutado exclusivamente pela thread do IOProc e lido apenas depois de
-/// `AudioDeviceStop`; por isso não exige lock no caminho de tempo real.
-private final class SystemTapCallbackState {
+/// `AudioDeviceStop`; por isso não exige lock no caminho de tempo real — a
+/// única exceção é a bandeira de pausa, escrita pela main e lida no callback,
+/// que usa `OSAllocatedUnfairLock` por ser segura em tempo real.
+///
+/// Interno (não `private`) para os testes de pausa exercitarem o descarte de
+/// buffers sem precisar de permissão de TCC nem de um dispositivo real.
+final class SystemTapCallbackState {
     private let writer: SystemTrackWriter
     private let format: AudioStreamBasicDescription
     private let nivel: NivelAudio
@@ -381,6 +424,7 @@ private final class SystemTapCallbackState {
     private var frameCount: UInt64 = 0
     private var measuredFloatPCM = false
     private var peak: Float = 0
+    private let pausado = OSAllocatedUnfairLock(initialState: false)
 
     init(writer: SystemTrackWriter, format: AudioStreamBasicDescription, nivel: NivelAudio) {
         self.writer = writer
@@ -388,7 +432,24 @@ private final class SystemTapCallbackState {
         self.nivel = nivel
     }
 
+    func pausar() {
+        pausado.withLock { $0 = true }
+    }
+
+    func continuar() {
+        pausado.withLock { $0 = false }
+    }
+
+    func finalizarEscrita() {
+        writer.finalizar()
+    }
+
     func consume(buffer: AudioBuffer, frames: UInt32) {
+        // Pausado: o buffer é descartado por inteiro — não escreve, não conta,
+        // não alimenta o medidor de nível. É o que mantém o canal do sistema
+        // alinhado com o microfone, que pausa de verdade.
+        guard !pausado.withLock({ $0 }) else { return }
+
         callbackCount &+= 1
         frameCount &+= UInt64(frames)
         writer.append(buffer: buffer, frames: frames)

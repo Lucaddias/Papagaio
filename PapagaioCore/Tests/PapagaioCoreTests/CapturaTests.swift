@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 import Testing
 @testable import PapagaioCore
@@ -45,6 +46,104 @@ func nivelDefinidoNormalizado() {
     #expect(nivel.normalizado == 1)
     nivel.definirNormalizado(-1)
     #expect(nivel.normalizado == 0)
+}
+
+// MARK: - Pausa do tap do sistema
+
+/// ASBD de teste: Float32 PCM 48 kHz estéreo — o formato típico do tap.
+private var formatoDeTeste: AudioStreamBasicDescription {
+    AudioStreamBasicDescription(
+        mSampleRate: 48_000,
+        mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsFloat,
+        mBytesPerPacket: 8,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 8,
+        mChannelsPerFrame: 2,
+        mBitsPerChannel: 32,
+        mReserved: 0
+    )
+}
+
+/// Escreve num CAF real para medir quantos frames chegaram ao arquivo.
+private func framesEscritos(em url: URL) throws -> Int64 {
+    let arquivo = try AVAudioFile(forReading: url)
+    return arquivo.length
+}
+
+@Test("Tap do sistema pausado não escreve frames no arquivo")
+func tapPausadoDescartaBuffers() async throws {
+    try await confirmation("o callback descartou os buffers durante a pausa") { confirmado in
+        let temporaria = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: temporaria, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporaria) }
+        let url = temporaria.appendingPathComponent("sistema.caf")
+        let formato = formatoDeTeste
+
+        let writer = try SystemTrackWriter(url: url, format: formato)
+        let estado = SystemTapCallbackState(writer: writer, format: formato, nivel: NivelAudio())
+
+        func buffer(frames: UInt32) -> AudioBuffer {
+            // O formato de teste tem 8 bytes por frame (2 canais Float32).
+            let bytes = Int(frames) * 8
+            let ponteiro = UnsafeMutableRawPointer.allocate(byteCount: bytes, alignment: 4)
+            ponteiro.initializeMemory(as: Float.self, repeating: 0.1, count: bytes / 4)
+            return AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(bytes), mData: ponteiro)
+        }
+
+        // 10 frames antes da pausa.
+        let antes = buffer(frames: 10)
+        estado.consume(buffer: antes, frames: 10)
+        free(antes.mData)
+
+        // Durante a pausa, nenhum frame pode chegar ao arquivo.
+        estado.pausar()
+        let descartado = buffer(frames: 50)
+        estado.consume(buffer: descartado, frames: 50)
+        free(descartado.mData)
+
+        estado.continuar()
+        let depois = buffer(frames: 10)
+        estado.consume(buffer: depois, frames: 10)
+        free(depois.mData)
+
+        estado.finalizarEscrita()
+
+        let frames = try framesEscritos(em: url)
+        #expect(frames == 20) // 10 + 10; os 50 da pausa não entraram
+        confirmado()
+    }
+}
+
+@Test("Estatísticas do tap contam só os frames escritos")
+func tapPausadoEstatisticas() throws {
+    let temporaria = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: temporaria, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaria) }
+    let url = temporaria.appendingPathComponent("sistema.caf")
+    let formato = formatoDeTeste
+
+    let writer = try SystemTrackWriter(url: url, format: formato)
+    let estado = SystemTapCallbackState(writer: writer, format: formato, nivel: NivelAudio())
+
+    let amostras = [Float](repeating: 0.2, count: 8)
+    amostras.withUnsafeBufferPointer { ponteiro in
+        let audioBuffer = AudioBuffer(
+            mNumberChannels: 1,
+            mDataByteSize: UInt32(ponteiro.count * MemoryLayout<Float>.size),
+            mData: UnsafeMutableRawPointer(mutating: ponteiro.baseAddress)
+        )
+        estado.consume(buffer: audioBuffer, frames: 4)
+        estado.pausar()
+        estado.consume(buffer: audioBuffer, frames: 4)
+        estado.continuar()
+        estado.consume(buffer: audioBuffer, frames: 4)
+    }
+
+    let estatisticas = estado.statistics
+    #expect(estatisticas.callbacks == 2) // o callback da pausa não conta
+    #expect(estatisticas.frames == 8) // 4 + 4; o do meio foi descartado
+    #expect(estatisticas.peak != nil)
 }
 
 // MARK: - Formato de gravação
