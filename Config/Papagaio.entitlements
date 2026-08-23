@@ -6,6 +6,8 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
 		<string>iCloud.com.papagaio.Papagaio</string>
@@ -24,9 +26,9 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
-	<key>com.apple.security.personal-information.calendars</key>
-	<true/>
 	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
 	<true/>
 </dict>
 </plist>
