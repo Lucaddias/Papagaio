@@ -145,14 +145,17 @@ final class Biblioteca {
         titulo: String,
         pastaRelativa: String,
         duracao: TimeInterval,
-        notas: [NotaDaConversa] = []
+        notas: [NotaDaConversa] = [],
+        dataDeGravacao: Date? = nil
     ) async -> Arquivo? {
         let arquivo = Arquivo(
             titulo: titulo,
+            criadoEm: dataDeGravacao ?? Date(),
             duracao: duracao,
             pastaRelativa: pastaRelativa,
             espaco: espaco,
-            notas: notas
+            notas: notas,
+            importadoEm: dataDeGravacao != nil ? Date() : nil
         )
         do {
             try await repositorio.salvar(arquivo)

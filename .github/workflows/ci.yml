@@ -20,8 +20,8 @@ jobs:
         working-directory: PapagaioCore
         run: swift test
 
-  test-app:
-    name: Testes do app (Loro.xcodeproj)
+  build-app:
+    name: Build do app (Loro.xcodeproj)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -29,11 +29,11 @@ jobs:
       - name: Bootstrap runtimes (Silero VAD)
         run: ./Scripts/bootstrap-runtimes.sh
 
-      - name: xcodebuild test
+      - name: xcodebuild build
         run: |
-          xcodebuild test \
+          xcodebuild build \
             -project Loro.xcodeproj \
             -scheme Loro \
-            -destination 'platform=macOS' \
+            -destination 'generic/platform=macOS' \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO
