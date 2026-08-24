@@ -9,6 +9,7 @@ struct BibliotecaHomeView: View {
     let gravador: GravadorViewModel
     let biblioteca: Biblioteca?
     let modelos: ModelosViewModel?
+    let googleCalendar: GoogleCalendarViewModel?
     @Binding var consulta: String
     @Binding var secaoSelecionada: SecaoDaBiblioteca
     @Binding var pastaSelecionada: String?
@@ -21,6 +22,9 @@ struct BibliotecaHomeView: View {
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
     let aoSoltarArquivos: ([URL]) -> Void
+    let aoPrepararGravacaoParaReuniao: (Arquivo) -> Void
+    let aoImportarNotasDaReuniao: (Arquivo) -> Void
+    let aoIgnorarReuniao: (Arquivo) -> Void
     /// Enquanto a gravação roda a pessoa pode sair da tela de captura e voltar
     /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
     /// da gravação.
@@ -217,6 +221,52 @@ struct BibliotecaHomeView: View {
     /// Tela de captura: gravando **e** com o foco nela.
     private var emCaptura: Bool {
         gravador.gravando && focoNaGravacao
+    }
+
+    /// Reuniões do Google Calendar que ainda não ocorreram (futuras).
+    /// Exibidas no topo da biblioteca como seção "Próximas reuniões".
+    private var reunioesDoCalendar: some View {
+        guard let biblioteca,
+              !biblioteca.reunioesPendentesCalendar.isEmpty,
+              secaoSelecionada == .todos,
+              !emCaptura
+        else { return AnyView(EmptyView()) }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                HStack {
+                    Label("Próximas reuniões", systemImage: "calendar.badge.clock")
+                        .font(PapagaioTema.Tipo.tituloDeSecao)
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    Spacer()
+                    Text("\(biblioteca.reunioesPendentesCalendar.count) reun\(biblioteca.reunioesPendentesCalendar.count == 1 ? "ião" : "iões")")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+
+                VStack(spacing: PapagaioTema.Espaco.medio) {
+                    ForEach(biblioteca.reunioesPendentesCalendar) { arquivo in
+                        CartaoReuniaoPendente(
+                            arquivo: arquivo,
+                            aoGravar: { aoPrepararGravacaoParaReuniao(arquivo) },
+                            aoImportarNotas: { aoImportarNotasDaReuniao(arquivo) },
+                            aoIgnorar: { aoIgnorarReuniao(arquivo) }
+                        )
+                    }
+                }
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                PapagaioTema.superficie,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    .stroke(PapagaioTema.borda, lineWidth: 1.5)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        )
     }
 
     private var arquivosFiltrados: [Arquivo] {
@@ -581,6 +631,8 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// Preenche os metadados da gravação com os dados da reunião do Calendar
+    /// e inicia a gravação na tela de captura.
     private func limparAtalhoVisual() {
         guard atalhoVisualSelecionado != nil else { return }
         withAnimation(.snappy(duration: 0.16)) {
@@ -744,6 +796,8 @@ struct BibliotecaHomeView: View {
                             aoUsarPastaDoApp: aoUsarPastaDoApp
                         )
                     }
+
+                    reunioesDoCalendar
 
                     cabecalhoDaBiblioteca
 

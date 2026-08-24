@@ -122,7 +122,7 @@ final class GranolaViewModel {
             guard let reuniao = reunioes.first(where: { $0.id == id }) else { continue }
             do {
                 let detalhe = try await fonte.obterReuniao(id: id, incluirTranscricao: true)
-                if await biblioteca.registrarExterna(detalhe) != nil {
+                if await biblioteca.registrarExterna(detalhe, identificador: fonte.identificador) != nil {
                     salvas += 1
                     importadas.append(reuniao)
                 }

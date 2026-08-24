@@ -22,6 +22,8 @@ struct ContentView: View {
     /// A conexão com o Granola. Nasce junto com a biblioteca (`abrir`), que é
     /// quem também entrega o destino das importações.
     @State private var granola: GranolaViewModel?
+    /// A conexão com o Google Calendar.
+    @State private var googleCalendar: GoogleCalendarViewModel?
     @State private var perfil = PerfilViewModel()
     @State private var notificacoes = NotificacoesViewModel()
     @State private var equipes = EquipesDoUsuario.carregar()
@@ -268,18 +270,49 @@ struct ContentView: View {
     private var conteudoDaTela: some View {
         switch telaSelecionada {
         case .biblioteca:
-            BibliotecaHomeView(gravador: modelo, biblioteca: biblioteca, modelos: modelos, consulta: $consulta,
+            BibliotecaHomeView(gravador: modelo, biblioteca: biblioteca, modelos: modelos, googleCalendar: googleCalendar, consulta: $consulta,
                                secaoSelecionada: $secaoDaBiblioteca, pastaSelecionada: $pastaDaBibliotecaSelecionada,
                                mostrandoImportador: $mostrandoImportador, processamentoAutomatico: processamentoAutomatico,
                                aoAlternarGravacao: aoAlternarGravacao, aoPausarGravacao: aoPausarGravacao,
                                aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
                                aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
-                               aoSoltarArquivos: importarArrastados, focoNaGravacao: $focoNaGravacao)
+                               aoSoltarArquivos: importarArrastados,
+                               aoPrepararGravacaoParaReuniao: { arquivo in
+                                   focoNaGravacao = true
+                                   telaSelecionada = .biblioteca
+                                   secaoDaBiblioteca = .todos
+                                   pastaDaBibliotecaSelecionada = nil
+                                   tituloDaFicha = arquivo.titulo
+                                   dataDaFicha = arquivo.criadoEm
+                                   duracaoDaFicha = arquivo.duracao.comoDuracaoPorExtenso
+                                   let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+                                   entrevistadoresDaFicha = metadados.entrevistadores
+                                   emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
+                                   arquivoParaConfigurar = arquivo
+                               },
+                               aoImportarNotasDaReuniao: { arquivo in
+                                   guard let googleCalendar else { return }
+                                   Task {
+                                       do {
+                                           let id = arquivo.idExterno?.replacingOccurrences(of: "google-calendar-api:", with: "") ?? ""
+                                           if let detalhe = try await googleCalendar.obterDetalhesReuniao(id: id),
+                                              let notas = detalhe.notas, !notas.isEmpty {
+                                               await biblioteca?.atualizarNotas([NotaDaConversa(texto: notas, start: 0)], de: arquivo)
+                                           }
+                                       } catch { }
+                                   }
+                               },
+                               aoIgnorarReuniao: { arquivo in
+                                   Task { @MainActor in
+                                       await biblioteca?.moverParaLixeira(arquivo)
+                                   }
+                               },
+                               focoNaGravacao: $focoNaGravacao)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
-                              granola: granola, biblioteca: biblioteca)
+                              granola: granola, googleCalendar: googleCalendar, biblioteca: biblioteca)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
@@ -311,6 +344,28 @@ struct ContentView: View {
                 notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
             }
             granola = conexao
+
+            let conexaoGoogle = GoogleCalendarViewModel()
+            conexaoGoogle.aoNotificar = { titulo, mensagem, tipo in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
+            }
+            googleCalendar = conexaoGoogle
+
+            // Conecta automaticamente se houver credenciais salvas
+            if CredenciaisGoogle.estaConfigurado {
+                Task {
+                    await conexaoGoogle.conectar(biblioteca: nova)
+                }
+            }
+
+            // Timer de sincronização automática a cada 15 min
+            Task { @MainActor [weak conexaoGoogle] in
+                while true {
+                    try? await Task.sleep(for: .seconds(15 * 60))
+                    guard let conexaoGoogle, conexaoGoogle.estado.conectado else { continue }
+                    await conexaoGoogle.importarTodas(biblioteca: nova)
+                }
+            }
 
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos

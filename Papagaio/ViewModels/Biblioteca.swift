@@ -138,7 +138,7 @@ final class Biblioteca {
         return arquivo
     }
 
-    /// Importa uma reunião de fonte externa (Granola etc.):
+    /// Importa uma reunião de fonte externa (Granola, Google Calendar etc.):
     /// sem áudio — `pastaRelativa` vazia é a marca de `Arquivo.semAudio` —,
     /// com transcrição, notas e resumo prontos, e **fora** da fila de
     /// processamento (não há nada para os modelos locais fazerem aqui).
@@ -146,9 +146,10 @@ final class Biblioteca {
     /// A importação é idempotente por `idExterno`: a mesma reunião nunca
     /// duplica, mesmo se o loop de importação rodar duas vezes.
     @discardableResult
-    func registrarExterna(_ reuniao: ReuniaoExterna) async -> Arquivo? {
-        guard !arquivos.contains(where: { $0.idExterno == "granola:\(reuniao.id)" }),
-              !arquivosNaLixeira.contains(where: { $0.idExterno == "granola:\(reuniao.id)" })
+    func registrarExterna(_ reuniao: ReuniaoExterna, identificador: String) async -> Arquivo? {
+        let idExternoCompleto = "\(identificador):\(reuniao.id)"
+        guard !arquivos.contains(where: { $0.idExterno == idExternoCompleto }),
+              !arquivosNaLixeira.contains(where: { $0.idExterno == idExternoCompleto })
         else { return nil }
 
         let trechos = reuniao.transcricao?.map { segmento in
@@ -180,7 +181,7 @@ final class Biblioteca {
             trechos: trechos,
             notas: notas,
             resumo: resumo,
-            idExterno: "granola:\(reuniao.id)"
+            idExterno: idExternoCompleto
         )
         do {
             try await repositorio.salvar(arquivo)
@@ -911,5 +912,22 @@ final class Biblioteca {
         if arquivo.resumo != nil { return .transcritoEResumido }
         if !arquivo.trechos.isEmpty { return .transcrito }
         return .prontoParaTranscrever
+    }
+
+    /// Reuniões do Google Calendar importadas que ainda não ocorreram (futuras).
+    /// Usadas para a seção "Próximas reuniões" no topo da biblioteca.
+    var reunioesPendentesCalendar: [Arquivo] {
+        let agora = Date()
+        return arquivos.filter { arquivo in
+            guard arquivo.idExterno?.hasPrefix("google-calendar-api:") == true else { return false }
+            return arquivo.criadoEm > agora
+        }.sorted { $0.criadoEm < $1.criadoEm }
+    }
+
+    /// Reuniões do Google Calendar que foram ignoradas (movidas para lixeira).
+    var reunioesIgnoradasCalendar: [Arquivo] {
+        return arquivosNaLixeira.filter { arquivo in
+            arquivo.idExterno?.hasPrefix("google-calendar-api:") == true
+        }.sorted { $0.criadoEm > $1.criadoEm }
     }
 }

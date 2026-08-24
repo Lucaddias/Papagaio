@@ -8,6 +8,8 @@ struct ConfiguracoesView: View {
     @Binding var aparencia: AparenciaDoApp
     /// A conexão Granola viva do app. Quem a cria e a observa é a `ContentView`.
     var granola: GranolaViewModel?
+    /// A conexão Google Calendar viva do app.
+    var googleCalendar: GoogleCalendarViewModel?
     /// Necessária para importar; `nil` enquanto a biblioteca não abriu.
     var biblioteca: Biblioteca?
     /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
@@ -34,6 +36,8 @@ struct ConfiguracoesView: View {
                 secaoDeTranscricao
 
                 secaoDeGranola
+
+                secaoDeGoogleCalendar
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -205,6 +209,48 @@ struct ConfiguracoesView: View {
                 SeparadorPapagaio()
 
                 Text("A biblioteca ainda está abrindo — a conexão com o Granola aparece aqui em instantes.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        }
+    }
+
+    @ViewBuilder
+    private var secaoDeGoogleCalendar: some View {
+        if let googleCalendar {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Google Calendar", systemImage: "calendar")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                estadoDaConexaoGoogleCalendar(googleCalendar)
+
+                if googleCalendar.estado.conectado {
+                    listaDeReunioesGoogleCalendar(googleCalendar)
+                }
+
+                Text("Conectado, o Papagaio pode ver suas reuniões futuras do Google Calendar e importá-las para a biblioteca — apenas título, data e participantes. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Google.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        } else {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Google Calendar", systemImage: "calendar")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                Text("A biblioteca ainda está abrindo — a conexão com o Google Calendar aparece aqui em instantes.")
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
@@ -391,6 +437,170 @@ struct ConfiguracoesView: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func estadoDaConexaoGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel?) -> some View {
+        if let googleCalendar {
+        switch googleCalendar.estado {
+        case .desconectado:
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text("Importe reuniões futuras do Google Calendar para a biblioteca.")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !CredenciaisGoogle.estaConfigurado {
+                    Label("Client ID/Secret não configurados", systemImage: "exclamationmark.triangle.fill")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.aviso)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    Task { await googleCalendar.conectar(biblioteca: biblioteca!) }
+                } label: {
+                    Label("Conectar conta Google…", systemImage: "person.badge.plus")
+                }
+                .disabled(!CredenciaisGoogle.estaConfigurado)
+                .help("Abre o navegador para autorizar o Papagaio na sua conta Google.")
+            }
+
+        case .conectando:
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Autorize no navegador e volte ao Papagaio…")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+        case let .falhou(mensagem):
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Label(mensagem, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await googleCalendar.conectar(biblioteca: biblioteca!) }
+                } label: {
+                    Label("Tentar novamente", systemImage: "arrow.clockwise")
+                }
+            }
+
+        case let .conectado(conta):
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(conta.email)
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+                }
+
+                Spacer()
+
+                Button("Desconectar") {
+                    selecionadasGoogle.removeAll()
+                    Task { await googleCalendar.desconectar() }
+                }
+                .buttonStyle(.bordered)
+                .help("Apaga as credenciais do Google Calendar do Keychain.")
+            }
+        }
+    }
+}
+
+    @ViewBuilder
+    private func listaDeReunioesGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                Text("Reuniões futuras (próximos 90 dias)")
+                    .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
+
+                Spacer()
+
+                Button {
+                    Task { await googleCalendar.recarregar() }
+                } label: {
+                    Label("Atualizar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.destaque)
+            }
+
+            if googleCalendar.carregandoReunioes {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
+                    ProgressView().controlSize(.small)
+                    Text("Carregando reuniões…")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+            } else if googleCalendar.reunioes.isEmpty {
+                Text("Nenhuma reunião futura encontrada.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            } else {
+                Text("\(googleCalendar.reunioes.count) reunião(ões) com participantes — sincronizadas automaticamente na aba Calendário da biblioteca.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let falha = googleCalendar.falhaDeImportacao {
+                Label(falha, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func linhaDeReuniaoGoogleCalendar(_ reuniao: ReuniaoExterna) -> some View {
+        let marcada = Binding(
+            get: { selecionadasGoogle.contains(reuniao.id) },
+            set: { marcada in
+                if marcada {
+                    selecionadasGoogle.insert(reuniao.id)
+                } else {
+                    selecionadasGoogle.remove(reuniao.id)
+                }
+            }
+        )
+
+        return Toggle(isOn: marcada) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text(reuniao.titulo)
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(1)
+
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Text(reuniao.data.formatted(date: .abbreviated, time: .shortened))
+                    if !reuniao.participantes.isEmpty {
+                        Text("·")
+                        Text(reuniao.participantes.prefix(3).joined(separator: ", "))
+                    }
+                }
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private func importarSelecionadasGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel) {
+        let ids = selecionadasGoogle
+        Task {
+            guard let biblioteca else { return }
+            let salvas = await googleCalendar.importar(ids, biblioteca: biblioteca)
+            if salvas > 0 {
+                selecionadasGoogle.subtract(ids)
+            }
+        }
+    }
+
+    @State private var selecionadasGoogle: Set<String> = []
 }
 
 /// Botão de tema com uma miniatura da interface no esquema correspondente.
