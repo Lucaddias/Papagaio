@@ -76,3 +76,15 @@ struct SeletorDeEquipeView: View {
         .background(PapagaioTema.fundo)
     }
 }
+
+#Preview("Seletor de equipe") {
+    SeletorDeEquipeView(
+        equipeAtiva: .init(id: "produto", nome: "Produto", papel: "Administrador", quantidadeDeMembros: 4),
+        equipes: [
+            .init(id: "produto", nome: "Produto", papel: "Administrador", quantidadeDeMembros: 4),
+            .init(id: "pesquisa", nome: "Pesquisa", papel: "Membro", quantidadeDeMembros: 8)
+        ],
+        aoCancelar: {},
+        aoSelecionar: { _ in }
+    )
+}

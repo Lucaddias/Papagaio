@@ -99,12 +99,7 @@ struct ContentView: View {
                 barraSuperior
 
                 if let falhaDeAbertura {
-                    Label(falhaDeAbertura, systemImage: "xmark.octagon.fill")
-                        .font(.callout)
-                        .foregroundStyle(PapagaioTema.perigo)
-                        .padding(PapagaioTema.Espaco.largo)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PapagaioTema.perigo.opacity(0.08))
+                    mensagemDeErro(falhaDeAbertura)
                 }
 
                 conteudoDaTela
@@ -266,6 +261,26 @@ struct ContentView: View {
         }
     }
 
+    private func mensagemDeErro(_ mensagem: String) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            Label(mensagem, systemImage: "xmark.octagon.fill")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.perigo)
+
+            Spacer()
+
+            Button("Fechar", systemImage: "xmark") {
+                falhaDeAbertura = nil
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(PapagaioTema.perigo)
+            .help("Dispensar mensagem de erro")
+        }
+        .padding(PapagaioTema.Espaco.largo)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PapagaioTema.perigo.opacity(0.08))
+    }
+
     private var barraSuperior: some View {
         BarraSuperiorPapagaioView(
             consulta: $consulta, legendaAtiva: $legendaDaBarra,
@@ -313,11 +328,13 @@ struct ContentView: View {
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
+                               aoEntrarComCodigo: entrarNaEquipeComCodigo,
                                aoSair: sairDoPerfil, aoExcluirConta: excluirConta)
         case .equipe:
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
-                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros)
+                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
+                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe)
         }
     }
 
@@ -541,7 +558,8 @@ struct ContentView: View {
             nome: nomeLimpo,
             papel: "Administrador",
             quantidadeDeMembros: 1,
-            espacoID: UUID().uuidString
+            espacoID: UUID().uuidString,
+            codigoDeEntrada: EquipeDisponivel.novoCodigoDeEntrada()
         )
         Task { @MainActor in
             do {
@@ -551,6 +569,33 @@ struct ContentView: View {
                 usarEquipe(publicada)
             } catch {
                 falhaDeAbertura = "Não foi possível criar a equipe no iCloud: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func entrarNaEquipeComCodigo(_ codigo: String) {
+        Task { @MainActor in
+            do {
+                let equipe = try await servicoDeEquipesCloudKit.entrarNaEquipe(com: codigo)
+                EquipesDoUsuario.incluirOuAtualizar(equipe)
+                equipes = EquipesDoUsuario.carregar()
+                usarEquipe(equipe)
+            } catch {
+                falhaDeAbertura = "Não foi possível entrar na equipe: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func atualizarConfiguracoesDaEquipe(_ equipe: EquipeDisponivel, configuracoes: ConfiguracoesDaEquipe) {
+        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
+        equipes[indice].configuracoes = configuracoes
+        EquipesDoUsuario.salvar(equipes)
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else { return }
+        Task { @MainActor in
+            do {
+                try await servicoDeEquipesCloudKit.atualizarConfiguracoes(configuracoes, da: equipes[indice])
+            } catch {
+                falhaDeAbertura = "As configurações foram salvas neste Mac, mas não puderam ser sincronizadas: \(error.localizedDescription)"
             }
         }
     }

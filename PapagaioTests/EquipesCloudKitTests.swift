@@ -37,4 +37,19 @@ func equipeLegadaNaoExigeMetadadosCloudKit() throws {
 
     #expect(equipe.zonaCloudKit == nil)
     #expect(equipe.compartilhamentoCloudKit == nil)
+    #expect(equipe.configuracoes.visibilidadeDosArquivos == .todosOsMembros)
+}
+
+@Test("Código de equipe ignora hífens e maiúsculas")
+func codigoDeEquipeEhNormalizado() {
+    #expect(ServicoDeEquipesCloudKit.normalizar(" pap-a1b2-c3d4 ") == "PAPA1B2C3D4")
+}
+
+@Test("Código novo de equipe tem seis caracteres sem símbolos ambíguos")
+func codigoNovoDaEquipeTemSeisCaracteres() {
+    let codigo = EquipeDisponivel.novoCodigoDeEntrada()
+    let alfabeto = Set("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
+
+    #expect(codigo.count == 6)
+    #expect(codigo.allSatisfy { alfabeto.contains($0) })
 }
