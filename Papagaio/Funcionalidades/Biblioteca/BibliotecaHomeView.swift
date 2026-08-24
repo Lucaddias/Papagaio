@@ -25,6 +25,10 @@ struct BibliotecaHomeView: View {
     /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
     /// da gravação.
     @Binding var focoNaGravacao: Bool
+    /// Abre o formulário de ficha da entrevista para o arquivo indicado — hoje
+    /// só chamado a partir do selo "Concluído" do próprio cartão, nunca
+    /// sozinho ao fim do processamento.
+    let aoAbrirFicha: (Arquivo) -> Void
 
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
@@ -609,14 +613,6 @@ struct BibliotecaHomeView: View {
                 ajudaDaBiblioteca
 
                 Spacer(minLength: 0)
-
-                if let biblioteca, biblioteca.processando {
-                    SeloDeStatus(
-                        texto: "Processamento em andamento",
-                        simbolo: "waveform",
-                        estilo: .destaque
-                    )
-                }
             }
 
             filtrosEPastas
@@ -686,14 +682,6 @@ struct BibliotecaHomeView: View {
             )
 
             Spacer(minLength: 16)
-
-            if let biblioteca, biblioteca.processando {
-                SeloDeStatus(
-                    texto: "Processamento em andamento",
-                    simbolo: "waveform",
-                    estilo: .destaque
-                )
-            }
 
             if let biblioteca {
                 AcoesDaLixeira(
@@ -766,7 +754,13 @@ struct BibliotecaHomeView: View {
 
                     capturaEmAndamento
 
-                    if !gravador.avisos.isEmpty {
+                    // Não na Lixeira: o aviso é sobre a captura de áudio que
+                    // acabou de rodar, não sobre nada ali. Sem este filtro,
+                    // o `else` genérico da linha acima (que também cobre
+                    // `.lixeira`, o único outro caso de `secaoSelecionada`)
+                    // deixava o aviso visível ali por alguns segundos, até
+                    // `agendarSumicoDosAvisos` zerá-lo sozinho.
+                    if !gravador.avisos.isEmpty, secaoSelecionada != .lixeira {
                         AvisosDaGravacao(avisos: gravador.avisos)
                     }
 
@@ -1029,6 +1023,9 @@ struct BibliotecaHomeView: View {
             processando: biblioteca.estaProcessando(arquivo),
             naFila: biblioteca.estaNaFila(arquivo),
             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
+            fichaPendente: biblioteca.fichaPendente(arquivo.id),
+            seloDeConclusaoRevelado: biblioteca.seloDeConclusaoRevelado(arquivo.id),
+            aoAbrirFicha: { aoAbrirFicha(arquivo) },
             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
             aoRenomear: { novoTitulo in
                 Task { await biblioteca.renomear(arquivo, para: novoTitulo) }

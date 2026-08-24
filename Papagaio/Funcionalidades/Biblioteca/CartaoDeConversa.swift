@@ -12,6 +12,18 @@ struct CartaoDeConversa: View {
     let processando: Bool
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
+    /// Verdadeiro logo após terminar de transcrever e resumir, enquanto a
+    /// ficha da entrevista (título, entrevistado, participantes...) ainda não
+    /// foi aberta nem preenchida. Mostra o selo "Concluído" clicável — o
+    /// formulário não abre mais sozinho, não importa a tela em que a pessoa
+    /// esteja.
+    let fichaPendente: Bool
+    /// Verdadeiro depois que a tarja já teve tempo de subir até 100% (ver
+    /// `Biblioteca.marcarFichaPendente`) — só então o selo "Concluído"
+    /// cobre o cartão. Vem de `Biblioteca`, e não de um `@State` local,
+    /// para sobreviver a recriações da view sem replayar a animação.
+    let seloDeConclusaoRevelado: Bool
+    let aoAbrirFicha: () -> Void
     let aoReprocessar: () -> Void
     let aoRenomear: (String) -> Void
     let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void
@@ -68,6 +80,9 @@ struct CartaoDeConversa: View {
         processando: Bool,
         naFila: Bool,
         emOperacaoDeLixeira: Bool,
+        fichaPendente: Bool,
+        seloDeConclusaoRevelado: Bool,
+        aoAbrirFicha: @escaping () -> Void,
         aoReprocessar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
         aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
@@ -87,6 +102,9 @@ struct CartaoDeConversa: View {
         self.processando = processando
         self.naFila = naFila
         self.emOperacaoDeLixeira = emOperacaoDeLixeira
+        self.fichaPendente = fichaPendente
+        self.seloDeConclusaoRevelado = seloDeConclusaoRevelado
+        self.aoAbrirFicha = aoAbrirFicha
         self.aoReprocessar = aoReprocessar
         self.aoRenomear = aoRenomear
         self.aoAtualizarMetadados = aoAtualizarMetadados
@@ -411,6 +429,40 @@ struct CartaoDeConversa: View {
                 .padding(.bottom, Self.alturaDaBarra)
             }
         }
+        // O véu de "Concluído": mesma linguagem visual do véu de
+        // processamento logo acima (esmaece o cartão, selo + botão no
+        // centro) — só que verde, e sem cancelar nada: aqui o processamento
+        // já terminou, o clique é só o convite para abrir a ficha.
+        //
+        // Antes disso o formulário abria sozinho, por cima de qualquer tela.
+        // Agora ele só abre quando a pessoa decide, clicando neste botão.
+        //
+        // Vem **antes** da tarja no encadeamento (e não depois), pelo mesmo
+        // motivo do véu de processamento logo acima: a tarja precisa
+        // continuar visível por cima do véu, não esmaecida atrás dele — é
+        // ela quem mostra a barra subindo até 100% no instante em que este
+        // véu aparece.
+        .overlay {
+            if fichaPendente, seloDeConclusaoRevelado {
+                ZStack {
+                    PapagaioTema.fundo.opacity(0.6)
+                        .allowsHitTesting(false)
+
+                    VStack(spacing: PapagaioTema.Espaco.medio) {
+                        SeloDeStatus(
+                            texto: "Concluído",
+                            simbolo: "checkmark.circle.fill",
+                            estilo: .sucesso
+                        )
+                        .allowsHitTesting(false)
+
+                        botaoAbrirFicha
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, Self.alturaDaBarra)
+            }
+        }
         // A tarja do modelo compacto: sem faixa de capa, é ela que carrega a
         // cor da conversa/pasta — o mesmo papel que a faixa tinha no modelo
         // com capa, só que reduzido a uma lateral. Encostada nos quatro
@@ -612,12 +664,33 @@ struct CartaoDeConversa: View {
                 inicio: progresso.inicio,
                 estimativa: progresso.estimativa
             )
+        } else if fichaPendente, !seloDeConclusaoRevelado {
+            // Acabou de terminar, mas o selo "Concluído" ainda não foi
+            // revelado (ver `Biblioteca.arquivosComSeloRevelado`) — força a
+            // barra a subir até 100% agora, em vez de cortar seca no meio
+            // do caminho só porque o processamento real terminou antes da
+            // estimativa. Passado esse momento, `seloDeConclusaoRevelado`
+            // vira `true` e este cartão nunca mais entra por aqui — mesmo
+            // que a view seja recriada por causa do processamento de outro
+            // arquivo qualquer, porque a resposta não mora num `@State`
+            // local, mora no `Biblioteca`.
+            TarjaDeProgressoDoCartao(
+                cor: corDaTarjaLateral,
+                inicio: .now,
+                estimativa: 1,
+                concluido: true
+            )
         } else if naFila {
             // Ainda não começou: a tarja fica visível, mas apagada — a cor
             // plena é reservada para quem já está em andamento ou pronto.
-            Rectangle()
-                .fill(corDaTarjaLateral.opacity(0.35))
-                .frame(width: 4)
+            // Fundo opaco atrás da cor translúcida pelo mesmo motivo do
+            // `conteudo` de `TarjaDeProgressoDoCartao`: sem ele, o que está
+            // atrás (a borda do rodapé de atalhos) aparecia como resíduo.
+            ZStack {
+                PapagaioTema.superficie
+                corDaTarjaLateral.opacity(0.35)
+            }
+            .frame(width: 4)
         } else {
             Rectangle()
                 .fill(corDaTarjaLateral)
@@ -657,6 +730,35 @@ struct CartaoDeConversa: View {
         .contentShape(Capsule())
         .highPriorityGesture(TapGesture().onEnded(aoMoverParaLixeira))
         .help("Cancelar o processamento e mover para a lixeira")
+    }
+
+    /// Botão que substitui o formulário automático de fim de processamento.
+    /// Antes, terminar de transcrever e resumir abria a ficha da entrevista
+    /// sozinha, por cima de qualquer tela — mesmo que a pessoa estivesse em
+    /// outra conversa, em tarefas, em configurações. Agora só aparece este
+    /// botão no centro do cartão (mesmo lugar e estilo do "Cancelar" durante
+    /// o processamento), e é a pessoa quem clica para abrir a ficha quando
+    /// quiser.
+    ///
+    /// `highPriorityGesture`, mesmo motivo do `botaoCancelarProcessamento`:
+    /// este botão mora dentro do `NavigationLink` do cartão.
+    private var botaoAbrirFicha: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Clique para ver a ficha")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(PapagaioTema.sucesso)
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.vertical, PapagaioTema.Espaco.curto)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule().stroke(PapagaioTema.sucesso.opacity(0.4), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+        .highPriorityGesture(TapGesture().onEnded(aoAbrirFicha))
+        .help("Preencher a ficha da entrevista")
     }
 
     /// O "i" ao lado da data, na cor do cartão (a mesma da tarja) — mesma
@@ -1635,6 +1737,13 @@ struct TarjaDeProgressoDoCartao: View {
     let cor: Color
     let inicio: Date
     let estimativa: TimeInterval
+    /// Verdadeiro só na transição final, quando o processamento de fato
+    /// terminou mas a fração por tempo (`fracao`, abaixo) ainda não tinha
+    /// chegado a 100% — ela satura de propósito e quase nunca bate com o
+    /// fim real. Nesse caso a tarja ignora o relógio e sobe direto para
+    /// 100%, uma vez só, em vez de seguir tentando estimar algo que já
+    /// aconteceu.
+    var concluido: Bool = false
 
     /// O que a tarja mostra agora — separado da fração real (`fracao`,
     /// calculada a cada tique do relógio) para a barra poder nascer do zero
@@ -1649,66 +1758,88 @@ struct TarjaDeProgressoDoCartao: View {
     @State private var fracaoExibida: Double = 0
 
     var body: some View {
-        TimelineView(.periodic(from: inicio, by: 1)) { contexto in
-            let fracao = BarraDeProgressoDoProcessamento.fracao(
-                decorrido: contexto.date.timeIntervalSince(inicio),
-                estimativa: estimativa
-            )
-
-            GeometryReader { geometria in
-                let alturaPreenchida = max(6, geometria.size.height * fracaoExibida)
-
-                ZStack(alignment: .bottom) {
-                    Rectangle().fill(cor.opacity(0.22))
-
-                    Rectangle()
-                        .fill(cor)
-                        .frame(height: alturaPreenchida)
+        if concluido {
+            conteudo
+                .onAppear {
+                    withAnimation(.easeOut(duration: 0.35)) {
+                        fracaoExibida = 1
+                    }
                 }
+        } else {
+            TimelineView(.periodic(from: inicio, by: 1)) { contexto in
+                let fracao = BarraDeProgressoDoProcessamento.fracao(
+                    decorrido: contexto.date.timeIntervalSince(inicio),
+                    estimativa: estimativa
+                )
 
-                // O número sobe junto com o preenchimento, e não fica
-                // parado no meio da tarja — é ele quem "anda" com a barra,
-                // não um rótulo estático do lado. `.position`, e não
-                // alinhamento + offset: os dois combinados ficam difíceis de
-                // acertar o sinal certo; posição absoluta é direta.
-                Text("\(Int((fracaoExibida * 100).rounded()))%")
-                    .font(.system(size: 10, weight: .bold))
-                    .monospacedDigit()
-                    // Branco fixo, com uma sombra escura por baixo — e não
-                    // `cor.textoLegivel`. O número não fica só sobre o
-                    // preenchimento sólido: perto do início do
-                    // processamento ele cai sobre a trilha translúcida
-                    // (22% de opacidade), que é um fundo bem mais escuro e
-                    // dessaturado que a cor cheia — contraste calculado para
-                    // uma coisa aparecia errado sobre a outra, e o número
-                    // sumia quase na própria cor da tarja. A sombra garante
-                    // leitura nos dois fundos, sólido ou translúcido.
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.55), radius: 1.5)
-                    .fixedSize()
-                    .rotationEffect(.degrees(-90))
-                    .position(
-                        x: geometria.size.width / 2,
-                        // 12pt abaixo do topo do preenchimento: perto da
-                        // ponta de cima, sem sair da área colorida em quase
-                        // nenhum estágio do andamento.
-                        y: max(12, geometria.size.height - alturaPreenchida + 12)
-                    )
-            }
-            .animation(.easeOut(duration: 0.3), value: fracaoExibida)
-            .onChange(of: fracao) { _, novaFracao in
-                fracaoExibida = novaFracao
-            }
-            .onAppear {
-                guard fracao > 0 else { return }
-                // A entrada é mais lenta que o tique normal (0.3s): 0% até a
-                // fração real é um salto maior que "mais um segundo se
-                // passou", e merece se notar como uma subida, não um pulo.
-                withAnimation(.easeOut(duration: 0.7)) {
-                    fracaoExibida = fracao
-                }
+                conteudo
+                    .onChange(of: fracao) { _, novaFracao in
+                        fracaoExibida = novaFracao
+                    }
+                    .onAppear {
+                        guard fracao > 0 else { return }
+                        // A entrada é mais lenta que o tique normal (0.3s):
+                        // 0% até a fração real é um salto maior que "mais
+                        // um segundo se passou", e merece se notar como uma
+                        // subida, não um pulo.
+                        withAnimation(.easeOut(duration: 0.7)) {
+                            fracaoExibida = fracao
+                        }
+                    }
             }
         }
+    }
+
+    private var conteudo: some View {
+        GeometryReader { geometria in
+            let alturaPreenchida = max(6, geometria.size.height * fracaoExibida)
+
+            ZStack(alignment: .bottom) {
+                // Fundo opaco antes da trilha translúcida: sem ele, a
+                // opacidade de 22% deixava aparecer o que está por trás da
+                // tarja (a borda do rodapé de atalhos, na ponta de baixo do
+                // cartão) como um resíduo de linha por cima da própria
+                // barra — a trilha precisa parecer apagada, não ser de
+                // fato transparente.
+                Rectangle().fill(PapagaioTema.superficie)
+
+                Rectangle().fill(cor.opacity(0.22))
+
+                Rectangle()
+                    .fill(cor)
+                    .frame(height: alturaPreenchida)
+            }
+
+            // O número sobe junto com o preenchimento, e não fica
+            // parado no meio da tarja — é ele quem "anda" com a barra,
+            // não um rótulo estático do lado. `.position`, e não
+            // alinhamento + offset: os dois combinados ficam difíceis de
+            // acertar o sinal certo; posição absoluta é direta.
+            Text("\(Int((fracaoExibida * 100).rounded()))%")
+                .font(.system(size: 10, weight: .bold))
+                .monospacedDigit()
+                // Branco fixo, com uma sombra escura por baixo — e não
+                // `cor.textoLegivel`. O número não fica só sobre o
+                // preenchimento sólido: perto do início do
+                // processamento ele cai sobre a trilha translúcida
+                // (22% de opacidade), que é um fundo bem mais escuro e
+                // dessaturado que a cor cheia — contraste calculado para
+                // uma coisa aparecia errado sobre a outra, e o número
+                // sumia quase na própria cor da tarja. A sombra garante
+                // leitura nos dois fundos, sólido ou translúcido.
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.55), radius: 1.5)
+                .fixedSize()
+                .rotationEffect(.degrees(-90))
+                .position(
+                    x: geometria.size.width / 2,
+                    // 12pt abaixo do topo do preenchimento: perto da
+                    // ponta de cima, sem sair da área colorida em quase
+                    // nenhum estágio do andamento.
+                    y: max(12, geometria.size.height - alturaPreenchida + 12)
+                )
+        }
+        .animation(.easeOut(duration: 0.3), value: fracaoExibida)
         // Mais espessa que a tarja parada (4pt): em processamento ela é o
         // único sinal de que algo está acontecendo, e precisa se notar sem
         // precisar ler a porcentagem. Ainda dentro do cartão — quem arredonda

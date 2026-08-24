@@ -73,6 +73,10 @@ struct ArquivoDetalheView: View {
     @State private var trechoEmEdicao: UUID?
     @State private var textoDoTrechoEmEdicao = ""
     @State private var falaEmEdicao: UUID?
+    /// Recarrega os nomes das vozes depois de renomear: assim como a ficha
+    /// (`versaoDaFicha`), o mapa vem de `UserDefaults`, que não notifica a
+    /// view sozinho.
+    @State private var versaoDosNomesDeVoz = 0
     @Environment(\.accessibilityReduceMotion) private var reduzirMovimento
     @Environment(\.dismiss) private var fechar
 
@@ -107,6 +111,52 @@ struct ArquivoDetalheView: View {
     /// A conversa em falas por falante acústico — `nil` sem diarização, quando
     /// a transcrição continua em blocos de trecho.
     private var falas: [FalaDeFalante]? { FalasDaConversa.agrupar(trechos) }
+    /// Nomes escolhidos para cada voz ("S1" → "João"...) — ver `RotuloDeVoz`.
+    private var nomesDeVoz: [String: String] {
+        _ = versaoDosNomesDeVoz
+        return PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+    }
+    /// Rótulos acústicos distintos ("S1", "S2"...) que aparecem nesta
+    /// conversa, na ordem em que a diarização os numerou — alimenta o editor
+    /// "Quem é quem" acima da transcrição.
+    private var vozesDistintas: [String] {
+        var vistas = Set<String>()
+        var ordem: [String] = []
+        for palavra in trechos.flatMap(\.palavras) {
+            guard let acustico = palavra.falanteAcustico, !vistas.contains(acustico) else { continue }
+            vistas.insert(acustico)
+            ordem.append(acustico)
+        }
+        return ordem.sorted {
+            switch (Int($0.dropFirst(1)), Int($1.dropFirst(1))) {
+            case let (a?, b?) where $0.hasPrefix("S") && $1.hasPrefix("S"):
+                return a < b
+            default:
+                return $0 < $1
+            }
+        }
+    }
+    /// Nomes já digitados na ficha da entrevista — sugestões de autocomplete
+    /// para o editor de vozes, sem duplicatas.
+    private var sugestoesDeNomesDeVoz: [String] {
+        var vistos = Set<String>()
+        return (nomesDePessoas(metadados.entrevistado) + nomesDePessoas(metadados.entrevistadores))
+            .filter { vistos.insert($0).inserted }
+    }
+
+    /// Só a etiqueta de exibição muda — nada em `arquivo.trechos` é tocado.
+    /// Todas as falas daquela voz (em qualquer trecho) passam a mostrar o
+    /// nome novo, porque todas consultam o mesmo mapa (ver `RotuloDeVoz`).
+    private func renomearVoz(_ vozAcustica: String, para novoNome: String) {
+        var mapa = nomesDeVoz
+        if novoNome.isEmpty {
+            mapa.removeValue(forKey: vozAcustica)
+        } else {
+            mapa[vozAcustica] = novoNome
+        }
+        PreferenciasVisuaisDoArquivo.definirNomesDeVoz(mapa, para: arquivo.id)
+        versaoDosNomesDeVoz += 1
+    }
     private var notas: [NotaDaConversa] { notasEditaveis }
     private var podeIniciarTranscricao: Bool {
         trechos.isEmpty && !processando && !naFila
@@ -844,6 +894,7 @@ struct ArquivoDetalheView: View {
         MidiaDaConversaView(
             anexos: anexosDaGravacao + anexosDeMidia,
             aoAdicionar: selecionarMidias,
+            aoSoltarArquivos: { urls in urls.forEach(adicionarMidia) },
             aoAbrir: abrirMidia,
             aoRemover: removerMidia,
             naLixeira: midiasNaLixeiraDaConversa,
@@ -1333,10 +1384,24 @@ struct ArquivoDetalheView: View {
                 )
             }
         } else if let reprodutor {
-            if let falas {
-                transcricaoDeFalas(falas, no: reprodutor)
-            } else {
-                transcricaoDeTrechos(no: reprodutor)
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                // Só aparece quando há diarização de verdade (mais de uma
+                // voz identificada) — sem isso, "renomear a voz única" não
+                // ajuda ninguém a entender a conversa.
+                if !vozesDistintas.isEmpty {
+                    EditorDeNomesDeVoz(
+                        vozes: vozesDistintas,
+                        nomes: nomesDeVoz,
+                        sugestoes: sugestoesDeNomesDeVoz,
+                        aoRenomear: renomearVoz
+                    )
+                }
+
+                if let falas {
+                    transcricaoDeFalas(falas, no: reprodutor)
+                } else {
+                    transcricaoDeTrechos(no: reprodutor)
+                }
             }
         }
     }
@@ -1357,6 +1422,7 @@ struct ArquivoDetalheView: View {
                         ativo: falaEstaAtiva(fala, no: reprodutor),
                         palavraAtiva: palavraAtiva(fala, no: reprodutor),
                         animacao: animacaoDeInterface,
+                        nomesDeVoz: nomesDeVoz,
                         aoTocarFala: { tocar(fala, no: reprodutor) },
                         aoTocarPalavra: { palavra in
                             tocar(palavra, no: reprodutor)
@@ -1432,6 +1498,7 @@ struct ArquivoDetalheView: View {
                             // certa, não na transcrição inteira.
                             indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
                             animacao: animacaoDeInterface,
+                            nomesDeVoz: nomesDeVoz,
                             aoTocarLinha: { tocar(trecho, no: reprodutor) },
                             aoTocarPalavra: { palavra in
                                 tocar(palavra, no: reprodutor)
