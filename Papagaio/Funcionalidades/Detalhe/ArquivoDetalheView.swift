@@ -140,6 +140,10 @@ struct ArquivoDetalheView: View {
     /// A conversa em falas por falante acústico — `nil` sem diarização, quando
     /// a transcrição continua em blocos de trecho.
     private var falas: [FalaDeFalante]? { FalasDaConversa.agrupar(trechos) }
+    /// Rótulos escolhidos para cada voz acústica, persistidos por conversa.
+    private var nomesDeVoz: [String: String] {
+        PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+    }
     private var notas: [NotaDaConversa] { notasEditaveis }
     private var podeIniciarTranscricao: Bool {
         trechos.isEmpty && !processando && !naFila
@@ -927,6 +931,9 @@ struct ArquivoDetalheView: View {
         MidiaDaConversaView(
             anexos: midiasDaConversaVM.todosOsAnexos,
             aoAdicionar: midiasDaConversaVM.selecionar,
+            aoSoltarArquivos: { urls in
+                urls.forEach(midiasDaConversaVM.adicionar)
+            },
             aoAbrir: midiasDaConversaVM.abrir,
             aoRemover: midiasDaConversaVM.remover,
             naLixeira: midiasDaConversaVM.naLixeira,
@@ -1187,6 +1194,7 @@ struct ArquivoDetalheView: View {
                         ativo: falaEstaAtiva(fala, no: reprodutor),
                         palavraAtiva: palavraAtiva(fala, no: reprodutor),
                         animacao: animacaoDeInterface,
+                        nomesDeVoz: nomesDeVoz,
                         aoTocarFala: { tocar(fala, no: reprodutor) },
                         aoTocarPalavra: { palavra in
                             tocar(palavra, no: reprodutor)
@@ -1262,6 +1270,7 @@ struct ArquivoDetalheView: View {
                             // certa, não na transcrição inteira.
                             indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
                             animacao: animacaoDeInterface,
+                            nomesDeVoz: nomesDeVoz,
                             aoTocarLinha: { tocar(trecho, no: reprodutor) },
                             aoTocarPalavra: { palavra in
                                 tocar(palavra, no: reprodutor)
