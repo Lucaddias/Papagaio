@@ -3,6 +3,23 @@ import PapagaioCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// O formulário da ficha da entrevista num valor só. Os campos espelham os do
+/// `EditorDeInformacoesDoCard`; juntá-los aqui faz abrir, salvar e resetar o
+/// formulário virarem uma operação cada — antes eram dez estados soltos que
+/// precisavam andar em sincronia na mão.
+struct FichaDaEntrevista {
+    var titulo = ""
+    var entrevistado = ""
+    var emailDoEntrevistado = ""
+    var entrevistadores = ""
+    var emailDosEntrevistadores = ""
+    var descricao = ""
+    var formato = ""
+    var participantes = "1"
+    var data = Date()
+    var duracao = ""
+}
+
 /// Coordenador da interface inicial.
 ///
 /// Mantém a identidade dos view models e as integrações de sistema (navegação,
@@ -26,21 +43,16 @@ struct ContentView: View {
     @State private var mostrandoImportador = false
     @State private var arquivoParaConfigurar: Arquivo?
     @State private var arquivosAguardandoFicha: Set<ArquivoID> = []
-    @State private var tituloDaFicha = ""
-    @State private var entrevistadoDaFicha = ""
-    @State private var emailDoEntrevistadoDaFicha = ""
-    @State private var entrevistadoresDaFicha = ""
-    @State private var emailDosEntrevistadoresDaFicha = ""
-    @State private var descricaoDaFicha = ""
-    @State private var formatoDaFicha = ""
-    @State private var participantesDaFicha = "1"
-    @State private var dataDaFicha = Date()
-    @State private var duracaoDaFicha = ""
+    /// O formulário da ficha num valor só: abrir, salvar e resetar viram uma
+    /// operação cada, no lugar de dez estados soltos que precisavam andar em
+    /// sincronia na mão.
+    @State private var ficha = FichaDaEntrevista()
     @State private var consulta = ""
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
+    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -174,10 +186,33 @@ struct ContentView: View {
             alturaDoPlayer = altura
         }
         .frame(minWidth: 460, minHeight: 520)
+        // Atalhos globais da janela: ⌘R alterna a gravação e ⌘[ volta um
+        // passo, de qualquer tela. São botões invisíveis de propósito —
+        // existem só para o sistema rotear as teclas; as ações vivem nos
+        // mesmos lugares de sempre (selo, barra superior).
+        .background {
+            Group {
+                Button("") {
+                    Task { await aoAlternarGravacao() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+
+                Button("", action: voltar)
+                    .keyboardShortcut("[", modifiers: .command)
+            }
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+        }
         // `nil` em "Sistema": sem esquema preferido a janela herda a aparência
         // do Mac. Nos outros dois casos isto fixa a aparência da janela, e as
         // cores dinâmicas do tema resolvem em cima dela.
         .preferredColorScheme(aparencia.wrappedValue.esquemaPreferido)
+        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitAceita)) { notificacao in
+            guard let equipe = notificacao.object as? EquipeDisponivel else { return }
+            equipes = EquipesDoUsuario.carregar()
+            usarEquipe(equipe)
+        }
         .task {
             notificacoes.preparar()
             perfil.iniciar()
@@ -188,7 +223,10 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $mostrandoImportador,
-            allowedContentTypes: [.audio, .mpeg4Audio, .mp3, .wav]
+            // Sai da mesma lista do arraste: antes o painel aceitava menos
+            // formatos que o drop, e o mesmo arquivo entrava por um caminho e
+            // era recusado pelo outro.
+            allowedContentTypes: Self.tiposDeAudio
         ) { resultado in
             guard case let .success(url) = resultado,
                   url.startAccessingSecurityScopedResource()
@@ -204,16 +242,16 @@ struct ContentView: View {
         )) {
             EditorDeInformacoesDoCard(
                 modo: .nova,
-                titulo: $tituloDaFicha,
-                entrevistado: $entrevistadoDaFicha,
-                emailDoEntrevistado: $emailDoEntrevistadoDaFicha,
-                entrevistadores: $entrevistadoresDaFicha,
-                emailDosEntrevistadores: $emailDosEntrevistadoresDaFicha,
-                descricao: $descricaoDaFicha,
-                formato: $formatoDaFicha,
-                participantes: $participantesDaFicha,
-                data: $dataDaFicha,
-                duracao: $duracaoDaFicha,
+                titulo: $ficha.titulo,
+                entrevistado: $ficha.entrevistado,
+                emailDoEntrevistado: $ficha.emailDoEntrevistado,
+                entrevistadores: $ficha.entrevistadores,
+                emailDosEntrevistadores: $ficha.emailDosEntrevistadores,
+                descricao: $ficha.descricao,
+                formato: $ficha.formato,
+                participantes: $ficha.participantes,
+                data: $ficha.data,
+                duracao: $ficha.duracao,
                 aoCancelar: { arquivoParaConfigurar = nil },
                 aoSalvar: salvarFichaDaEntrevista
             )
@@ -334,6 +372,7 @@ struct ContentView: View {
                 }
             }
             await nova.preparar()
+            atualizarEspacoDaBiblioteca()
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
@@ -343,16 +382,18 @@ struct ContentView: View {
         biblioteca?.limparFichaPendente(arquivo.id)
         let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
         arquivoParaConfigurar = arquivo
-        tituloDaFicha = arquivo.resumo?.titulo ?? arquivo.titulo
-        entrevistadoDaFicha = metadados.entrevistado
-        emailDoEntrevistadoDaFicha = metadados.emailDoEntrevistado
-        entrevistadoresDaFicha = metadados.entrevistadores
-        emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
-        descricaoDaFicha = metadados.descricao
-        formatoDaFicha = metadados.formato
-        participantesDaFicha = "\(max(1, metadados.participantes ?? 1))"
-        dataDaFicha = arquivo.criadoEm
-        duracaoDaFicha = arquivo.duracao.comoDuracaoPorExtenso
+        ficha = FichaDaEntrevista(
+            titulo: arquivo.resumo?.titulo ?? arquivo.titulo,
+            entrevistado: metadados.entrevistado,
+            emailDoEntrevistado: metadados.emailDoEntrevistado,
+            entrevistadores: metadados.entrevistadores,
+            emailDosEntrevistadores: metadados.emailDosEntrevistadores,
+            descricao: metadados.descricao,
+            formato: metadados.formato,
+            participantes: "\(max(1, metadados.participantes ?? 1))",
+            data: arquivo.criadoEm,
+            duracao: arquivo.duracao.comoDuracaoPorExtenso
+        )
     }
 
     private func salvarFichaDaEntrevista() {
@@ -360,7 +401,7 @@ struct ContentView: View {
               let biblioteca
         else { return }
 
-        let tituloLimpo = tituloDaFicha.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tituloLimpo = ficha.titulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
         // Participantes deixou de ser um campo digitável na ficha: sai da soma
@@ -368,15 +409,15 @@ struct ContentView: View {
         // deixava sempre "1", independente de quantos nomes havia.
         let quantidade = max(
             1,
-            nomesInformados(entrevistadoDaFicha) + nomesInformados(entrevistadoresDaFicha)
+            nomesInformados(ficha.entrevistado) + nomesInformados(ficha.entrevistadores)
         )
         let metadados = MetadadosVisuaisDoArquivo(
-            entrevistado: entrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            emailDoEntrevistado: emailDoEntrevistadoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            entrevistadores: entrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            emailDosEntrevistadores: emailDosEntrevistadoresDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            descricao: descricaoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
-            formato: formatoDaFicha.trimmingCharacters(in: .whitespacesAndNewlines),
+            entrevistado: ficha.entrevistado.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDoEntrevistado: ficha.emailDoEntrevistado.trimmingCharacters(in: .whitespacesAndNewlines),
+            entrevistadores: ficha.entrevistadores.trimmingCharacters(in: .whitespacesAndNewlines),
+            emailDosEntrevistadores: ficha.emailDosEntrevistadores.trimmingCharacters(in: .whitespacesAndNewlines),
+            descricao: ficha.descricao.trimmingCharacters(in: .whitespacesAndNewlines),
+            formato: ficha.formato.trimmingCharacters(in: .whitespacesAndNewlines),
             participantes: quantidade
         )
 
@@ -392,7 +433,7 @@ struct ContentView: View {
         // A duração não é editável na ficha: continua sendo a do próprio áudio.
         let duracao = arquivo.duracao
         Task {
-            await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: dataDaFicha, duracao: duracao)
+            await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: ficha.data, duracao: duracao)
             await MainActor.run {
                 arquivoParaConfigurar = nil
                 // Depois de preencher a ficha, a próxima coisa que se quer
@@ -430,9 +471,18 @@ struct ContentView: View {
         }
     }
 
+    /// As extensões aceitas na importação — única fonte de verdade, usada
+    /// pelo `.fileImporter` (via `tiposDeAudio`) e pelo filtro do arraste.
     private static let extensoesDeAudio: Set<String> = [
         "m4a", "mp3", "wav", "aac", "aiff", "aif", "caf", "flac", "mp4", "mov",
     ]
+
+    /// Os mesmos formatos do arraste, como `UTType`, para o painel de
+    /// importação. Extensão sem tipo conhecido não entra no painel — o
+    /// caminho do arraste continua cobrindo.
+    private static var tiposDeAudio: [UTType] {
+        extensoesDeAudio.sorted().compactMap { UTType(filenameExtension: $0) }
+    }
 
     private func abrirLixeira() {
         telaSelecionada = .biblioteca
@@ -456,18 +506,25 @@ struct ContentView: View {
 
     private func selecionarPerfilPessoal() {
         contextoDaConta = .perfil
+        atualizarEspacoDaBiblioteca()
     }
 
     /// Entra no contexto de equipe mesmo sem equipe alguma — é lá que mora o
     /// estado vazio que convida a criar a primeira.
     private func selecionarEquipe() {
         contextoDaConta = .equipe
-        if let equipeAtiva { equipeAtivaID = equipeAtiva.id }
+        if let equipeAtiva {
+            equipeAtivaID = equipeAtiva.id
+            garantirEspacoParaEquipe(id: equipeAtiva.id)
+            atualizarEspacoDaBiblioteca()
+        }
     }
 
     private func usarEquipe(_ equipe: EquipeDisponivel) {
         contextoDaConta = .equipe
         equipeAtivaID = equipe.id
+        garantirEspacoParaEquipe(id: equipe.id)
+        atualizarEspacoDaBiblioteca()
     }
 
     private func adicionarEquipe(nome: String) {
@@ -483,17 +540,50 @@ struct ContentView: View {
             id: "\(base)-\(UUID().uuidString.prefix(6))",
             nome: nomeLimpo,
             papel: "Administrador",
-            quantidadeDeMembros: 1
+            quantidadeDeMembros: 1,
+            espacoID: UUID().uuidString
         )
-        equipes.append(nova)
-        EquipesDoUsuario.salvar(equipes)
-        usarEquipe(nova)
+        Task { @MainActor in
+            do {
+                let publicada = try await servicoDeEquipesCloudKit.criarWorkspace(para: nova)
+                equipes.append(publicada)
+                EquipesDoUsuario.salvar(equipes)
+                usarEquipe(publicada)
+            } catch {
+                falhaDeAbertura = "Não foi possível criar a equipe no iCloud: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
         guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
         equipes[indice].quantidadeDeMembros = quantidade
         EquipesDoUsuario.salvar(equipes)
+    }
+
+    private func garantirEspacoParaEquipe(id: String) {
+        guard let indice = equipes.firstIndex(where: { $0.id == id }),
+              UUID(uuidString: equipes[indice].espacoID ?? "") == nil
+        else { return }
+        equipes[indice].espacoID = UUID().uuidString
+        EquipesDoUsuario.salvar(equipes)
+    }
+
+    private func atualizarEspacoDaBiblioteca() {
+        guard let biblioteca else { return }
+        let espaco: EspacoID
+        let equipeParaSincronizar: EquipeDisponivel?
+        if contextoDaConta == .equipe,
+           let equipe = equipeAtiva,
+           let texto = equipe.espacoID,
+           let id = UUID(uuidString: texto) {
+            espaco = EspacoID(rawValue: id)
+            equipeParaSincronizar = equipe.zonaCloudKit == nil ? nil : equipe
+        } else {
+            espaco = Biblioteca.espacoPessoal()
+            equipeParaSincronizar = nil
+        }
+        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
     }
 
     private func sairDoPerfil() {
@@ -512,16 +602,9 @@ struct ContentView: View {
 
         try await biblioteca?.excluirDadosDaConta()
 
-        for equipe in equipes {
-            MembrosDasEquipes.remover(equipeID: equipe.id)
-        }
-        EquipesDoUsuario.remover()
-        TarefasDaConversa.removerTodas()
-        MidiasDaConversa.removerTodas()
-        PreferenciasVisuaisDoArquivo.removerTodas()
-        LixeiraDeMidia.limparRegistros()
-        LixeiraDeTarefas.esvaziar()
-        UserDefaults.standard.removeObject(forKey: "espacoIndividual")
+        // Todos os stores de dados da conta num caminho só — store novo se
+        // registra lá, não aqui.
+        LimpezaDeConta.executar()
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()

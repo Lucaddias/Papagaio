@@ -38,6 +38,12 @@ struct DetectorDeAtividadeDeVozTests {
         )
     }
 
+    @Test("Lote do Silero é limitado para não duplicar o áudio inteiro")
+    func loteDoSileroTemLimiteDeMemoria() {
+        #expect(DetectorDeAtividadeDeVoz.quadrosPorLoteDoSilero > 0)
+        #expect(DetectorDeAtividadeDeVoz.quadrosPorLoteDoSilero <= 128)
+    }
+
     // MARK: - Aceitação: fala real
 
     @Test("Aceita fala real da fixture (TTS)")

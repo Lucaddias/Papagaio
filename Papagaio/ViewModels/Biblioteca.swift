@@ -23,6 +23,11 @@ final class Biblioteca {
     private(set) var iniciadoEm: [UUID: Date] = [:]
     private(set) var erros: [UUID: String] = [:]
 
+    /// Falha ao abrir a lista do banco. Observável por conta própria —
+    /// dentro do dicionário `erros` (chaveado por arquivo) ela não tinha
+    /// dono e a interface nunca a via.
+    private(set) var erroDeCarregamento: String?
+
     /// Whisper e Qwen continuam pesados. A fila mantém os
     /// pedidos em ordem de chegada e permite que somente um deles carregue os
     /// modelos por vez.
@@ -103,7 +108,9 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
-    private let espaco: EspacoID
+    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
+    private var espaco: EspacoID
+    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -112,12 +119,22 @@ final class Biblioteca {
         self.repositorio = SwiftDataRepository(
             modelContainer: try SwiftDataRepository.containerLocal()
         )
-        self.espaco = Self.espacoIndividual()
+        self.espaco = Self.espacoPessoal()
+    }
+
+    /// Injeção para testes: container em memória, armazenamento temporário e
+    /// espaço isolado — sem tocar o banco nem o container reais do usuário.
+    /// O caminho de produção continua sendo o `init()` acima.
+    init(armazenamento: Armazenamento, repositorio: SwiftDataRepository, espaco: EspacoID) {
+        self.armazenamento = armazenamento
+        self.pastaDeModelos = armazenamento.pastaDeModelos
+        self.repositorio = repositorio
+        self.espaco = espaco
     }
 
     /// O espaço individual é um só e precisa sobreviver a relançamentos: sem
     /// isto, cada abertura criaria um espaço novo e a lista voltaria vazia.
-    private static func espacoIndividual() -> EspacoID {
+    static func espacoPessoal() -> EspacoID {
         let chave = "espacoIndividual"
         if let guardado = UserDefaults.standard.string(forKey: chave),
            let id = UUID(uuidString: guardado) {
@@ -126,6 +143,25 @@ final class Biblioteca {
         let novo = UUID()
         UserDefaults.standard.set(novo.uuidString, forKey: chave)
         return EspacoID(rawValue: novo)
+    }
+
+    /// Troca o acervo exibido sem misturar uma equipe ao perfil pessoal.
+    /// Processamentos em curso continuam com o arquivo que os originou; a
+    /// troca só limpa a fila visual, que pertence à biblioteca aberta.
+    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
+        let mudouDeEspaco = espaco != novoEspaco
+        self.equipeCloudKit = equipeCloudKit
+        if mudouDeEspaco {
+            filaDeProcessamento.removeAll()
+            espaco = novoEspaco
+            arquivos.removeAll()
+            arquivosNaLixeira.removeAll()
+            fases.removeAll()
+            erros.removeAll()
+            erroDaLixeira = nil
+        }
+        await carregar()
+        await baixarAtualizacoesDaEquipe()
     }
 
     // MARK: - Ciclo de vida
@@ -140,8 +176,10 @@ final class Biblioteca {
         do {
             arquivos = try await repositorio.listar(espaco: espaco)
             arquivosNaLixeira = try await repositorio.listarNaLixeira(espaco: espaco)
+            // Uma carga bem-sucedida limpa o lixo de execuções anteriores.
+            erroDeCarregamento = nil
         } catch {
-            erros[UUID()] = "Não foi possível abrir a biblioteca: \(error)"
+            erroDeCarregamento = "Não foi possível abrir a biblioteca: \(error)"
         }
     }
 
@@ -152,12 +190,6 @@ final class Biblioteca {
     /// pessoa iniciar pela aba Transcrição. As notas são criadas antes da fila,
     /// para que os saves do pipeline apenas as preservem junto de transcrição
     /// e resumo.
-    /// - Parameter dataDeGravacao: `nil` numa gravação normal — o arquivo
-    ///   nasce agora, e `criadoEm` já é a data certa. Numa importação, é a
-    ///   data real lida do arquivo original (ver `ImportadorAudio`): o
-    ///   arquivo passa a ser datado de quando foi **gravado**, não de
-    ///   quando entrou no app — e `importadoEm` guarda este segundo
-    ///   instante à parte, para a interface poder mostrar os dois.
     @discardableResult
     func registrar(
         titulo: String,
@@ -182,6 +214,7 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
+        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
@@ -197,23 +230,6 @@ final class Biblioteca {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
         else { return }
 
-        // Marcado **antes** de cancelar, e não depois.
-        //
-        // `cancelarProcessamentoDoArquivo` espera o `Task` em curso parar de
-        // verdade — e whisper/Qwen não são interrompíveis no meio de uma
-        // chamada, então essa espera pode levar um tempo real. Se a marca só
-        // viesse depois, existia uma janela em que `fases[chave]` já tinha
-        // sido limpo (lá dentro de `cancelarProcessamentoDoArquivo`) mas
-        // `operacoesDeLixeiraEmAndamento` ainda não continha o arquivo: o
-        // cartão, sem fase e sem saber que está sendo cancelado, caía no
-        // estado padrão "pronto para transcrever" — que nem mostra o botão
-        // de cancelar (só aparece com `estado.ocupado`) — em vez do
-        // indicador de "Movendo para a lixeira…". Marcando primeiro, o
-        // cartão já entra esmaecido com o spinner assim que o botão é
-        // clicado, sem passar por esse estado intermediário confuso.
-        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
-        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
-
         await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
@@ -226,6 +242,8 @@ final class Biblioteca {
         iniciadoEm[chave] = nil
         erros[chave] = nil
         erroDaLixeira = nil
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
 
         do {
             try await repositorio.moverParaLixeira(arquivo.id)
@@ -235,6 +253,7 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            await sincronizar(movido)
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
@@ -270,7 +289,8 @@ final class Biblioteca {
             restaurado.apagadoEm = nil
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
-            arquivos.sort { $0.entradaNaBiblioteca > $1.entradaNaBiblioteca }
+            arquivos.sort { $0.criadoEm > $1.criadoEm }
+            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -296,10 +316,16 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
+            if let equipeCloudKit {
+                try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit)
+            }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
+            // Sem isto o arquivo apagado deixa favorito, pasta, capa e
+            // metadados órfãos em UserDefaults para sempre.
+            PreferenciasVisuaisDoArquivo.remover(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
@@ -360,18 +386,6 @@ final class Biblioteca {
 
     // MARK: - Edição de arquivos
 
-    /// Move a pasta da gravação no disco para acompanhar o título, assim que
-    /// ele existe — "Mostrar no Finder" deve abrir num lugar reconhecível,
-    /// não num UUID. Falha em mover a pasta não pode derrubar quem chamou:
-    /// o título continua salvo mesmo que a pasta fique com o nome antigo.
-    private func renomearPastaSeNecessario(_ arquivo: inout Arquivo) {
-        let novaRelativa = armazenamento.renomearParaTitulo(
-            relativoAtual: arquivo.pastaRelativa,
-            titulo: arquivo.resumo?.titulo ?? arquivo.titulo
-        )
-        arquivo.pastaRelativa = novaRelativa
-    }
-
     func renomear(_ arquivo: Arquivo, para novoTitulo: String) async {
         let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty,
@@ -389,11 +403,11 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
-        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -423,11 +437,11 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
-        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -442,6 +456,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -461,6 +476,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -511,6 +527,7 @@ final class Biblioteca {
 
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            await sincronizar(copia)
             return copia
         } catch {
             try? FileManager.default.removeItem(at: destino)
@@ -669,7 +686,7 @@ final class Biblioteca {
         )
 
         do {
-            var final = try await pipeline.processar(arquivo) { fase in
+            let final = try await pipeline.processar(arquivo) { fase in
                 Task { @MainActor [weak self] in
                     guard self?.identificadorDaExecucao == execucao else { return }
                     self?.fases[chave] = fase
@@ -678,12 +695,8 @@ final class Biblioteca {
             guard identificadorDaExecucao == execucao,
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
-            // O resumo acabou de chegar com um título de verdade — é agora
-            // que a pasta, até aqui nomeada pelo UUID, ganha o nome da
-            // conversa.
-            renomearPastaSeNecessario(&final)
-            try? await repositorio.salvar(final)
             substituir(final)
+            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
@@ -741,6 +754,35 @@ final class Biblioteca {
             arquivos[indice] = arquivo
         } else {
             arquivos.insert(arquivo, at: 0)
+        }
+    }
+
+    private func sincronizar(_ arquivo: Arquivo) async {
+        guard let equipeCloudKit else { return }
+        do {
+            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+        } catch {
+            // O acervo local já foi salvo. A próxima troca de equipe tenta
+            // baixar o estado remoto novamente, sem descartar a edição local.
+            aoNotificar?(
+                "Conversa salva só neste Mac",
+                "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.",
+                .aviso
+            )
+        }
+    }
+
+    private func baixarAtualizacoesDaEquipe() async {
+        guard let equipeCloudKit else { return }
+        do {
+            let remotos = try await sincronizadorCloudKit.baixar(da: equipeCloudKit)
+            for arquivo in remotos {
+                try await repositorio.salvar(arquivo)
+            }
+            await carregar()
+        } catch {
+            // A equipe continua útil offline com a cópia local. A UI de
+            // estado da sincronização entra na fase de acabamento.
         }
     }
 

@@ -1,0 +1,69 @@
+import Foundation
+import PapagaioCore
+
+/// O ciclo de vida das pastas num lugar só: apagar e restaurar (com a
+/// lixeira no meio) e preparar o pacote para exportação.
+///
+/// Vivia espalhado em funções privadas da `BibliotecaHomeView`, misturado com
+/// painéis e composição — e sem teste nenhum. A view ficou só com o que é
+/// dela: os painéis do sistema e a invalidação visual depois de cada ação.
+@MainActor
+enum PastasDaBiblioteca {
+    /// Apagar a pasta leva as conversas dela para a lixeira, junto.
+    ///
+    /// A alternativa — apagar só o rótulo e deixar as conversas soltas em
+    /// "Todas" — parece mais gentil e é pior: quem apaga a pasta "Cliente X"
+    /// quer o projeto fora da vista, e encontraria as mesmas conversas
+    /// espalhadas na grade um segundo depois. Na lixeira nada se perde, e a
+    /// pasta ali dentro permite trazer de volta o conjunto ou um arquivo só.
+    static func apagar(_ nome: String, biblioteca: Biblioteca) async {
+        let conversas = biblioteca.arquivos.filter {
+            PreferenciasVisuaisDoArquivo.pasta($0.id) == nome
+        }
+        for arquivo in conversas {
+            await biblioteca.moverParaLixeira(arquivo)
+        }
+        // Depois de mover: `apagarPasta` lê quem ainda tem o rótulo para
+        // montar o retrato, e o rótulo sobrevive à ida para a lixeira.
+        PreferenciasVisuaisDoArquivo.apagarPasta(nome)
+    }
+
+    /// As conversas de uma pasta apagada, na ordem da lixeira — a mesma ordem
+    /// dos outros cartões da tela.
+    static func conversas(da pasta: PastaNaLixeira, biblioteca: Biblioteca) -> [Arquivo] {
+        biblioteca.arquivosNaLixeira.filter { pasta.conversas.contains($0.id.rawValue) }
+    }
+
+    /// Devolve a pasta e tudo o que ainda estava dentro dela.
+    static func restaurar(_ pasta: PastaNaLixeira, biblioteca: Biblioteca) async {
+        for arquivo in conversas(da: pasta, biblioteca: biblioteca)
+        where await biblioteca.restaurarDaLixeira(arquivo) {
+            LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
+        }
+        LixeiraDePastas.restaurar(pasta)
+    }
+
+    /// Traz uma conversa de volta sem restaurar a pasta.
+    ///
+    /// Ela volta para "Todas", sem rótulo: a pasta não existe mais, e inventar
+    /// uma para ela criaria uma pasta que a pessoa não pediu.
+    static func restaurarConversa(_ arquivo: Arquivo, biblioteca: Biblioteca) async {
+        guard await biblioteca.restaurarDaLixeira(arquivo) else { return }
+        LixeiraDePastas.desvincular(arquivo.id)
+    }
+
+    /// As conversas de uma pasta, como arquivos prontos para sair do app.
+    ///
+    /// Um dossiê por conversa — texto com resumo, transcrição e tarefas — e não
+    /// o áudio: "baixar a pasta" quase sempre quer dizer levar o conteúdo para
+    /// um relatório, e o áudio de doze entrevistas são gigabytes que ninguém
+    /// pediu. Quem quer o áudio de uma conversa usa o Compartilhar dela.
+    static func pacote(_ nome: String, biblioteca: Biblioteca) -> URL? {
+        let conversas = biblioteca.arquivos
+            .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
+            .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
+
+        guard !conversas.isEmpty else { return nil }
+        return try? DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+    }
+}

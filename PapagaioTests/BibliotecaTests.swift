@@ -45,6 +45,45 @@ private func aguardar(
     return condicao()
 }
 
+@MainActor
+@Test("Trocar de espaço isola as bibliotecas sem apagar o acervo anterior")
+func trocaDeEspacoIsolaBibliotecas() async throws {
+    let espacoPessoal = EspacoID()
+    let espacoDaEquipe = EspacoID()
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let biblioteca = Biblioteca(
+        armazenamento: Armazenamento(raiz: raiz),
+        repositorio: SwiftDataRepository(
+            modelContainer: try SwiftDataRepository.containerLocal(
+                nome: UUID().uuidString,
+                emMemoria: true
+            )
+        ),
+        espaco: espacoPessoal
+    )
+    biblioteca.processamentoAutomatico = false
+
+    _ = await biblioteca.registrar(
+        titulo: "Pessoal",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        duracao: 10
+    )
+    await biblioteca.usarEspaco(espacoDaEquipe)
+    #expect(biblioteca.arquivos.isEmpty)
+
+    _ = await biblioteca.registrar(
+        titulo: "Equipe",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        duracao: 10
+    )
+    await biblioteca.usarEspaco(espacoPessoal)
+
+    #expect(biblioteca.arquivos.map(\.titulo) == ["Pessoal"])
+}
+
 // MARK: - Fila serial
 
 @MainActor
