@@ -304,7 +304,8 @@ struct ContentView: View {
                                aoAlternarGravacao: aoAlternarGravacao, aoPausarGravacao: aoPausarGravacao,
                                aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
                                aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
-                               aoSoltarArquivos: importarArrastados, focoNaGravacao: $focoNaGravacao)
+                               aoSoltarArquivos: importarArrastados, focoNaGravacao: $focoNaGravacao,
+                               aoAbrirFicha: abrirFichaDaEntrevista)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
@@ -331,7 +332,11 @@ struct ContentView: View {
             nova.aoConcluirProcessamento = { arquivo in
                 guard arquivosAguardandoFicha.contains(arquivo.id) else { return }
                 arquivosAguardandoFicha.remove(arquivo.id)
-                abrirFichaDaEntrevista(para: arquivo)
+                // Não abre mais o formulário sozinho — a pessoa pode estar em
+                // qualquer outra tela nesse momento. Só marca a ficha como
+                // pendente; o cartão mostra um selo "Concluído" e é o clique
+                // nele que de fato abre `abrirFichaDaEntrevista`.
+                nova.marcarFichaPendente(arquivo.id)
             }
             biblioteca = nova
 
@@ -374,6 +379,7 @@ struct ContentView: View {
     }
 
     private func abrirFichaDaEntrevista(para arquivo: Arquivo) {
+        biblioteca?.limparFichaPendente(arquivo.id)
         let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
         arquivoParaConfigurar = arquivo
         ficha = FichaDaEntrevista(
@@ -430,6 +436,11 @@ struct ContentView: View {
             await biblioteca.atualizarMetadados(arquivo, titulo: tituloLimpo, criadoEm: ficha.data, duracao: duracao)
             await MainActor.run {
                 arquivoParaConfigurar = nil
+                // Depois de preencher a ficha, a próxima coisa que se quer
+                // ver é a própria conversa — o mesmo destino que o cartão
+                // abre com um clique (`NavigationLink(value:
+                // arquivo.id.rawValue)`), sem precisar desse clique extra.
+                conversaAberta.append(arquivo.id.rawValue)
             }
         }
     }

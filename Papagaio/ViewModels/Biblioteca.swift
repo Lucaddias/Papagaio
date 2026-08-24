@@ -56,6 +56,56 @@ final class Biblioteca {
     var aoNotificar: (@MainActor (_ titulo: String, _ mensagem: String, _ tipo: NotificacaoDoApp.Tipo) -> Void)?
     var aoConcluirProcessamento: (@MainActor (_ arquivo: Arquivo) -> Void)?
 
+    /// Arquivos que acabaram de ser transcritos e resumidos e ainda esperam a
+    /// ficha da entrevista (título, entrevistado, participantes...) ser
+    /// preenchida. Diferente do fluxo antigo, que abria o formulário sozinho
+    /// assim que o processamento terminava — não importa em que tela a pessoa
+    /// estivesse —, agora o cartão só mostra um selo "Concluído" e é a pessoa
+    /// quem decide clicar para abrir a ficha.
+    private(set) var arquivosComFichaPendente: Set<ArquivoID> = []
+
+    /// Arquivos cujo selo "Concluído" já terminou de subir e está revelado.
+    ///
+    /// Mora aqui, e não num `@State` do cartão, de propósito: `Biblioteca` é
+    /// `@Observable`, e QUALQUER mudança nela (o processamento de um arquivo
+    /// diferente terminando, por exemplo) força o SwiftUI a recalcular o
+    /// `body` de todos os cartões da grade. Se "já revelei o selo deste
+    /// arquivo" vivesse só num `@State` local do cartão, uma recriação da
+    /// view (por perda de identidade nesse recálculo) reiniciava o `@State`
+    /// e replayava a animação de subida até 100% num cartão que já estava
+    /// pronto havia tempos — exatamente o bug relatado ("os outros cards
+    /// pulam pra 100% de novo"). Guardando aqui, a resposta a "já revelei
+    /// esse selo?" sobrevive a qualquer recriação de view.
+    private(set) var arquivosComSeloRevelado: Set<ArquivoID> = []
+
+    func marcarFichaPendente(_ id: ArquivoID) {
+        arquivosComFichaPendente.insert(id)
+        arquivosComSeloRevelado.remove(id)
+        // Meio segundo de atraso antes de revelar o selo "Concluído": tempo
+        // para a tarja lateral subir até 100% primeiro (ver
+        // `CartaoDeConversa.tarjaLateral`), em vez de o selo cobri-la no
+        // meio do caminho — a fração por tempo estimado quase nunca bate
+        // exatamente com o fim real do processamento.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, arquivosComFichaPendente.contains(id) else { return }
+            arquivosComSeloRevelado.insert(id)
+        }
+    }
+
+    func fichaPendente(_ id: ArquivoID) -> Bool {
+        arquivosComFichaPendente.contains(id)
+    }
+
+    func seloDeConclusaoRevelado(_ id: ArquivoID) -> Bool {
+        arquivosComSeloRevelado.contains(id)
+    }
+
+    func limparFichaPendente(_ id: ArquivoID) {
+        arquivosComFichaPendente.remove(id)
+        arquivosComSeloRevelado.remove(id)
+    }
+
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
     private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()

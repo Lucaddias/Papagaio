@@ -1,8 +1,13 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MidiaDaConversaView: View {
     let anexos: [AnexoDeMidiaDaConversa]
     let aoAdicionar: () -> Void
+    /// Arrastar do Finder direto para o cartão tracejado — um print recém
+    /// tirado para a área de trabalho, um PDF, o que for — sem precisar
+    /// abrir o painel de arquivos primeiro.
+    let aoSoltarArquivos: ([URL]) -> Void
     let aoAbrir: (AnexoDeMidiaDaConversa) -> Void
     let aoRemover: (AnexoDeMidiaDaConversa) -> Void
     /// Só os itens desta conversa. A lixeira geral, na barra do app, mostra os
@@ -10,6 +15,12 @@ struct MidiaDaConversaView: View {
     let naLixeira: [MidiaNaLixeira]
     let aoRestaurar: (MidiaNaLixeira) -> Void
     let aoApagarDeVez: (MidiaNaLixeira) -> Void
+
+    /// Realce enquanto o arquivo paira sobre o cartão — mesmo sinal do
+    /// `CartaoNovaConversa` ao arrastar um áudio para a biblioteca: sem ele,
+    /// arrastar até aqui é um chute, nada na tela confirma que soltar vai
+    /// funcionar.
+    @State private var recebendoArraste = false
 
     var body: some View {
         // Em janela estreita a coluna lateral roubaria a largura de um cartão
@@ -38,35 +49,80 @@ struct MidiaDaConversaView: View {
                 columns: [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)],
                 spacing: PapagaioTema.Espaco.largo
             ) {
-                Button(action: aoAdicionar) {
-                    VStack(spacing: PapagaioTema.Espaco.medio) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                            .frame(width: 54, height: 54)
-                            .background(PapagaioTema.superficieSuave, in: Circle())
+                // Não é `Button`: um `.dropDestination` encadeado direto
+                // num botão nunca chegava a completar a transferência aqui —
+                // o realce (`isTargeted`) acendia, mas o `urls` do fecho
+                // vinha vazio e nada era salvo. `CartaoNovaConversa`, que
+                // arrasta áudio para a biblioteca, segue o mesmo molde: o
+                // clique vira `.onTapGesture` sobre uma view comum, não um
+                // `Button` de verdade.
+                VStack(spacing: PapagaioTema.Espaco.medio) {
+                    Image(systemName: recebendoArraste ? "arrow.down.circle.fill" : "plus")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(recebendoArraste ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                        .frame(width: 54, height: 54)
+                        .background(recebendoArraste ? PapagaioTema.destaqueSuave : PapagaioTema.superficieSuave, in: Circle())
 
-                        VStack(spacing: PapagaioTema.Espaco.minimo) {
-                            Text("Adicionar mídia")
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(PapagaioTema.texto)
-                            Text("Foto, vídeo, áudio ou arquivo")
-                                .font(.callout.weight(.medium))
-                                .foregroundStyle(PapagaioTema.textoSecundario)
-                        }
+                    VStack(spacing: PapagaioTema.Espaco.minimo) {
+                        Text(recebendoArraste ? "Soltar para adicionar" : "Adicionar mídia")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.texto)
+                        Text("Foto, vídeo, áudio ou arquivo")
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                        Text("Clique ou arraste do Finder")
+                            .font(.caption)
+                            .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.8))
                     }
-                    .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318)
-                    .background(PapagaioTema.superficie.opacity(0.28), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-                            .stroke(
-                                PapagaioTema.borda,
-                                style: StrokeStyle(lineWidth: 2, dash: [7, 6])
-                            )
-                    }
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, PapagaioTema.Espaco.largo)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318)
+                .background(
+                    recebendoArraste ? PapagaioTema.destaque.opacity(0.12) : PapagaioTema.superficie.opacity(0.28),
+                    in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                        .stroke(
+                            recebendoArraste ? PapagaioTema.destaque : PapagaioTema.borda,
+                            style: StrokeStyle(lineWidth: recebendoArraste ? 3 : 2, dash: [7, 6])
+                        )
+                }
+                .contentShape(Rectangle())
+                .onTapGesture(perform: aoAdicionar)
                 .help("Adicionar mídia")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Adicionar mídia")
+                .accessibilityHint("Foto, vídeo, áudio ou arquivo. Também aceita arrastar do Finder.")
+                // A área de soltar é o cartão tracejado inteiro, não só o
+                // ícone — é ele que parece uma zona de entrada. Aceita
+                // qualquer arquivo (a mesma mensagem do painel já diz "fotos,
+                // vídeos, áudios, PDFs ou outros arquivos"), então não há
+                // filtro de extensão aqui como há para áudio na biblioteca.
+                //
+                // `.onDrop` de baixo nível, e não `.dropDestination(for:
+                // URL.self)`: este último só resolve itens que a origem
+                // oferece como `Transferable` de URL — funciona vindo do
+                // Finder, mas uma imagem arrastada de dentro de uma página
+                // web, do Slack, do Mensagens etc. costuma vir só como bytes
+                // de imagem, sem URL nenhuma por trás, e o arrasto era
+                // aceito visualmente (o realce acendia) mas não soltava
+                // nada. Aqui `carregar(_:)` tenta a URL primeiro (Finder,
+                // Fotos, Preview, até a "promessa de arquivo" de um print
+                // ainda não salvo) e cai para salvar os bytes crus num
+                // arquivo temporário quando não há URL disponível.
+                .onDrop(
+                    of: Self.tiposAceitos,
+                    isTargeted: Binding(
+                        get: { recebendoArraste },
+                        set: { novo in withAnimation(.snappy(duration: 0.16)) { recebendoArraste = novo } }
+                    )
+                ) { provedores in
+                    guard !provedores.isEmpty else { return false }
+                    provedores.forEach(carregar)
+                    return true
+                }
 
                 ForEach(anexos) { anexo in
                     CartaoDeAnexoDeMidia(
@@ -127,5 +183,97 @@ struct MidiaDaConversaView: View {
 
     private var tamanhoTotal: String {
         formatoDeBytes(anexos.reduce(0) { $0 + $1.tamanho })
+    }
+
+    /// Tipos aceitos ao arrastar — não só arquivos do Finder: fotos do
+    /// Fotos.app, imagens copiadas do Safari/Mensagens/Notas, PDFs, áudio e
+    /// vídeo de qualquer app que os ofereça, mesmo sem um arquivo por trás.
+    private static let tiposAceitos: [UTType] = [.fileURL, .image, .pdf, .movie, .audio, .data]
+
+    /// Resolve um item arrastado e entrega para `aoSoltarArquivos` assim que
+    /// pronto. Duas rotas, nesta ordem:
+    ///
+    /// 1. Como URL de arquivo de verdade — cobre o Finder, o Fotos.app, o
+    ///    Preview, e até uma "promessa de arquivo" (o print recém-tirado que
+    ///    ainda não foi salvo em disco: o Finder some com um arquivo mesmo
+    ///    assim, via `NSFilePromiseReceiver` por baixo do pano).
+    /// 2. Sem URL nenhuma disponível — uma imagem arrastada de dentro de uma
+    ///    página web, de dentro do Mensagens, de um chat qualquer — os bytes
+    ///    crus são salvos num arquivo temporário e tratados como se tivessem
+    ///    vindo de um arquivo comum.
+    private func carregar(_ provedor: NSItemProvider) {
+        if provedor.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            provedor.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                // O item costuma chegar como `Data` (a URL codificada), não
+                // como `URL` direto — jeito clássico de arrasto no macOS.
+                let url: URL? = if let dados = item as? Data {
+                    URL(dataRepresentation: dados, relativeTo: nil)
+                } else {
+                    item as? URL
+                }
+                guard let url else { return }
+                DispatchQueue.main.async { aoSoltarArquivos([url]) }
+            }
+            return
+        }
+
+        guard let tipo = Self.tiposAceitos.first(where: { provedor.hasItemConformingToTypeIdentifier($0.identifier) })
+        else { return }
+
+        // O nome do arquivo temporário é o que a pessoa vai ver depois no
+        // cartão do anexo (`MidiasDaConversa.anexo` usa `lastPathComponent`
+        // como nome de exibição) — sem isto, tudo que chegasse sem URL virava
+        // um "Arraste-<UUID>.png" ilegível.
+        let nome = Self.nomeParaArquivoSemOrigem(sugerido: provedor.suggestedName, tipo: tipo)
+
+        provedor.loadDataRepresentation(forTypeIdentifier: tipo.identifier) { dados, _ in
+            guard let dados else { return }
+            let destino = FileManager.default.temporaryDirectory
+                .appendingPathComponent(nome)
+            do {
+                try dados.write(to: destino)
+            } catch {
+                return
+            }
+            DispatchQueue.main.async { aoSoltarArquivos([destino]) }
+        }
+    }
+
+    /// Um nome de arquivo legível para algo que chegou sem URL própria —
+    /// uma imagem colada de dentro de uma página web, por exemplo.
+    ///
+    /// Prioriza o que a própria origem sugeriu (`NSItemProvider.suggestedName`
+    /// — muitos apps mandam algo como "imagem.png" mesmo sem oferecer uma URL
+    /// de arquivo de verdade); sem isso, cai num nome descritivo pelo tipo
+    /// ("Imagem colada", "PDF colado"...) com data e hora para não colidir
+    /// com o próximo.
+    private static func nomeParaArquivoSemOrigem(sugerido: String?, tipo: UTType) -> String {
+        let extensao = tipo.preferredFilenameExtension ?? "dat"
+
+        if let sugerido, !sugerido.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let url = URL(fileURLWithPath: sugerido)
+            return url.pathExtension.isEmpty
+                ? url.appendingPathExtension(extensao).lastPathComponent
+                : url.lastPathComponent
+        }
+
+        let rotulo: String
+        if tipo.conforms(to: .image) {
+            rotulo = "Imagem colada"
+        } else if tipo.conforms(to: .pdf) {
+            rotulo = "PDF colado"
+        } else if tipo.conforms(to: .movie) {
+            rotulo = "Vídeo colado"
+        } else if tipo.conforms(to: .audio) {
+            rotulo = "Áudio colado"
+        } else {
+            rotulo = "Arquivo colado"
+        }
+
+        let formatador = DateFormatter()
+        // Sem barra nem dois-pontos: os dois quebram nome de arquivo no
+        // Finder — "HH.mm.ss" no lugar de "HH:mm:ss".
+        formatador.dateFormat = "dd-MM-yyyy 'às' HH.mm.ss"
+        return "\(rotulo) \(formatador.string(from: Date())).\(extensao)"
     }
 }

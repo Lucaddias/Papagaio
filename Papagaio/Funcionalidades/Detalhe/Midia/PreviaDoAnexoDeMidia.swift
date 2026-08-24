@@ -50,6 +50,21 @@ struct PreviaDoAnexoDeMidia: View {
     private func carregarMiniatura() async {
         guard anexo.tipoVisual != "Áudio" else { return }
 
+        // Imagem: carrega o arquivo direto, sem depender do serviço do
+        // QuickLook (`quicklookd`, um processo à parte). Antes disso, um
+        // print colado (sem vir de um arquivo do Finder, escrito na hora a
+        // partir dos bytes arrastados) só mostrava a foto de verdade se o
+        // QuickLook chegasse a **falhar** — se ele simplesmente demorasse ou
+        // devolvesse algo genérico sem lançar erro, o cartão ficava com o
+        // ícone de "Imagem" em vez da própria captura. Indo direto, a prévia
+        // de qualquer imagem é sempre o conteúdo de verdade.
+        if anexo.tipoVisual == "Imagem" {
+            if let imagem = NSImage(contentsOf: anexo.url) {
+                await MainActor.run { miniatura = imagem }
+            }
+            return
+        }
+
         let tamanho = CGSize(width: 680, height: 380)
         let escala = NSScreen.main?.backingScaleFactor ?? 2
         let requisicao = QLThumbnailGenerator.Request(
@@ -59,17 +74,8 @@ struct PreviaDoAnexoDeMidia: View {
             representationTypes: .thumbnail
         )
 
-        do {
-            let representacao = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: requisicao)
-            await MainActor.run {
-                miniatura = representacao.nsImage
-            }
-        } catch {
-            if anexo.tipoVisual == "Imagem" {
-                await MainActor.run {
-                    miniatura = NSImage(contentsOf: anexo.url)
-                }
-            }
+        if let representacao = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: requisicao) {
+            await MainActor.run { miniatura = representacao.nsImage }
         }
     }
 }
