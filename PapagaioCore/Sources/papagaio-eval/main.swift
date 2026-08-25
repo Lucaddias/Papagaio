@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import LlamaRuntime
 import PapagaioCore
@@ -11,6 +12,15 @@ let versao = "0.1.0-passo1"
 
 func formatarBytes(_ bytes: Int64) -> String {
     String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
+}
+
+func duracaoDoAudio(_ url: URL) async throws -> TimeInterval {
+    if url.pathExtension.lowercased() == DecodificadorDeAudio.extensaoCrua {
+        let atributos = try FileManager.default.attributesOfItem(atPath: url.path)
+        let bytes = (atributos[.size] as? NSNumber)?.doubleValue ?? 0
+        return bytes / Double(MemoryLayout<Float>.size) / FormatoAudio.taxaCanonica
+    }
+    return try await AVURLAsset(url: url).load(.duration).seconds
 }
 
 func uso() {
@@ -77,11 +87,10 @@ case "transcrever":
             .appendingPathComponent(Pesos.whisperLargeV3.nomeArquivo)
     }
 
-    let amostras = try await DecodificadorDeAudio.amostras(de: audio)
-    let duracao = DecodificadorDeAudio.duracao(de: amostras)
+    let duracao = try await duracaoDoAudio(audio)
     print("áudio:  \(audio.lastPathComponent)")
     print("modelo: \(modelo.lastPathComponent)")
-    print(String(format: "duração: %.1f s (%d amostras a 16 kHz)", duracao, amostras.count))
+    print(String(format: "duração: %.1f s", duracao))
     print("processos filhos antes: \(ContagemDeProcessos.filhos())")
 
     let engine = WhisperEngine(modelo: modelo)
