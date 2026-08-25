@@ -17,6 +17,10 @@ struct LinhaDeTranscricao: View {
     let nomesDeVoz: [String: String]
     let aoTocarLinha: () -> Void
     let aoTocarPalavra: (Palavra) -> Void
+    /// Corrige o texto deste trecho. Fica ao lado direito do parágrafo,
+    /// centralizado na altura dele — nem preso só à linha do cabeçalho, nem
+    /// flutuando fora de qualquer texto.
+    let aoEditar: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
@@ -26,35 +30,45 @@ struct LinhaDeTranscricao: View {
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                if let speaker = trecho.speaker {
-                    HStack(spacing: PapagaioTema.Espaco.minimo) {
-                        Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
+            // `.center` aqui, e não `.top`: o lápis fica ao lado do
+            // parágrafo inteiro (cabeçalho + texto), centralizado na altura
+            // dele — não colado só na linha do cabeçalho lá em cima.
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    // Sempre tem cabeçalho agora, mesmo sem falante — é onde
+                    // os chips de identificação moram.
+                    if let speaker = trecho.speaker {
+                        HStack(spacing: PapagaioTema.Espaco.minimo) {
+                            Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(PapagaioTema.textoSecundario)
 
-                        // Falante acústico (diarização): aparece só quando o
-                        // canal carrega mais de uma voz — canal de uma voz só
-                        // não precisa do chip. O rótulo do canal nunca muda
-                        // (ver a regra dos dois rótulos em SegmentoDeFalante).
-                        if trecho.temVozesDistintas,
-                           let acustico = trecho.falanteAcusticoDominante {
-                            Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
-                                .font(.caption)
-                                .foregroundStyle(PapagaioTema.destaqueEscuro)
-                                .padding(.horizontal, PapagaioTema.Espaco.minimo)
-                                .padding(.vertical, 1)
-                                .background(
-                                    PapagaioTema.destaqueSuave,
-                                    in: Capsule()
-                                )
+                            // Falante acústico (diarização): aparece só quando
+                            // o canal carrega mais de uma voz — canal de uma
+                            // voz só não precisa do chip. O rótulo do canal
+                            // nunca muda (ver a regra dos dois rótulos em
+                            // SegmentoDeFalante).
+                            if trecho.temVozesDistintas,
+                               let acustico = trecho.falanteAcusticoDominante {
+                                Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
+                                    .font(.caption)
+                                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+                                    .padding(.horizontal, PapagaioTema.Espaco.minimo)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        PapagaioTema.destaqueSuave,
+                                        in: Capsule()
+                                    )
+                            }
                         }
                     }
-                }
 
-                corpoDaTranscricao
+                    corpoDaTranscricao
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                botaoEditar
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, PapagaioTema.Espaco.medio)
         .padding(.horizontal, PapagaioTema.Espaco.largo)
@@ -87,10 +101,26 @@ struct LinhaDeTranscricao: View {
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
     }
 
+    private var botaoEditar: some View {
+        Button(action: aoEditar) {
+            Image(systemName: "pencil")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .frame(width: 26, height: 26)
+                .background(PapagaioTema.destaqueSuave, in: Circle())
+                .overlay {
+                    Circle().stroke(PapagaioTema.destaque.opacity(0.4), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Corrigir o texto deste trecho")
+        .accessibilityLabel("Corrigir o texto deste trecho")
+    }
+
     @ViewBuilder
     private var corpoDaTranscricao: some View {
         if !trecho.palavras.isEmpty {
-            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3) {
+            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3, justificado: true) {
                 ForEach(Array(trecho.palavras.enumerated()), id: \.element.id) { indice, palavra in
                     BotaoDePalavra(
                         palavra: palavra,

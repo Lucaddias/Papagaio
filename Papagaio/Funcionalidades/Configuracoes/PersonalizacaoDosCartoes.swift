@@ -452,10 +452,12 @@ private struct AmostraDeModeloDeCartao: View {
                 VStack(spacing: PapagaioTema.Espaco.curto) {
                     miniatura
 
+                    // Sem `.lineLimit` — mesma régua da tela inteira de
+                    // Configurações: nada deve depender de truncar para
+                    // caber, nem um rótulo curto e fixo como este.
                     Label(opcao.titulo, systemImage: opcao.simbolo)
                         .font(PapagaioTema.Tipo.apoio.weight(selecionada ? .semibold : .regular))
                         .foregroundStyle(selecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                        .lineLimit(1)
                 }
 
                 // O exemplo deste modelo, sempre visível embaixo dele — não

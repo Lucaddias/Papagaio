@@ -24,7 +24,12 @@ enum TarefasGeraisStore {
                 prioridade: indice < 2 ? .alta : .media,
                 status: .naoIniciado,
                 responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
-                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm)
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm),
+                // Extraída da transcrição, não escrita pela pessoa — fica como
+                // sugestão até ela aceitar, editar ou descartar na aba
+                // Tarefas da própria conversa. Enquanto isso, não aparece
+                // aqui no quadro geral (ver `TarefasView.tarefasPorConversa`).
+                sugestaoPendente: true
             )
         }
 

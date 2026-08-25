@@ -52,7 +52,6 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
-    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -164,11 +163,13 @@ struct ContentView: View {
             }
         }
         // Piso de conforto, não de correção: quem garante que nada transborda é
-        // a própria barra superior, que colapsa em estágios. Este mínimo só
-        // evita abrir a janela num tamanho em que a grade de cartões fica com
-        // uma coluna só. Note que `windowResizability(.contentMinSize)` não
-        // propaga isto de forma confiável através do `NavigationStack` — por
-        // isso nenhum layout depende deste número.
+        // a própria barra superior, que colapsa em estágios, e a grade de
+        // cartões da biblioteca, que é `.adaptive` e reflui sozinha até uma
+        // coluna só (ver `BibliotecaHomeView.gradeDeConversas`). Este mínimo
+        // só evita abrir a janela pequena demais para ser confortável de
+        // usar. Note que `windowResizability(.contentMinSize)` não propaga
+        // isto de forma confiável através do `NavigationStack` — por isso
+        // nenhum layout depende deste número.
         // O selo fica **fora** do `NavigationStack`: dentro dele, abrir uma
         // conversa substituía a raiz e levava o selo junto — justamente quando
         // ele mais importa, que é longe da tela de captura.
@@ -186,6 +187,16 @@ struct ContentView: View {
             alturaDoPlayer = altura
         }
         .frame(minWidth: 460, minHeight: 520)
+        // Reforço direto no AppKit: a tela de captura (sem barra lateral,
+        // dentro do `NavigationStack`) já deixou a propagação do
+        // `windowResizability(.contentMinSize)` inconsistente uma vez (ver
+        // comentário acima). Se isso travar o redimensionamento de novo, é
+        // mais seguro garantir aqui, direto na `NSWindow`, do que confiar só
+        // no lado declarativo do SwiftUI.
+        .rastreandoJanela { janela in
+            janela?.styleMask.insert(.resizable)
+            janela?.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        }
         // Atalhos globais da janela: ⌘R alterna a gravação e ⌘[ volta um
         // passo, de qualquer tela. São botões invisíveis de propósito —
         // existem só para o sistema rotear as teclas; as ações vivem nos
@@ -208,11 +219,6 @@ struct ContentView: View {
         // do Mac. Nos outros dois casos isto fixa a aparência da janela, e as
         // cores dinâmicas do tema resolvem em cima dela.
         .preferredColorScheme(aparencia.wrappedValue.esquemaPreferido)
-        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitAceita)) { notificacao in
-            guard let equipe = notificacao.object as? EquipeDisponivel else { return }
-            equipes = EquipesDoUsuario.carregar()
-            usarEquipe(equipe)
-        }
         .task {
             notificacoes.preparar()
             perfil.iniciar()
@@ -269,13 +275,14 @@ struct ContentView: View {
     private var barraSuperior: some View {
         BarraSuperiorPapagaioView(
             consulta: $consulta, legendaAtiva: $legendaDaBarra,
-            // Sem o chevron nas Tarefas nem na Lixeira: as duas já têm um
-            // atalho próprio na barra ("Biblioteca" e "Lixeira", ao lado da
-            // busca), então o botão de voltar virava um segundo caminho
-            // para o mesmo lugar — redundante, e não obrigatório como é
-            // numa conversa aberta ou na captura.
+            // Sem o chevron nas Tarefas, na Lixeira nem em Configurações: as
+            // três já têm um atalho próprio na barra ("Tarefas", "Lixeira" e
+            // a engrenagem, ao lado da busca), então o botão de voltar virava
+            // um segundo caminho para o mesmo lugar — redundante, e não
+            // obrigatório como é numa conversa aberta ou na captura.
             exibindoBotaoVoltar: !naTelaInicial
                 && telaSelecionada != .tarefas
+                && telaSelecionada != .configuracoes
                 && !(telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira),
             bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
             tarefasSelecionada: telaSelecionada == .tarefas,
@@ -309,7 +316,7 @@ struct ContentView: View {
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia, consulta: consulta)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
@@ -543,16 +550,9 @@ struct ContentView: View {
             quantidadeDeMembros: 1,
             espacoID: UUID().uuidString
         )
-        Task { @MainActor in
-            do {
-                let publicada = try await servicoDeEquipesCloudKit.criarWorkspace(para: nova)
-                equipes.append(publicada)
-                EquipesDoUsuario.salvar(equipes)
-                usarEquipe(publicada)
-            } catch {
-                falhaDeAbertura = "Não foi possível criar a equipe no iCloud: \(error.localizedDescription)"
-            }
-        }
+        equipes.append(nova)
+        EquipesDoUsuario.salvar(equipes)
+        usarEquipe(nova)
     }
 
     private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
@@ -572,18 +572,15 @@ struct ContentView: View {
     private func atualizarEspacoDaBiblioteca() {
         guard let biblioteca else { return }
         let espaco: EspacoID
-        let equipeParaSincronizar: EquipeDisponivel?
         if contextoDaConta == .equipe,
            let equipe = equipeAtiva,
            let texto = equipe.espacoID,
            let id = UUID(uuidString: texto) {
             espaco = EspacoID(rawValue: id)
-            equipeParaSincronizar = equipe.zonaCloudKit == nil ? nil : equipe
         } else {
             espaco = Biblioteca.espacoPessoal()
-            equipeParaSincronizar = nil
         }
-        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
+        Task { await biblioteca.usarEspaco(espaco) }
     }
 
     private func sairDoPerfil() {

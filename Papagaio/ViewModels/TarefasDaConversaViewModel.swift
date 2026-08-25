@@ -13,6 +13,15 @@ final class TarefasDaConversaViewModel {
     private(set) var tarefas: [TarefaDaConversa] = []
     var filtro: FiltroDeTarefas = .tudo
 
+    /// Sugestões extraídas da transcrição, ainda não revisadas — aparecem
+    /// numa seção à parte, nunca misturadas nas colunas do quadro (ver
+    /// `tarefasAceitas`).
+    var sugestoes: [TarefaDaConversa] { tarefas.filter(\.pendenteDeRevisao) }
+
+    /// O que de fato entra no quadro desta conversa (e, por consequência, no
+    /// geral) — tudo que não está mais esperando revisão.
+    var tarefasAceitas: [TarefaDaConversa] { tarefas.filter { !$0.pendenteDeRevisao } }
+
     var mostrandoCriacao = false
     var mostrandoEdicao = false
 
@@ -66,15 +75,14 @@ final class TarefasDaConversaViewModel {
         let tituloLimpo = tituloDaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
-        let tarefa = RegraDePrazoDaTarefa.ajustada(
-            TarefaDaConversa(
-                titulo: tituloLimpo,
-                origem: origem,
-                prioridade: prioridadeDaTarefa,
-                status: statusDaTarefa,
-                responsavel: responsavelLimpo,
-                prazo: prazoDaTarefa
-            )
+        let tarefa = TarefaDaConversa(
+            titulo: tituloLimpo,
+            origem: origem,
+            prioridade: prioridadeDaTarefa,
+            status: statusDaTarefa,
+            responsavel: responsavelLimpo,
+            prazo: prazoDaTarefa,
+            prioridadeDefinidaManualmente: true
         )
         tarefas.append(tarefa)
         salvar()
@@ -111,8 +119,14 @@ final class TarefasDaConversaViewModel {
         tarefa.titulo = tituloLimpo
         tarefa.responsavel = responsavelLimpo
         tarefa.prioridade = prioridadeDaTarefa
+        tarefa.prioridadeDefinidaManualmente = true
         tarefa.status = statusDaTarefa
         tarefa.prazo = prazoDaTarefa
+        // Editar e salvar uma sugestão é uma forma de aceitá-la — com os
+        // ajustes que a pessoa acabou de fazer. Sem isto, uma sugestão
+        // editada continuaria fora do quadro, esperando um "aceitar" que
+        // ela já deu ao salvar.
+        tarefa.sugestaoPendente = false
         tarefa = RegraDePrazoDaTarefa.ajustada(tarefa)
         tarefas[indice] = tarefa
         salvar()
@@ -124,6 +138,27 @@ final class TarefasDaConversaViewModel {
         tarefaEmEdicaoID = nil
         limparFormulario()
         mostrandoEdicao = false
+    }
+
+    // MARK: - Sugestões
+
+    /// Aceita a sugestão do jeito que a IA propôs, sem abrir o formulário —
+    /// ela sai da seção de sugestões e entra no quadro normal, na coluna
+    /// "Não iniciado".
+    func aceitarSugestao(_ tarefa: TarefaDaConversa) {
+        guard let indice = tarefas.firstIndex(where: { $0.id == tarefa.id }) else { return }
+        tarefas[indice].sugestaoPendente = false
+        tarefas[indice] = RegraDePrazoDaTarefa.ajustada(tarefas[indice])
+        salvar()
+        notificarPrazoSeNecessario(tarefas[indice])
+    }
+
+    /// Descarta a sugestão de vez — ao contrário de rejeitar uma tarefa já
+    /// aceita (que não existe como ação), aqui não há "desfazer": ela nunca
+    /// chegou a entrar em nenhum quadro.
+    func rejeitarSugestao(_ tarefa: TarefaDaConversa) {
+        tarefas.removeAll { $0.id == tarefa.id }
+        salvar()
     }
 
     // MARK: - Estado da tarefa

@@ -5,6 +5,9 @@ import SwiftUI
 struct ConfiguracoesView: View {
     @Binding var processamentoAutomatico: Bool
     @Binding var aparencia: AparenciaDoApp
+    /// O que a pessoa digitou na busca da barra superior — aqui ela não
+    /// filtra uma lista, filtra quais seções da tela ficam visíveis.
+    let consulta: String
     /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
     @AppStorage("painelFlutuanteDuranteGravacao") private var painelFlutuante = true
 
@@ -15,16 +18,65 @@ struct ConfiguracoesView: View {
         )
     }
 
+    private var termo: String { consulta.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Cada seção declara as próprias palavras-chave (título, o que ela
+    /// controla, sinônimos comuns) — sem termo digitado, todas passam.
+    private func casaComATela(_ palavrasChave: String...) -> Bool {
+        guard !termo.isEmpty else { return true }
+        return palavrasChave.contains { $0.casaComBusca(termo) }
+    }
+
+    private var mostrarAparencia: Bool {
+        casaComATela("Aparência", "Tema", "Claro", "Escuro", "Sistema", "cor")
+    }
+    private var mostrarCartoes: Bool {
+        casaComATela("Cartões da biblioteca", "Modelo do cartão", "Campos do cartão", "grade")
+    }
+    private var mostrarTranscricao: Bool {
+        casaComATela(
+            "Transcrição", "Pausar transcrições e resumos automáticos", "processamento automático",
+            "Painel flutuante durante a gravação", "PiP", "gravação"
+        )
+    }
+    private var mostrarAtalhos: Bool {
+        casaComATela("Atalhos de teclado", "Atalhos", "Teclado", "Gravar", "Voltar")
+    }
+
+    private var nadaEncontrado: Bool {
+        !termo.isEmpty && !mostrarAparencia && !mostrarCartoes && !mostrarTranscricao && !mostrarAtalhos
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                 cabecalhoDeConfiguracoes
 
-                secaoDeAparencia
+                if nadaEncontrado {
+                    CartaoDeEstadoVazio(
+                        simbolo: "magnifyingglass",
+                        titulo: "Nada encontrado",
+                        mensagem: "Nenhuma configuração bate com \"\(termo)\"."
+                    )
+                    .frame(minHeight: 240)
+                    .cartaoPapagaio()
+                } else {
+                    if mostrarAparencia {
+                        secaoDeAparencia
+                    }
 
-                SecaoDePersonalizacaoDosCartoes()
+                    if mostrarCartoes {
+                        SecaoDePersonalizacaoDosCartoes()
+                    }
 
-                secaoDeTranscricao
+                    if mostrarTranscricao {
+                        secaoDeTranscricao
+                    }
+
+                    if mostrarAtalhos {
+                        secaoDeAtalhos
+                    }
+                }
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -160,6 +212,47 @@ struct ConfiguracoesView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .cartaoPapagaio()
     }
+
+    /// Atalhos globais do app — os mesmos botões invisíveis de sempre em
+    /// `ContentView` (⌘R e ⌘[), só que agora com um lugar visível e buscável
+    /// para alguém descobrir que existem.
+    private var secaoDeAtalhos: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+            Label("Atalhos de teclado", systemImage: "keyboard")
+                .font(PapagaioTema.Tipo.tituloDeSecao)
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+            SeparadorPapagaio()
+
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                linhaDeAtalho(tecla: "⌘R", descricao: "Iniciar ou finalizar a gravação")
+                linhaDeAtalho(tecla: "⌘[", descricao: "Voltar para a tela anterior")
+            }
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cartaoPapagaio()
+    }
+
+    private func linhaDeAtalho(tecla: String, descricao: String) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            Text(tecla)
+                .font(.system(.callout, design: .monospaced).weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+                .padding(.horizontal, PapagaioTema.Espaco.medio)
+                .frame(minWidth: 56)
+                .frame(height: PapagaioTema.Altura.compacta)
+                .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+
+            Text(descricao)
+                .font(PapagaioTema.Tipo.corpo)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+        }
+    }
 }
 
 /// Botão de tema com uma miniatura da interface no esquema correspondente.
@@ -173,10 +266,14 @@ private struct AmostraDeAparencia: View {
             VStack(spacing: PapagaioTema.Espaco.curto) {
                 miniatura
 
+                // Sem `.lineLimit`: mesmo sendo um rótulo curto e fixo
+                // ("Claro", "Escuro", "Sistema"), nenhum texto desta tela
+                // deve depender de truncar para caber — a régua vale para
+                // qualquer rótulo, não só para os que vêm de dados do
+                // usuário.
                 Label(opcao.titulo, systemImage: opcao.simbolo)
                     .font(PapagaioTema.Tipo.apoio.weight(selecionada ? .semibold : .regular))
                     .foregroundStyle(selecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
-                    .lineLimit(1)
             }
             .padding(PapagaioTema.Espaco.medio)
             .frame(maxWidth: .infinity)

@@ -30,7 +30,7 @@ public enum GramaticaDoResumo {
     /// isto orienta o **conteúdo**.
     public static let descricaoDoFormato = """
     Responda SOMENTE com um objeto JSON com exatamente estas chaves:
-    - "titulo": nome claro do encontro em formato de ata (ex: "Ata: Revisão de Escopo do MVP")
+    - "titulo": nome claro e direto do encontro, sem prefixos como "Ata:" (ex: "Revisão de Escopo do MVP")
     - "visaoGeral": visão completa e detalhada da reunião. Comece identificando data (se mencionada), \
     participantes e objetivo central. Depois, escreva um resumo abrangente de TODOS os pontos \
     discutidos, com pelo menos 4 a 6 frases. Seja direto e realista, sem termos corporativos \

@@ -84,18 +84,22 @@ struct CartaoDaLixeira: View {
             }
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                // Sem `.lineLimit`: título e resumo vêm de conteúdo real da
+                // conversa, sem tamanho garantido — cortar com "..." escondia
+                // parte do que a pessoa está prestes a apagar de vez. O
+                // cartão não tem `maxHeight` (só `minHeight` mais abaixo), e
+                // o `.fixedSize` já força a altura a acompanhar o texto por
+                // inteiro, então deixar crescer não corta nada.
                 Text(titulo)
                     .font(.title.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
                     .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
-                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(descricao)
                     .font(.body)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineSpacing(3)
-                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

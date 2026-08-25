@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 
 /// A janela que hospeda o painel de gravação por cima dos outros apps.
@@ -20,12 +21,17 @@ import SwiftUI
 final class JanelaFlutuanteDeGravacao {
     private var painel: NSPanel?
 
+    /// A moldura de antes de minimizar, para voltar exatamente ao mesmo
+    /// lugar e tamanho ao restaurar.
+    private var quadroAntesDeMinimizar: NSRect?
+
     /// Tamanho inicial: o "padrão" da `PainelFlutuanteDeGravacao`, com o campo
     /// de nota visível. Cabe folgado em qualquer Mac, inclusive num Air de 13".
     private static let tamanhoInicial = NSSize(width: 360, height: 190)
 
-    /// Piso e teto do arrasto. O mínimo é a barra de transporte sozinha; o
-    /// máximo evita que o painel deixe de ser painel e vire uma segunda janela.
+    /// Piso e teto do arrasto — valem o tempo todo, inclusive minimizado: é o
+    /// mesmo painel resizável, só que no menor tamanho dele, e continua
+    /// respondendo a arrastar a borda pra aumentar ou diminuir normalmente.
     private static let tamanhoMinimo = NSSize(width: 240, height: 84)
     private static let tamanhoMaximo = NSSize(width: 620, height: 460)
 
@@ -39,9 +45,12 @@ final class JanelaFlutuanteDeGravacao {
             return
         }
 
+        quadroAntesDeMinimizar = nil
+
         let conteudo = PainelFlutuanteDeGravacao(
             gravador: gravador,
-            aoAbrirNoApp: aoAbrirNoApp
+            aoAbrirNoApp: aoAbrirNoApp,
+            aoAlternarTamanho: { [weak self] in self?.alternarTamanho() }
         )
         // `.preferredColorScheme` só vale dentro do próprio `NSHostingView`:
         // este painel vive fora da hierarquia do `ContentView`, então nunca
@@ -63,6 +72,19 @@ final class JanelaFlutuanteDeGravacao {
         novo.becomesKeyOnlyIfNeeded = true
         novo.isReleasedWhenClosed = false
         novo.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Os três botões de tráfego (fechar/minimizar/zoom) não têm função
+        // aqui — pausar/finalizar/cancelar já são os botões do próprio
+        // painel — e no tamanho mínimo (84pt de altura) eles disputavam
+        // espaço com o cronômetro e ficavam sobrepostos, com um aspecto
+        // "quebrado".
+        novo.standardWindowButton(.closeButton)?.isHidden = true
+        novo.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        novo.standardWindowButton(.zoomButton)?.isHidden = true
+        // `minSize`/`maxSize` entram antes de qualquer `setFrame`, e ficam —
+        // sem exceção, nunca mais removidos depois (nem ao minimizar): uma
+        // janela real maior que o próprio teto declarado, ainda que por uma
+        // fração de segundo, deixava o redimensionamento por arrasto
+        // travado dali em diante.
         novo.minSize = Self.tamanhoMinimo
         novo.maxSize = Self.tamanhoMaximo
         // As cores do `PapagaioTema` resolvem contra a `NSAppearance` da
@@ -72,9 +94,41 @@ final class JanelaFlutuanteDeGravacao {
         novo.appearance = aparenciaAtual.nsAppearance
         novo.contentView = NSHostingView(rootView: conteudo)
 
-        posicionar(novo)
-        novo.orderFrontRegardless()
+        let destino = retanguloDeDestino(para: novo)
+
+        // Se sabemos de onde o cartão de gravação está saindo na janela
+        // principal, o painel nasce ali — mas dentro do teto acima, nunca
+        // maior — e encolhe animado até o canto, como o PiP do FaceTime. Sem
+        // essa origem (por exemplo, gravação iniciada com o foco fora da
+        // tela de captura) ele só aparece direto no destino.
+        if let origem = gravador.origemDoPainelNaTela, origem.width > 40, origem.height > 40 {
+            novo.setFrame(dentroDosLimites(origem), display: false)
+            novo.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { contexto in
+                contexto.duration = 0.32
+                contexto.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                novo.animator().setFrame(destino, display: true)
+            }
+        } else {
+            novo.setFrame(destino, display: false)
+            novo.orderFrontRegardless()
+        }
+
         painel = novo
+    }
+
+    /// Encaixa um retângulo dentro do piso/teto do painel, preservando o
+    /// centro — usado para o cartão de origem, que costuma ser bem maior que
+    /// os 620×460 do teto.
+    private func dentroDosLimites(_ retangulo: NSRect) -> NSRect {
+        let largura = min(max(retangulo.width, Self.tamanhoMinimo.width), Self.tamanhoMaximo.width)
+        let altura = min(max(retangulo.height, Self.tamanhoMinimo.height), Self.tamanhoMaximo.height)
+        return NSRect(
+            x: retangulo.midX - largura / 2,
+            y: retangulo.midY - altura / 2,
+            width: largura,
+            height: altura
+        )
     }
 
     /// Lida direto do `UserDefaults`, e não via `@AppStorage`: esta classe
@@ -85,9 +139,61 @@ final class JanelaFlutuanteDeGravacao {
         return AparenciaDoApp(rawValue: bruta) ?? .sistema
     }
 
-    func esconder() {
-        painel?.close()
-        painel = nil
+    /// Some com o painel. Quando `origem` aponta para um lugar válido da tela
+    /// (o cartão de gravação voltou a aparecer na janela principal), ele
+    /// encolhe animado de volta para lá antes de fechar — o mesmo gesto de
+    /// "nascer" em `exibir(gravador:aoAbrirNoApp:)`, só que ao contrário.
+    func esconder(origem: CGRect? = nil) {
+        guard let painel else { return }
+        self.painel = nil
+
+        guard let origem, origem.width > 40, origem.height > 40 else {
+            painel.close()
+            return
+        }
+
+        NSAnimationContext.runAnimationGroup { contexto in
+            contexto.duration = 0.26
+            contexto.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            painel.animator().setFrame(origem, display: true)
+        } completionHandler: {
+            painel.close()
+        }
+    }
+
+    // MARK: - Minimizar / restaurar
+
+    /// Alterna entre o tamanho mínimo (barra de transporte) e o tamanho de
+    /// antes — sempre o mesmo painel, sempre redimensionável por arrasto nos
+    /// 240×84 a 620×460 de sempre. Chamado só pelo botão do próprio painel:
+    /// tentar detectar isso sozinho por arrasto (borda da tela) já atrapalhou
+    /// o arrasto normal e outras animações antes.
+    private func alternarTamanho() {
+        guard let painel else { return }
+        let atual = painel.frame
+
+        let destino: NSRect
+        if atual.width <= Self.tamanhoMinimo.width + 12 {
+            destino = quadroAntesDeMinimizar ?? retanguloDeDestino(para: painel)
+        } else {
+            quadroAntesDeMinimizar = atual
+            guard let area = (painel.screen ?? NSScreen.main)?.visibleFrame else { return }
+            let ladoEsquerdo = atual.midX < area.midX
+            let altura = Self.tamanhoMinimo.height
+            let y = min(max(atual.midY - altura / 2, area.minY), area.maxY - altura)
+            destino = NSRect(
+                x: ladoEsquerdo ? atual.minX : atual.maxX - Self.tamanhoMinimo.width,
+                y: y,
+                width: Self.tamanhoMinimo.width,
+                height: altura
+            )
+        }
+
+        NSAnimationContext.runAnimationGroup { contexto in
+            contexto.duration = 0.22
+            contexto.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            painel.animator().setFrame(destino, display: true)
+        }
     }
 
     /// Canto inferior direito da tela onde está o cursor, com folga.
@@ -99,14 +205,19 @@ final class JanelaFlutuanteDeGravacao {
     ///
     /// A tela é a do cursor, e não a principal: em setup de dois monitores, a
     /// janela precisa nascer onde a pessoa está olhando.
-    private func posicionar(_ painel: NSPanel) {
+    private func retanguloDeDestino(para painel: NSPanel) -> NSRect {
         let tela = NSScreen.screens.first {
             NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
         } ?? NSScreen.main
 
         guard let area = tela?.visibleFrame else {
-            painel.center()
-            return
+            let atual = painel.frame
+            return NSRect(
+                x: atual.midX - Self.tamanhoInicial.width / 2,
+                y: atual.midY - Self.tamanhoInicial.height / 2,
+                width: Self.tamanhoInicial.width,
+                height: Self.tamanhoInicial.height
+            )
         }
 
         let folga: CGFloat = 24
@@ -114,6 +225,6 @@ final class JanelaFlutuanteDeGravacao {
             x: area.maxX - Self.tamanhoInicial.width - folga,
             y: area.minY + folga
         )
-        painel.setFrameOrigin(origem)
+        return NSRect(origin: origem, size: Self.tamanhoInicial)
     }
 }

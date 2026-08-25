@@ -31,7 +31,7 @@ struct EditorDeNomesDeVoz: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
                 BotaoDeAjudaPapagaio(
-                    texto: "Dê um nome de verdade a cada voz identificada pela diarização — atualiza todas as falas dela na transcrição de uma vez.",
+                    texto: "Dê um nome de verdade a cada voz identificada pela diarização. Isso atualiza todas as falas dela na transcrição de uma vez.",
                     ajuda: "Sobre nomear vozes",
                     largura: 300
                 )

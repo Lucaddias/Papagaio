@@ -76,11 +76,22 @@
 		};
 /* End PBXGroup section */
 
+/* Begin PBXHeadersBuildPhase section */
+		7CC5B2BD303CBBE20035F3A0 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
 /* Begin PBXNativeTarget section */
 		PA00000000000000000002 /* Loro */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = PA0000000000000000000B /* Build configuration list for PBXNativeTarget "Loro" */;
 			buildPhases = (
+				7CC5B2BD303CBBE20035F3A0 /* Headers */,
 				PA00000000000000000007 /* Sources */,
 				PA00000000000000000008 /* Frameworks */,
 				PA00000000000000000009 /* Resources */,
@@ -113,11 +124,6 @@
 				TargetAttributes = {
 					PA00000000000000000002 = {
 						CreatedOnToolsVersion = 27.0;
-						SystemCapabilities = {
-							com.apple.iCloud = {
-								enabled = 1;
-							};
-						};
 					};
 				};
 			};
@@ -223,7 +229,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 8CTC75M93B;
+				DEVELOPMENT_TEAM = 639W8777DZ;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -240,7 +246,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaioooo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -254,7 +260,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 8CTC75M93B;
+				DEVELOPMENT_TEAM = 639W8777DZ;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -271,7 +277,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaioooo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;

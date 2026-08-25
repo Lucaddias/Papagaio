@@ -70,11 +70,12 @@ struct CartaoDePastaNaLixeira: View {
             }
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                // Sem `.lineLimit` no nome — mesmo ajuste de `CartaoDaLixeira`:
+                // nome de pasta é dado real, sem tamanho garantido.
                 Text(item.nome)
                     .font(.title.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
                     .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
-                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(
@@ -85,7 +86,6 @@ struct CartaoDePastaNaLixeira: View {
                 .font(.body)
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .lineSpacing(3)
-                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -96,11 +96,14 @@ struct CartaoDePastaNaLixeira: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         ForEach(conversas) { arquivo in
+                            // Sem `.lineLimit`: um título comprido só deixa
+                            // esta linha da lista mais alta — a `ScrollView`
+                            // em volta já rola verticalmente de qualquer
+                            // jeito, então não precisa cortar com "...".
                             HStack(spacing: PapagaioTema.Espaco.curto) {
                                 Text(arquivo.resumo?.titulo ?? arquivo.titulo)
                                     .font(.callout)
                                     .foregroundStyle(PapagaioTema.textoSecundario)
-                                    .lineLimit(1)
 
                                 Spacer(minLength: PapagaioTema.Espaco.curto)
 
