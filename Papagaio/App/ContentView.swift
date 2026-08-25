@@ -118,7 +118,9 @@ struct ContentView: View {
                         estado: estado,
                         processando: processando,
                         naFila: naFila,
-                        responsaveisDisponiveis: [],
+                        responsaveisDisponiveis: ResponsavelDaTarefa.disponiveis(
+                            em: PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+                        ),
                         aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
                         aoAtualizarNotas: { notas in
                             await biblioteca.atualizarNotas(notas, de: arquivo)
