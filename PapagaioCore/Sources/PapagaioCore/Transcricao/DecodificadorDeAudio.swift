@@ -49,7 +49,9 @@ public enum DecodificadorDeAudio {
         amostrasPorBloco: Int = Int(FormatoAudio.taxaCanonica * 60),
         acao: (Bloco) async throws -> Void
     ) async throws {
-        precondition(amostrasPorBloco > 0)
+        guard amostrasPorBloco > 0 else {
+            throw ErroCaptura.arquivoInvalido("o bloco de decodificação precisa ter amostras")
+        }
         if url.pathExtension.lowercased() == extensaoCrua {
             try await processarPCMCru(
                 de: url, amostrasPorBloco: amostrasPorBloco, acao: acao

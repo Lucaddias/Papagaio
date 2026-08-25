@@ -83,6 +83,52 @@ func decodificadorEntregaBlocosOrdenados() async throws {
     #expect(blocos.flatMap(\.amostras) == original)
 }
 
+@Test("Decodificador de arquivo de áudio também respeita o tamanho dos blocos")
+func decodificadorDeAudioEntregaBlocosOrdenados() async throws {
+    let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: pasta) }
+
+    let taxa: Double = 44_100
+    let formato = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: taxa, channels: 1, interleaved: false
+    )!
+    let destino = pasta.appendingPathComponent("tom-em-blocos.wav")
+    do {
+        let arquivo = try AVAudioFile(forWriting: destino, settings: formato.settings)
+        let quadros = AVAudioFrameCount(taxa * 2)
+        let buffer = AVAudioPCMBuffer(pcmFormat: formato, frameCapacity: quadros)!
+        buffer.frameLength = quadros
+        let canal = buffer.floatChannelData![0]
+        for quadro in 0..<Int(quadros) {
+            canal[quadro] = Float(0.25 * sin(2 * Double.pi * 440 * Double(quadro) / taxa))
+        }
+        try arquivo.write(from: buffer)
+    }
+
+    var blocos: [DecodificadorDeAudio.Bloco] = []
+    try await DecodificadorDeAudio.processarEmBlocos(
+        de: destino, amostrasPorBloco: 5_000
+    ) { blocos.append($0) }
+
+    #expect(blocos.count == 7)
+    #expect(blocos.dropLast().allSatisfy { $0.amostras.count == 5_000 })
+    #expect((blocos.last?.amostras.count ?? 0) > 1_000)
+    #expect((blocos.last?.amostras.count ?? 5_000) < 5_000)
+    #expect((31_000..<33_000).contains(blocos.reduce(0) { $0 + $1.amostras.count }))
+    #expect(blocos.map(\.inicio) == [0, 0.3125, 0.625, 0.9375, 1.25, 1.5625, 1.875])
+}
+
+@Test("Tamanho de bloco inválido vira erro em vez de encerrar o processo")
+func decodificadorRecusaBlocoVazio() async {
+    await #expect(throws: ErroCaptura.self) {
+        try await DecodificadorDeAudio.processarEmBlocos(
+            de: URL(fileURLWithPath: "/arquivo-que-nao-sera-aberto.pcm"),
+            amostrasPorBloco: 0
+        ) { _ in }
+    }
+}
+
 @Test("Arquivo .pcm cru é lido sem conversão")
 func decodificadorPCMCru() async throws {
     let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)

@@ -77,6 +77,7 @@ public struct WhisperEngine: TranscriptionEngine {
 
         func transcrever(_ janelas: [DetectorDeAtividadeDeVoz.JanelaEmFluxo]) async throws {
             for janela in janelas where !janela.amostras.isEmpty {
+                try Task.checkCancellation()
                 let segmentos = try await contexto.transcrever(
                     amostras: janela.amostras,
                     initialPrompt: initialPrompt
@@ -86,9 +87,11 @@ public struct WhisperEngine: TranscriptionEngine {
             }
         }
 
+        try Task.checkCancellation()
         await sessao.iniciar()
         do {
             try await DecodificadorDeAudio.processarEmBlocos(de: url) { bloco in
+                try Task.checkCancellation()
                 try await transcrever(await sessao.receber(bloco))
             }
             try await transcrever(await sessao.finalizar())

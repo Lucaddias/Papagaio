@@ -83,6 +83,10 @@ public enum DetectorDeAtividadeDeVoz {
         private var inicioDaJanela: Int?
         private var fimDaUltimaFala = 0
         private var proximaAmostra = 0
+        /// Depois de um corte forçado, a nova janela começa com um overlap que
+        /// já foi entregue. Ela só deve seguir ao Whisper se receber fala nova;
+        /// caso contrário, transcreveríamos novamente apenas a cauda anterior.
+        private var temFalaNovaNaJanela = false
 
         init(
             taxa: Double = FormatoAudio.taxaCanonica,
@@ -201,6 +205,7 @@ public enum DetectorDeAtividadeDeVoz {
                     amostrasDaJanela = preRoll
                     amostrasDaJanela.append(contentsOf: quadro)
                     fimDaUltimaFala = inicioAbsoluto + quadro.count
+                    temFalaNovaNaJanela = true
                     preRoll.removeAll(keepingCapacity: true)
                 } else {
                     acrescentarAoPreRoll(quadro)
@@ -211,6 +216,7 @@ public enum DetectorDeAtividadeDeVoz {
             amostrasDaJanela.append(contentsOf: quadro)
             if temFala {
                 fimDaUltimaFala = inicioAbsoluto + quadro.count
+                temFalaNovaNaJanela = true
             } else if inicioAbsoluto + quadro.count - fimDaUltimaFala > silencioParaCortar {
                 prontas.append(contentsOf: fecharJanela(incluindoMargem: true))
                 return prontas
@@ -241,22 +247,28 @@ public enum DetectorDeAtividadeDeVoz {
             let limite = incluindoMargem
                 ? min(amostrasDaJanela.count, fimDaFalaRelativo + margemEmAmostras)
                 : amostrasDaJanela.count
-            let janela = JanelaEmFluxo(
-                inicio: TimeInterval(inicio) / taxa,
-                amostras: Array(amostrasDaJanela.prefix(limite))
-            )
+            let prontas: [JanelaEmFluxo]
+            if temFalaNovaNaJanela {
+                prontas = [JanelaEmFluxo(
+                    inicio: TimeInterval(inicio) / taxa,
+                    amostras: Array(amostrasDaJanela.prefix(limite))
+                )]
+            } else {
+                prontas = []
+            }
 
             if manterSobreposicao {
                 let sobreposicao = Array(amostrasDaJanela.suffix(margemEmAmostras))
                 inicioDaJanela = inicio + amostrasDaJanela.count - sobreposicao.count
                 amostrasDaJanela = sobreposicao
-                fimDaUltimaFala = inicioDaJanela! + sobreposicao.count
+                temFalaNovaNaJanela = false
             } else {
                 preRoll = Array(amostrasDaJanela.suffix(margemEmAmostras))
                 amostrasDaJanela.removeAll(keepingCapacity: true)
                 inicioDaJanela = nil
+                temFalaNovaNaJanela = false
             }
-            return [janela]
+            return prontas
         }
     }
 
