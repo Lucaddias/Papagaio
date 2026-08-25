@@ -436,9 +436,9 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    private func pacoteDaPasta(_ nome: String) throws -> URL {
+    private func pacoteDaPasta(_ nome: String) async throws -> URL {
         guard let biblioteca else { throw PastasDaBiblioteca.Erro.pastaVazia }
-        return try PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
+        return try await PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
@@ -447,38 +447,39 @@ struct BibliotecaHomeView: View {
     /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
     /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
-        let pacote: URL
-        do {
-            pacote = try pacoteDaPasta(nome)
-        } catch {
-            erroDeExportacao = error.localizedDescription
-            return
-        }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                let painel = NSOpenPanel()
+                painel.title = "Escolha onde salvar a pasta \(nome)"
+                painel.prompt = "Salvar aqui"
+                painel.canChooseFiles = false
+                painel.canChooseDirectories = true
+                painel.canCreateDirectories = true
 
-        let painel = NSOpenPanel()
-        painel.title = "Escolha onde salvar a pasta \(nome)"
-        painel.prompt = "Salvar aqui"
-        painel.canChooseFiles = false
-        painel.canChooseDirectories = true
-        painel.canCreateDirectories = true
+                painel.begin { resposta in
+                    guard resposta == .OK, let destino = painel.url else { return }
+                    Task.detached {
+                        let acesso = destino.startAccessingSecurityScopedResource()
+                        defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
-        painel.begin { resposta in
-            guard resposta == .OK, let destino = painel.url else { return }
-            Task.detached {
-                let acesso = destino.startAccessingSecurityScopedResource()
-                defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
-
-                let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-                do {
-                    if FileManager.default.fileExists(atPath: alvo.path) {
-                        try FileManager.default.removeItem(at: alvo)
-                    }
-                    try FileManager.default.copyItem(at: pacote, to: alvo)
-                } catch {
-                    await MainActor.run {
-                        erroDeExportacao = error.localizedDescription
+                        let alvo = destino.appendingPathComponent(
+                            pacote.lastPathComponent, isDirectory: true
+                        )
+                        do {
+                            if FileManager.default.fileExists(atPath: alvo.path) {
+                                try FileManager.default.removeItem(at: alvo)
+                            }
+                            try FileManager.default.copyItem(at: pacote, to: alvo)
+                        } catch {
+                            await MainActor.run {
+                                erroDeExportacao = error.localizedDescription
+                            }
+                        }
                     }
                 }
+            } catch {
+                erroDeExportacao = error.localizedDescription
             }
         }
     }
@@ -489,23 +490,25 @@ struct BibliotecaHomeView: View {
     /// painel de compartilhamento é o que trava e-mail e mensagem — e do outro
     /// lado ninguém remonta a estrutura de pastas na mão.
     private func compartilharPasta(_ nome: String) {
-        let zip: URL
-        do {
-            zip = try DossieDaConversa.zipar(pacoteDaPasta(nome))
-        } catch {
-            erroDeExportacao = error.localizedDescription
-            return
-        }
-        guard let view = NSApp.keyWindow?.contentView else { return }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                let zip = try await Task.detached {
+                    try DossieDaConversa.zipar(pacote)
+                }.value
+                guard let view = NSApp.keyWindow?.contentView else { return }
 
-        // O mesmo painel do cartão de conversa, com o delegate que acrescenta
-        // "Salvar em…". Sem ele, compartilhar uma pasta oferecia só os apps —
-        // e guardar num diretório, que é o caso mais comum, ficava de fora.
-        let picker = NSSharingServicePicker(items: [zip])
-        let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
-        delegadoDeCompartilhamento = opcoes
-        picker.delegate = opcoes
-        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+                // O mesmo painel do cartão de conversa, com o delegate que
+                // acrescenta "Salvar em…".
+                let picker = NSSharingServicePicker(items: [zip])
+                let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
+                delegadoDeCompartilhamento = opcoes
+                picker.delegate = opcoes
+                picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+            } catch {
+                erroDeExportacao = error.localizedDescription
+            }
+        }
     }
 
     /// As pastas cujo nome casa com a busca. Vazio sem termo digitado.

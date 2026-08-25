@@ -63,12 +63,14 @@ enum PastasDaBiblioteca {
     /// As conversas de uma pasta, como arquivos prontos para sair do app.
     ///
     /// Um dossiê por conversa, com documento, áudios e anexos.
-    static func pacote(_ nome: String, biblioteca: Biblioteca) throws -> URL {
+    static func pacote(_ nome: String, biblioteca: Biblioteca) async throws -> URL {
         let conversas = biblioteca.arquivos
             .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
             .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
 
         guard !conversas.isEmpty else { throw Erro.pastaVazia }
-        return try DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+        return try await Task.detached {
+            try DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+        }.value
     }
 }
