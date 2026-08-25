@@ -72,7 +72,7 @@ func cargaCriaBaseDosProximosPassos() {
     #expect(vm.tarefas[0].prioridade == .alta)
     #expect(vm.tarefas[1].prioridade == .alta)
     #expect(vm.tarefas[2].prioridade == .media)
-    #expect(vm.tarefas.allSatisfy { $0.status == .emAndamento })
+    #expect(vm.tarefas.allSatisfy { $0.status == .naoIniciado })
     #expect(vm.tarefas.allSatisfy { $0.origem == "Kickoff" })
 }
 
