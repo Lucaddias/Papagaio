@@ -205,3 +205,99 @@ func erroDeCarregamentoEhObservavel() async throws {
     // limpo em vez de guardar lixo de execuções anteriores.
     #expect(biblioteca.erroDeCarregamento == nil)
 }
+
+@MainActor
+@Test("Excluir a conta limpa todos os stores locais sem apagar preferências globais")
+func exclusaoDaContaLimpaStoresLocais() throws {
+    let suite = "LimpezaDeContaTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let chavesDaConta = [
+        "tarefasDaConversa.arquivo", "midiasDaConversa.arquivo",
+        "arquivoFavorito.id", "arquivoPasta.id", "arquivoCapa.id",
+        "arquivoMetadados.id", "arquivoNomesDeVoz.id", "pastasDaBiblioteca",
+        "corDaFaixaDoCartao.id", "bannerDoCartao.id", "ajusteDoBannerDoCartao.id",
+        "faixaSemCorDoCartao.id", "corDaPasta.Cliente", "capaDaPasta.Cliente",
+        "ajusteDaCapaDaPasta.Cliente", "pastaFavorita.Cliente",
+        "pastaCriadaEm.Cliente", "corLivreDaPasta.Cliente", "pastaSemCor.Cliente",
+        "fotoDaPessoa.ana", "midiaNaLixeira", "tarefasNaLixeira",
+        "pastasNaLixeira", "espacoIndividual",
+    ]
+    for chave in chavesDaConta { defaults.set(Data([1]), forKey: chave) }
+
+    defaults.set("escuro", forKey: "aparenciaDoApp")
+    defaults.set(false, forKey: "processamentoAutomatico")
+
+    LimpezaDeConta.executar(em: defaults)
+
+    for chave in chavesDaConta {
+        #expect(defaults.object(forKey: chave) == nil, "sobrou \(chave)")
+    }
+    #expect(defaults.string(forKey: "aparenciaDoApp") == "escuro")
+    #expect(defaults.object(forKey: "processamentoAutomatico") != nil)
+}
+
+@MainActor
+@Test("Excluir uma conversa limpa só os dados auxiliares daquele arquivo")
+func exclusaoDeArquivoLimpaSomenteSeuEstado() throws {
+    let suite = "LimpezaDeArquivoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let alvo = ArquivoID()
+    let outro = ArquivoID()
+    let sufixo = alvo.rawValue.uuidString
+    let sufixoDoOutro = outro.rawValue.uuidString
+    let chavesDoAlvo = [
+        "tarefasDaConversa.\(sufixo)", "midiasDaConversa.\(sufixo)",
+        "arquivoFavorito.\(sufixo)", "arquivoPasta.\(sufixo)",
+        "arquivoCapa.\(sufixo)", "arquivoMetadados.\(sufixo)",
+        "arquivoNomesDeVoz.\(sufixo)", "corDaFaixaDoCartao.\(sufixo)",
+        "bannerDoCartao.\(sufixo)", "ajusteDoBannerDoCartao.\(sufixo)",
+        "faixaSemCorDoCartao.\(sufixo)",
+    ]
+    for chave in chavesDoAlvo { defaults.set(Data([1]), forKey: chave) }
+    defaults.set(Data([2]), forKey: "tarefasDaConversa.\(sufixoDoOutro)")
+
+    let tarefa = TarefaDaConversa(
+        titulo: "Revisar", origem: "Conversa", prioridade: .media,
+        status: .naoIniciado, responsavel: nil, prazo: nil
+    )
+    let tarefasNaLixeira = [
+        TarefaNaLixeira(arquivoID: alvo, conversaTitulo: "Alvo", tarefa: tarefa),
+        TarefaNaLixeira(arquivoID: outro, conversaTitulo: "Outra", tarefa: tarefa),
+    ]
+    defaults.set(try JSONEncoder().encode(tarefasNaLixeira), forKey: "tarefasNaLixeira")
+
+    let midiasNaLixeira = [
+        MidiaNaLixeira(
+            arquivoID: alvo, conversaTitulo: "Alvo", nome: "a.wav", tamanho: 1,
+            tipo: "Áudio", daGravacao: false, caminhoOriginal: "/a", caminhoNaLixeira: "/b"
+        ),
+        MidiaNaLixeira(
+            arquivoID: outro, conversaTitulo: "Outra", nome: "b.wav", tamanho: 1,
+            tipo: "Áudio", daGravacao: false, caminhoOriginal: "/c", caminhoNaLixeira: "/d"
+        ),
+    ]
+    defaults.set(try JSONEncoder().encode(midiasNaLixeira), forKey: "midiaNaLixeira")
+
+    let estado = AparenciaDasPastas.Estado(
+        preset: nil, corLivre: nil, favorita: false, semCor: nil,
+        criadaEm: nil, capa: nil
+    )
+    let pastasNaLixeira = [
+        PastaNaLixeira(nome: "Cliente", conversas: [alvo.rawValue, outro.rawValue], aparencia: estado),
+    ]
+    defaults.set(try JSONEncoder().encode(pastasNaLixeira), forKey: "pastasNaLixeira")
+
+    LimpezaDeArquivo.executar(alvo, em: defaults)
+
+    for chave in chavesDoAlvo {
+        #expect(defaults.object(forKey: chave) == nil, "sobrou \(chave)")
+    }
+    #expect(defaults.data(forKey: "tarefasDaConversa.\(sufixoDoOutro)") == Data([2]))
+    #expect(try JSONDecoder().decode([TarefaNaLixeira].self, from: #require(defaults.data(forKey: "tarefasNaLixeira"))).map(\.arquivoID) == [outro])
+    #expect(try JSONDecoder().decode([MidiaNaLixeira].self, from: #require(defaults.data(forKey: "midiaNaLixeira"))).map(\.arquivoID) == [outro])
+    #expect(try JSONDecoder().decode([PastaNaLixeira].self, from: #require(defaults.data(forKey: "pastasNaLixeira"))).first?.conversas == [outro.rawValue])
+}

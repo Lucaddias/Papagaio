@@ -113,8 +113,21 @@ enum LixeiraDeMidia {
 
     /// A biblioteca já removeu a pasta de gravações inteira. Aqui descartamos
     /// só os metadados, sem seguir caminhos absolutos fora do container.
-    static func limparRegistros() {
-        UserDefaults.standard.removeObject(forKey: chave)
+    static func limparRegistros(em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave)
+    }
+
+    /// Descarta referências a mídias de uma conversa cuja pasta já foi
+    /// removida pela exclusão definitiva.
+    static func removerRegistros(
+        do arquivoID: ArquivoID,
+        em defaults: UserDefaults = .standard
+    ) {
+        guard let dados = defaults.data(forKey: chave),
+              let atuais = try? JSONDecoder().decode([MidiaNaLixeira].self, from: dados),
+              let novos = try? JSONEncoder().encode(atuais.filter { $0.arquivoID != arquivoID })
+        else { return }
+        defaults.set(novos, forKey: chave)
     }
 
     private static func salvar(_ itens: [MidiaNaLixeira]) {

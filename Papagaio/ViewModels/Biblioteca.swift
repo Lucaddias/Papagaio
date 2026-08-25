@@ -296,9 +296,9 @@ final class Biblioteca {
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
-            // Sem isto o arquivo apagado deixa favorito, pasta, capa e
-            // metadados órfãos em UserDefaults para sempre.
-            PreferenciasVisuaisDoArquivo.remover(arquivo.id)
+            // O registro e a pasta já saíram; agora nenhum store auxiliar
+            // pode continuar apontando para esta conversa inexistente.
+            LimpezaDeArquivo.executar(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }

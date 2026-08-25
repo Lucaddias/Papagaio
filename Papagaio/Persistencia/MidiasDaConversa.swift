@@ -91,11 +91,14 @@ enum MidiasDaConversa {
         UserDefaults.standard.set(dados, forKey: chave(arquivoID))
     }
 
-    static func removerTodas() {
-        let defaults = UserDefaults.standard
+    static func removerTodas(em defaults: UserDefaults = .standard) {
         for chave in defaults.dictionaryRepresentation().keys where chave.hasPrefix("midiasDaConversa.") {
             defaults.removeObject(forKey: chave)
         }
+    }
+
+    static func remover(_ arquivoID: ArquivoID, em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave(arquivoID))
     }
 
     private static func chave(_ arquivoID: ArquivoID) -> String {

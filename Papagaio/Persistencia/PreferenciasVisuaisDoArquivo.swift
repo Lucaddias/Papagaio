@@ -249,23 +249,21 @@ enum PreferenciasVisuaisDoArquivo {
         }
     }
 
-    /// Esquece tudo que pertence a um arquivo só: favorito, pasta, capa e
-    /// metadados. É a limpeza da exclusão definitiva — sem ela cada arquivo
-    /// apagado deixa quatro chaves órfãs em `UserDefaults` para sempre.
+    /// Esquece tudo que pertence a um arquivo só: favorito, pasta, capa,
+    /// metadados e nomes das vozes.
     @MainActor
-    static func remover(_ id: ArquivoID) {
-        let defaults = UserDefaults.standard
+    static func remover(_ id: ArquivoID, em defaults: UserDefaults = .standard) {
         let sufixo = id.rawValue.uuidString
         defaults.removeObject(forKey: prefixoFavorito + sufixo)
         defaults.removeObject(forKey: prefixoPasta + sufixo)
         defaults.removeObject(forKey: prefixoCapa + sufixo)
         defaults.removeObject(forKey: prefixoMetadados + sufixo)
+        defaults.removeObject(forKey: prefixoNomesDeVoz + sufixo)
         capasDecodificadas.removeObject(forKey: sufixo as NSString)
     }
 
     @MainActor
-    static func removerTodas() {
-        let defaults = UserDefaults.standard
+    static func removerTodas(em defaults: UserDefaults = .standard) {
         let prefixos = [prefixoFavorito, prefixoPasta, prefixoCapa, prefixoMetadados, prefixoNomesDeVoz]
         for chave in defaults.dictionaryRepresentation().keys where prefixos.contains(where: chave.hasPrefix) {
             defaults.removeObject(forKey: chave)
