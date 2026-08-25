@@ -301,3 +301,45 @@ func exclusaoDeArquivoLimpaSomenteSeuEstado() throws {
     #expect(try JSONDecoder().decode([MidiaNaLixeira].self, from: #require(defaults.data(forKey: "midiaNaLixeira"))).map(\.arquivoID) == [outro])
     #expect(try JSONDecoder().decode([PastaNaLixeira].self, from: #require(defaults.data(forKey: "pastasNaLixeira"))).first?.conversas == [outro.rawValue])
 }
+
+@Test("Apagar anexo não aceita pasta irmã com o mesmo prefixo")
+func apagarAnexoRecusaPastaIrma() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let conversa = raiz.appendingPathComponent("Conversa", isDirectory: true)
+    let irma = raiz.appendingPathComponent("Conversa-antiga", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: irma, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let externo = irma.appendingPathComponent("nao-apagar.txt")
+    try Data("preservar".utf8).write(to: externo)
+    let anexo = AnexoDeMidiaDaConversa(
+        id: UUID(), nome: externo.lastPathComponent, tamanho: 9,
+        data: Date(), url: externo
+    )
+
+    #expect(throws: MidiasDaConversa.Erro.arquivoForaDaConversa) {
+        try MidiasDaConversa.apagarArquivoSalvo(anexo, pastaDaConversa: conversa)
+    }
+    #expect(FileManager.default.fileExists(atPath: externo.path))
+}
+
+@Test("Apagar anexo remove arquivo realmente contido na conversa")
+func apagarAnexoInterno() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let conversa = raiz.appendingPathComponent("Conversa", isDirectory: true)
+    let midia = conversa.appendingPathComponent("Mídia", isDirectory: true)
+    try FileManager.default.createDirectory(at: midia, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let interno = midia.appendingPathComponent("apagar.txt")
+    try Data("apagar".utf8).write(to: interno)
+    let anexo = AnexoDeMidiaDaConversa(
+        id: UUID(), nome: interno.lastPathComponent, tamanho: 6,
+        data: Date(), url: interno
+    )
+
+    try MidiasDaConversa.apagarArquivoSalvo(anexo, pastaDaConversa: conversa)
+
+    #expect(!FileManager.default.fileExists(atPath: interno.path))
+}

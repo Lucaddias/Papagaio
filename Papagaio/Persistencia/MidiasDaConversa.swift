@@ -3,6 +3,17 @@ import Foundation
 import PapagaioCore
 
 enum MidiasDaConversa {
+    enum Erro: LocalizedError {
+        case arquivoForaDaConversa
+
+        var errorDescription: String? {
+            switch self {
+            case .arquivoForaDaConversa:
+                "O arquivo não pertence à pasta desta conversa e não foi apagado."
+            }
+        }
+    }
+
     private struct Registro: Codable {
         let id: UUID
         let nome: String
@@ -63,10 +74,17 @@ enum MidiasDaConversa {
     }
 
     static func apagarArquivoSalvo(_ anexo: AnexoDeMidiaDaConversa, pastaDaConversa: URL) throws {
-        // A subpasta muda de nome com o título da conversa, então a checagem
-        // de segurança é só: o arquivo está dentro da pasta desta conversa?
-        let caminhoPadronizado = anexo.url.standardizedFileURL.path
-        guard caminhoPadronizado.hasPrefix(pastaDaConversa.standardizedFileURL.path) else { return }
+        // Comparar prefixos de texto aceitaria `/Conversa-antiga` como filha
+        // de `/Conversa`. Componentes canônicos também impedem que um symlink
+        // dentro da pasta aponte para um arquivo externo.
+        let destino = anexo.url.standardizedFileURL.resolvingSymlinksInPath()
+        let pasta = pastaDaConversa.standardizedFileURL.resolvingSymlinksInPath()
+        let componentesDaPasta = pasta.pathComponents
+        let componentesDoDestino = destino.pathComponents
+        guard componentesDoDestino.count > componentesDaPasta.count,
+              Array(componentesDoDestino.prefix(componentesDaPasta.count)) == componentesDaPasta
+        else { throw Erro.arquivoForaDaConversa }
+
         if FileManager.default.fileExists(atPath: anexo.url.path) {
             try FileManager.default.removeItem(at: anexo.url)
         }
