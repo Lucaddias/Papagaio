@@ -58,6 +58,31 @@ func decodificadorReamostra() async throws {
     #expect(abs(DecodificadorDeAudio.duracao(de: amostras) - 2) < 0.1)
 }
 
+@Test("Decodificador em blocos não junta o áudio completo em memória")
+func decodificadorEntregaBlocosOrdenados() async throws {
+    let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: pasta) }
+
+    // PCM cru torna a fronteira exata: quatro blocos de 5.000 amostras.
+    let original = (0..<20_000).map { Float($0 % 100) / 100 }
+    let destino = pasta.appendingPathComponent("longo.pcm")
+    try original.withUnsafeBufferPointer { Data(buffer: $0) }.write(to: destino)
+
+    var blocos: [DecodificadorDeAudio.Bloco] = []
+    try await DecodificadorDeAudio.processarEmBlocos(
+        de: destino, amostrasPorBloco: 5_000
+    ) { bloco in
+        blocos.append(bloco)
+    }
+
+    #expect(blocos.count == 4)
+    #expect(blocos.map { $0.amostras.count } == [5_000, 5_000, 5_000, 5_000])
+    #expect(blocos[0].inicio == 0)
+    #expect(abs(blocos[1].inicio - 0.3125) < 0.000_001)
+    #expect(blocos.flatMap(\.amostras) == original)
+}
+
 @Test("Arquivo .pcm cru é lido sem conversão")
 func decodificadorPCMCru() async throws {
     let pasta = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
