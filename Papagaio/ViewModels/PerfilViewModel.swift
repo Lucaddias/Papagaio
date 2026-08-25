@@ -239,6 +239,11 @@ extension PerfilViewModel: ASAuthorizationControllerDelegate {
 
 extension PerfilViewModel: ASAuthorizationControllerPresentationContextProviding {
     nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        NSApplication.shared.keyWindow ?? ASPresentationAnchor()
+        // O AuthenticationServices solicita a âncora durante a apresentação
+        // do painel. A exigência do protocolo ainda é nonisolated, embora
+        // AppKit so permita consultar janelas na main actor.
+        MainActor.assumeIsolated {
+            NSApplication.shared.keyWindow ?? ASPresentationAnchor()
+        }
     }
 }

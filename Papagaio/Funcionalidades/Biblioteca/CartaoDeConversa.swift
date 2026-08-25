@@ -1247,8 +1247,8 @@ struct CartaoDeConversa: View {
                 aoRenomear: executarMenu(abrirEditorDeInformacoes),
                 aoBaixar: executarMenu(baixar),
                 aoCompartilhar: executarMenu(compartilhar),
-                aoDuplicar: executarMenu(aoDuplicar),
-                aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
+                aoDuplicar: executarMenu { aoDuplicar() },
+                aoMoverParaLixeira: executarMenu { aoMoverParaLixeira() }
             )
         }
     }
@@ -1265,14 +1265,17 @@ struct CartaoDeConversa: View {
         )
     }
 
-    private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
+    private func executarMenu(_ acao: @escaping @MainActor () -> Void) -> () -> Void {
         {
             aoFecharMenu()
             // Um salto de runloop antes de agir: apresentar uma folha ou um
             // painel no mesmo ciclo em que o popover se fecha faz o AppKit
             // descartar uma das duas apresentações, e a folha simplesmente não
             // abre. O atraso é invisível.
-            DispatchQueue.main.async(execute: acao)
+            Task { @MainActor in
+                await Task.yield()
+                acao()
+            }
         }
     }
 

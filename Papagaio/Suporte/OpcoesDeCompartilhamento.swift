@@ -24,12 +24,21 @@ final class OpcoesDeCompartilhamento: NSObject, NSSharingServicePickerDelegate {
 
         let icone = NSImage(systemSymbolName: "folder", accessibilityDescription: nil) ?? NSImage()
         let salvar = NSSharingService(title: "Salvar em…", image: icone, alternateImage: nil) {
-            let painel = NSSavePanel()
-            painel.nameFieldStringValue = primeiro.lastPathComponent
-            painel.canCreateDirectories = true
-            guard painel.runModal() == .OK, let destino = painel.url else { return }
-            try? FileManager.default.removeItem(at: destino)
-            try? FileManager.default.copyItem(at: primeiro, to: destino)
+            Task { @MainActor in
+                let painel = NSSavePanel()
+                painel.nameFieldStringValue = primeiro.lastPathComponent
+                painel.canCreateDirectories = true
+                guard painel.runModal() == .OK, let destino = painel.url else { return }
+
+                // Um dossiê pode conter horas de áudio. A cópia síncrona na
+                // main congelava toda a janela até o arquivo terminar.
+                Task.detached {
+                    let acesso = destino.startAccessingSecurityScopedResource()
+                    defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
+                    try? FileManager.default.removeItem(at: destino)
+                    try? FileManager.default.copyItem(at: primeiro, to: destino)
+                }
+            }
         }
 
         return [salvar] + propostos
