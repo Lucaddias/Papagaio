@@ -117,8 +117,8 @@ func persistenciaPreservaFalanteAcustico() async throws {
     #expect(palavras[2].falanteAcustico == nil)
 }
 
-@Test("Falha ao apagar a mídia não deixa registro zumbi: o registro sai antes")
-func persistenciaApagarPreservaRegistroSeMidiaFalhar() async throws {
+@Test("Falha ao apagar a mídia preserva o registro e permite repetir")
+func persistenciaApagarEhRetomavelSeMidiaFalhar() async throws {
     let repo = try repositorioDeTeste()
     let espaco = EspacoID()
     let arquivo = arquivoDeExemplo(titulo: "na lixeira", espaco: espaco)
@@ -130,10 +130,13 @@ func persistenciaApagarPreservaRegistroSeMidiaFalhar() async throws {
         try await repo.apagar(arquivo.id) { _ in throw FalhaDeMidia() }
     }
 
-    // Ordem invertida em relação à primeira versão: o registro sai do banco
-    // primeiro e a mídia por último. Se a mídia falhar, o pior caso é áudio
-    // órfão em disco — nunca um registro sem áudio que não toca mais. A
-    // deleção do registro precisa estar persistida mesmo com a falha.
+    // Sem apagar o registro, a lixeira ainda guarda o caminho da mídia e a
+    // pessoa pode repetir a operação. Apagar o banco primeiro deixava uma
+    // pasta órfã que nenhuma tentativa posterior conseguia mais localizar.
+    #expect(try await repo.listarNaLixeira(espaco: espaco).map(\.id) == [arquivo.id])
+
+    try await repo.apagar(arquivo.id) { _ in }
+
     #expect(try await repo.listarNaLixeira(espaco: espaco).isEmpty)
     #expect(try await repo.listar(espaco: espaco).isEmpty)
 }

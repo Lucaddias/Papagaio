@@ -267,16 +267,20 @@ public actor SwiftDataRepository: ArquivoRepository {
 
         let relativo = persistido.pastaRelativa
 
-        // O registro sai do banco **primeiro**, com `save`, e a mídia por
-        // último. Se a remoção da mídia falhar, sobra áudio órfão em disco —
-        // recuperável. A ordem antiga apagava os arquivos antes do `save`:
-        // se ele falhasse, sobrava um registro sem mídia que não toca mais e
-        // que a pessoa não tem como consertar.
-        modelContext.delete(persistido)
-        try modelContext.save()
-
+        // A mídia sai primeiro para que uma falha no filesystem deixe o
+        // registro intacto na lixeira e a operação possa ser repetida. Se o
+        // `save` falhar depois, a pasta já ausente é aceita pelo armazenamento
+        // e uma nova tentativa consegue concluir a remoção do registro.
         if !relativo.isEmpty {
             try removerMidia(relativo)
+        }
+
+        modelContext.delete(persistido)
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
         }
     }
 
