@@ -343,3 +343,43 @@ func apagarAnexoInterno() throws {
 
     #expect(!FileManager.default.fileExists(atPath: interno.path))
 }
+
+@Test("Exportar conversas com o mesmo título cria pastas distintas e completas")
+func exportacaoNaoMisturaTitulosIguais() throws {
+    let origem = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: origem, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: origem) }
+
+    var conversas: [(arquivo: Arquivo, audio: URL)] = []
+    for indice in 1...2 {
+        let pasta = origem.appendingPathComponent("origem-\(indice)", isDirectory: true)
+        try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+        let audio = pasta.appendingPathComponent(Armazenamento.Nome.microfone)
+        try Data("audio-\(indice)".utf8).write(to: audio)
+        conversas.append((
+            Arquivo(
+                titulo: "Entrevista repetida",
+                pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+                espaco: EspacoID()
+            ),
+            audio
+        ))
+    }
+
+    let exportada = try DossieDaConversa.pastaComTudo(
+        nome: "Cliente/Projeto", conversas: conversas
+    )
+    defer { try? FileManager.default.removeItem(at: exportada.deletingLastPathComponent()) }
+
+    #expect(exportada.lastPathComponent == "Cliente-Projeto")
+    let pastas = try FileManager.default.contentsOfDirectory(
+        at: exportada, includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+    #expect(pastas.count == 2)
+    #expect(Set(pastas.map(\.lastPathComponent)).count == 2)
+    for pasta in pastas {
+        let itens = try FileManager.default.contentsOfDirectory(atPath: pasta.path)
+        #expect(itens.contains(Armazenamento.Nome.microfone))
+        #expect(itens.contains("entrevista-repetida.md"))
+    }
+}

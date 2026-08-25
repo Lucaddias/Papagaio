@@ -9,6 +9,14 @@ import PapagaioCore
 /// dela: os painéis do sistema e a invalidação visual depois de cada ação.
 @MainActor
 enum PastasDaBiblioteca {
+    enum Erro: LocalizedError {
+        case pastaVazia
+
+        var errorDescription: String? {
+            "Esta pasta não contém conversas para exportar."
+        }
+    }
+
     /// Apagar a pasta leva as conversas dela para a lixeira, junto.
     ///
     /// A alternativa — apagar só o rótulo e deixar as conversas soltas em
@@ -54,16 +62,13 @@ enum PastasDaBiblioteca {
 
     /// As conversas de uma pasta, como arquivos prontos para sair do app.
     ///
-    /// Um dossiê por conversa — texto com resumo, transcrição e tarefas — e não
-    /// o áudio: "baixar a pasta" quase sempre quer dizer levar o conteúdo para
-    /// um relatório, e o áudio de doze entrevistas são gigabytes que ninguém
-    /// pediu. Quem quer o áudio de uma conversa usa o Compartilhar dela.
-    static func pacote(_ nome: String, biblioteca: Biblioteca) -> URL? {
+    /// Um dossiê por conversa, com documento, áudios e anexos.
+    static func pacote(_ nome: String, biblioteca: Biblioteca) throws -> URL {
         let conversas = biblioteca.arquivos
             .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
             .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
 
-        guard !conversas.isEmpty else { return nil }
-        return try? DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+        guard !conversas.isEmpty else { throw Erro.pastaVazia }
+        return try DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
     }
 }

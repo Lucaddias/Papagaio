@@ -35,8 +35,20 @@ final class OpcoesDeCompartilhamento: NSObject, NSSharingServicePickerDelegate {
                 Task.detached {
                     let acesso = destino.startAccessingSecurityScopedResource()
                     defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
-                    try? FileManager.default.removeItem(at: destino)
-                    try? FileManager.default.copyItem(at: primeiro, to: destino)
+                    do {
+                        if FileManager.default.fileExists(atPath: destino.path) {
+                            try FileManager.default.removeItem(at: destino)
+                        }
+                        try FileManager.default.copyItem(at: primeiro, to: destino)
+                    } catch {
+                        await MainActor.run {
+                            let alerta = NSAlert()
+                            alerta.messageText = "Não foi possível salvar"
+                            alerta.informativeText = error.localizedDescription
+                            alerta.alertStyle = .warning
+                            alerta.runModal()
+                        }
+                    }
                 }
             }
         }

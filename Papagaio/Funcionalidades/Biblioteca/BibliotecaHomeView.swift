@@ -33,6 +33,7 @@ struct BibliotecaHomeView: View {
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
     @State private var erroDaLixeiraDeMidia: String?
+    @State private var erroDeExportacao: String?
     @State private var menuAberto: ArquivoID?
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
@@ -435,9 +436,9 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    private func pacoteDaPasta(_ nome: String) -> URL? {
-        guard let biblioteca else { return nil }
-        return PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
+    private func pacoteDaPasta(_ nome: String) throws -> URL {
+        guard let biblioteca else { throw PastasDaBiblioteca.Erro.pastaVazia }
+        return try PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
@@ -446,7 +447,13 @@ struct BibliotecaHomeView: View {
     /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
     /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome) else { return }
+        let pacote: URL
+        do {
+            pacote = try pacoteDaPasta(nome)
+        } catch {
+            erroDeExportacao = error.localizedDescription
+            return
+        }
 
         let painel = NSOpenPanel()
         painel.title = "Escolha onde salvar a pasta \(nome)"
@@ -458,12 +465,20 @@ struct BibliotecaHomeView: View {
         painel.begin { resposta in
             guard resposta == .OK, let destino = painel.url else { return }
             Task.detached {
-                guard destino.startAccessingSecurityScopedResource() else { return }
-                defer { destino.stopAccessingSecurityScopedResource() }
+                let acesso = destino.startAccessingSecurityScopedResource()
+                defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
                 let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-                try? FileManager.default.removeItem(at: alvo)
-                try? FileManager.default.copyItem(at: pacote, to: alvo)
+                do {
+                    if FileManager.default.fileExists(atPath: alvo.path) {
+                        try FileManager.default.removeItem(at: alvo)
+                    }
+                    try FileManager.default.copyItem(at: pacote, to: alvo)
+                } catch {
+                    await MainActor.run {
+                        erroDeExportacao = error.localizedDescription
+                    }
+                }
             }
         }
     }
@@ -474,10 +489,14 @@ struct BibliotecaHomeView: View {
     /// painel de compartilhamento é o que trava e-mail e mensagem — e do outro
     /// lado ninguém remonta a estrutura de pastas na mão.
     private func compartilharPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome),
-              let zip = try? DossieDaConversa.zipar(pacote),
-              let view = NSApp.keyWindow?.contentView
-        else { return }
+        let zip: URL
+        do {
+            zip = try DossieDaConversa.zipar(pacoteDaPasta(nome))
+        } catch {
+            erroDeExportacao = error.localizedDescription
+            return
+        }
+        guard let view = NSApp.keyWindow?.contentView else { return }
 
         // O mesmo painel do cartão de conversa, com o delegate que acrescenta
         // "Salvar em…". Sem ele, compartilhar uma pasta oferecia só os apps —
@@ -791,6 +810,14 @@ struct BibliotecaHomeView: View {
             Button("OK", role: .cancel) { erroDaLixeiraDeMidia = nil }
         } message: {
             Text(erroDaLixeiraDeMidia ?? "")
+        }
+        .alert("Não foi possível exportar", isPresented: Binding(
+            get: { erroDeExportacao != nil },
+            set: { if !$0 { erroDeExportacao = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeExportacao = nil }
+        } message: {
+            Text(erroDeExportacao ?? "")
         }
         .confirmationDialog(
             "Esvaziar lixeira?",

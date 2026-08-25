@@ -48,6 +48,7 @@ struct CartaoDeConversa: View {
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
     @State private var criandoPastaParaMover = false
+    @State private var erroDeExportacao: String?
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
     @State private var emailDoEntrevistadoEditado = ""
@@ -524,6 +525,14 @@ struct CartaoDeConversa: View {
             Button("Cancelar", role: .cancel) {}
         } message: {
             Text("Crie uma pasta nova e esta conversa será movida para ela.")
+        }
+        .alert("Não foi possível exportar", isPresented: Binding(
+            get: { erroDeExportacao != nil },
+            set: { if !$0 { erroDeExportacao = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeExportacao = nil }
+        } message: {
+            Text(erroDeExportacao ?? "")
         }
         .overlay {
             if emOperacaoDeLixeira {
@@ -1459,10 +1468,16 @@ struct CartaoDeConversa: View {
     /// cópia, e o menu da pasta já oferecia as duas.
     private func baixar() {
         #if os(macOS)
-        guard let pacote = try? DossieDaConversa.pacoteComAudio(
-            arquivo: arquivo,
-            audioPrincipal: urlDeAudio
-        ) else { return }
+        let pacote: URL
+        do {
+            pacote = try DossieDaConversa.pacoteComAudio(
+                arquivo: arquivo,
+                audioPrincipal: urlDeAudio
+            )
+        } catch {
+            erroDeExportacao = error.localizedDescription
+            return
+        }
 
         let painel = NSOpenPanel()
         painel.title = "Escolha onde salvar \(titulo)"
@@ -1471,15 +1486,19 @@ struct CartaoDeConversa: View {
         painel.canChooseDirectories = true
         painel.canCreateDirectories = true
 
-        guard painel.runModal() == .OK,
-              let destino = painel.url,
-              destino.startAccessingSecurityScopedResource()
-        else { return }
-        defer { destino.stopAccessingSecurityScopedResource() }
+        guard painel.runModal() == .OK, let destino = painel.url else { return }
+        let acesso = destino.startAccessingSecurityScopedResource()
+        defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
         let alvo = destino.appendingPathComponent(pacote.lastPathComponent)
-        try? FileManager.default.removeItem(at: alvo)
-        try? FileManager.default.copyItem(at: pacote, to: alvo)
+        do {
+            if FileManager.default.fileExists(atPath: alvo.path) {
+                try FileManager.default.removeItem(at: alvo)
+            }
+            try FileManager.default.copyItem(at: pacote, to: alvo)
+        } catch {
+            erroDeExportacao = error.localizedDescription
+        }
         #endif
     }
 
