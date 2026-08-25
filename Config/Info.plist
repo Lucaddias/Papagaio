@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CKSharingSupported</key>
-	<true/>
 	<key>CFBundleIconFile</key>
 	<string>LoroAppIcon</string>
+	<key>CKSharingSupported</key>
+	<true/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Loro grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
 </dict>
