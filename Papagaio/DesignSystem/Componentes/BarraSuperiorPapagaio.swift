@@ -14,8 +14,6 @@ struct BarraSuperiorPapagaioView: View {
     let perfilConectado: Bool
     let perfilVerificando: Bool
     let avatarURL: URL?
-    let contextoDaConta: ContextoDaConta
-    let equipeAtiva: EquipeDisponivel?
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -29,14 +27,11 @@ struct BarraSuperiorPapagaioView: View {
     let aoAbrirTarefas: () -> Void
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
-    let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
     let aoGerenciarPerfil: () -> Void
-    let aoGerenciarEquipe: () -> Void
 
     /// A barra era um `ScrollView` horizontal com `minWidth: 760`. Abaixo disso
-    /// ela não encolhia: rolava, e o botão de conta — único acesso a perfil,
-    /// equipe e sair — saía da tela sem nenhum indício de que ainda estava lá.
+    /// ela não encolhia: rolava, e o botão de conta saía da tela sem nenhum
+    /// indício de que perfil e sair ainda estavam lá.
     ///
     /// Agora ela se resolve sozinha em três estágios: completa; sem o rótulo da
     /// conta; e, no mais apertado, com os dois grupos de ícones fundidos num
@@ -249,8 +244,8 @@ struct BarraSuperiorPapagaioView: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .help(perfilConectado ? tituloDaContaAtiva : "Perfil")
-        .accessibilityLabel(perfilConectado ? "Conta ativa: \(tituloDaContaAtiva)" : "Perfil")
+        .help(perfilConectado ? "Perfil pessoal" : "Perfil")
+        .accessibilityLabel(perfilConectado ? "Conta ativa: Perfil pessoal" : "Perfil")
         .popover(isPresented: $exibindoMenuDePerfil, arrowEdge: .top) {
             menuDePerfil
         }
@@ -259,13 +254,13 @@ struct BarraSuperiorPapagaioView: View {
     private func conteudoDoBotaoDePerfil(comRotulo: Bool) -> some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
             AvatarDaContaNaBarra(
-                url: contextoDaConta == .perfil ? avatarURL : nil,
-                simbolo: contextoDaConta.simbolo,
+                url: avatarURL,
+                simbolo: "person.crop.circle",
                 conectado: perfilConectado
             )
 
             if comRotulo {
-                Text(tituloDaContaAtiva)
+                Text("Perfil pessoal")
                     .font(PapagaioTema.Tipo.apoio.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineLimit(1)
@@ -293,34 +288,14 @@ struct BarraSuperiorPapagaioView: View {
                     Text("Conta ativa")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PapagaioTema.textoSecundario)
-                    Text(tituloDaContaAtiva)
+                    Text("Perfil pessoal")
                         .font(.headline)
                         .foregroundStyle(PapagaioTema.texto)
                 }
 
-                SeletorDeContextoDaConta(
-                    contexto: contextoDaConta,
-                    equipeAtiva: equipeAtiva,
-                    aoUsarPerfil: {
-                        exibindoMenuDePerfil = false
-                        aoUsarPerfil()
-                    },
-                    aoUsarEquipe: {
-                        exibindoMenuDePerfil = false
-                        aoUsarEquipe()
-                    }
-                )
-
-                Divider()
-
                 Button("Gerenciar perfil", systemImage: "person.crop.circle") {
                     exibindoMenuDePerfil = false
                     aoGerenciarPerfil()
-                }
-
-                Button("Gerenciar equipe", systemImage: "person.3.sequence") {
-                    exibindoMenuDePerfil = false
-                    aoGerenciarEquipe()
                 }
 
                 // Saiu da fileira de ícones ao lado de Lixeira/Tarefas/
@@ -426,7 +401,4 @@ struct BarraSuperiorPapagaioView: View {
         .fixedSize()
     }
 
-    private var tituloDaContaAtiva: String {
-        contextoDaConta == .perfil ? "Perfil pessoal" : (equipeAtiva?.nome ?? "Nenhuma equipe ainda")
-    }
 }

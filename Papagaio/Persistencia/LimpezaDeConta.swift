@@ -12,12 +12,6 @@ import Foundation
 @MainActor
 enum LimpezaDeConta {
     static func executar() {
-        // Membros por equipe, depois as equipes em si.
-        for equipe in EquipesDoUsuario.carregar() {
-            MembrosDasEquipes.remover(equipeID: equipe.id)
-        }
-        EquipesDoUsuario.remover()
-
         TarefasDaConversa.removerTodas()
         MidiasDaConversa.removerTodas()
         PreferenciasVisuaisDoArquivo.removerTodas()

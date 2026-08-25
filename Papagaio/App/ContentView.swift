@@ -38,7 +38,6 @@ struct ContentView: View {
     @State private var modelos: ModelosViewModel?
     @State private var perfil = PerfilViewModel()
     @State private var notificacoes = NotificacoesViewModel()
-    @State private var equipes = EquipesDoUsuario.carregar()
     @State private var falhaDeAbertura: String?
     @State private var mostrandoImportador = false
     @State private var arquivoParaConfigurar: Arquivo?
@@ -52,7 +51,6 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
-    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -65,8 +63,6 @@ struct ContentView: View {
     @State private var conversaAberta: [UUID] = []
     @State private var pastaDaBibliotecaSelecionada: String?
     @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
-    @AppStorage("contextoDaConta") private var contextoDaContaRaw = ContextoDaConta.perfil.rawValue
-    @AppStorage("equipeAtiva") private var equipeAtivaID = ""
     @AppStorage("aparenciaDoApp") private var aparenciaRaw = AparenciaDoApp.sistema.rawValue
 
     private var aparencia: Binding<AparenciaDoApp> {
@@ -74,23 +70,6 @@ struct ContentView: View {
             get: { AparenciaDoApp(rawValue: aparenciaRaw) ?? .sistema },
             set: { aparenciaRaw = $0.rawValue }
         )
-    }
-
-    private var contextoDaConta: ContextoDaConta {
-        get { ContextoDaConta(rawValue: contextoDaContaRaw) ?? .perfil }
-        nonmutating set { contextoDaContaRaw = newValue.rawValue }
-    }
-
-    /// `nil` enquanto a pessoa não tiver criado nenhuma equipe.
-    private var equipeAtiva: EquipeDisponivel? {
-        equipes.first { $0.id == equipeAtivaID } ?? equipes.first
-    }
-
-    private var responsaveisDaEquipeAtiva: [ResponsavelDaTarefa] {
-        guard let equipeAtiva else { return [] }
-        return MembrosDasEquipes.carregar(equipeID: equipeAtiva.id).map {
-            ResponsavelDaTarefa(nome: $0.nome, email: $0.email)
-        }
     }
 
     var body: some View {
@@ -139,7 +118,7 @@ struct ContentView: View {
                         estado: estado,
                         processando: processando,
                         naFila: naFila,
-                        responsaveisDisponiveis: responsaveisDaEquipeAtiva,
+                        responsaveisDisponiveis: [],
                         aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
                         aoAtualizarNotas: { notas in
                             await biblioteca.atualizarNotas(notas, de: arquivo)
@@ -203,11 +182,6 @@ struct ContentView: View {
         // do Mac. Nos outros dois casos isto fixa a aparência da janela, e as
         // cores dinâmicas do tema resolvem em cima dela.
         .preferredColorScheme(aparencia.wrappedValue.esquemaPreferido)
-        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitAceita)) { notificacao in
-            guard let equipe = notificacao.object as? EquipeDisponivel else { return }
-            equipes = EquipesDoUsuario.carregar()
-            usarEquipe(equipe)
-        }
         .task {
             notificacoes.preparar()
             perfil.iniciar()
@@ -297,15 +271,14 @@ struct ContentView: View {
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
-            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva,
+            avatarURL: perfil.avatarURL,
             gravando: modelo.gravando && focoNaGravacao, processandoBiblioteca: biblioteca?.processando ?? false,
             quantidadeDeAvisos: notificacoes.naoLidas, notificacoes: notificacoes.itens,
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
             aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas, aoLimparNotificacoes: notificacoes.limpar,
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
-            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
-            aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
+            aoGerenciarPerfil: abrirPerfil
         )
     }
 
@@ -326,15 +299,9 @@ struct ContentView: View {
         case .configuracoes:
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
         case .perfil:
-            PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
-                               aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
-                               aoEntrarComCodigo: entrarNaEquipeComCodigo,
-                               aoSair: sairDoPerfil, aoExcluirConta: excluirConta)
-        case .equipe:
-            GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
-                                aoSelecionarEquipe: usarEquipe,
-                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
-                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe)
+            PerfilPessoalView(
+                perfil: perfil, aoSair: sairDoPerfil, aoExcluirConta: excluirConta
+            )
         }
     }
 
@@ -389,7 +356,6 @@ struct ContentView: View {
                 }
             }
             await nova.preparar()
-            atualizarEspacoDaBiblioteca()
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
@@ -516,124 +482,8 @@ struct ContentView: View {
         secaoDaBiblioteca = .todos
     }
 
-    private func abrirEquipe() {
-        telaSelecionada = .equipe
-        secaoDaBiblioteca = .todos
-    }
-
-    private func selecionarPerfilPessoal() {
-        contextoDaConta = .perfil
-        atualizarEspacoDaBiblioteca()
-    }
-
-    /// Entra no contexto de equipe mesmo sem equipe alguma — é lá que mora o
-    /// estado vazio que convida a criar a primeira.
-    private func selecionarEquipe() {
-        contextoDaConta = .equipe
-        if let equipeAtiva {
-            equipeAtivaID = equipeAtiva.id
-            garantirEspacoParaEquipe(id: equipeAtiva.id)
-            atualizarEspacoDaBiblioteca()
-        }
-    }
-
-    private func usarEquipe(_ equipe: EquipeDisponivel) {
-        contextoDaConta = .equipe
-        equipeAtivaID = equipe.id
-        garantirEspacoParaEquipe(id: equipe.id)
-        atualizarEspacoDaBiblioteca()
-    }
-
-    private func adicionarEquipe(nome: String) {
-        let nomeLimpo = nome.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !nomeLimpo.isEmpty else { return }
-
-        let base = nomeLimpo
-            .lowercased()
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .replacingOccurrences(of: " ", with: "-")
-
-        let nova = EquipeDisponivel(
-            id: "\(base)-\(UUID().uuidString.prefix(6))",
-            nome: nomeLimpo,
-            papel: "Administrador",
-            quantidadeDeMembros: 1,
-            espacoID: UUID().uuidString,
-            codigoDeEntrada: EquipeDisponivel.novoCodigoDeEntrada()
-        )
-        Task { @MainActor in
-            do {
-                let publicada = try await servicoDeEquipesCloudKit.criarWorkspace(para: nova)
-                equipes.append(publicada)
-                EquipesDoUsuario.salvar(equipes)
-                usarEquipe(publicada)
-            } catch {
-                falhaDeAbertura = "Não foi possível criar a equipe no iCloud: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func entrarNaEquipeComCodigo(_ codigo: String) {
-        Task { @MainActor in
-            do {
-                let equipe = try await servicoDeEquipesCloudKit.entrarNaEquipe(com: codigo)
-                EquipesDoUsuario.incluirOuAtualizar(equipe)
-                equipes = EquipesDoUsuario.carregar()
-                usarEquipe(equipe)
-            } catch {
-                falhaDeAbertura = "Não foi possível entrar na equipe: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func atualizarConfiguracoesDaEquipe(_ equipe: EquipeDisponivel, configuracoes: ConfiguracoesDaEquipe) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
-        equipes[indice].configuracoes = configuracoes
-        EquipesDoUsuario.salvar(equipes)
-        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else { return }
-        Task { @MainActor in
-            do {
-                try await servicoDeEquipesCloudKit.atualizarConfiguracoes(configuracoes, da: equipes[indice])
-            } catch {
-                falhaDeAbertura = "As configurações foram salvas neste Mac, mas não puderam ser sincronizadas: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
-        equipes[indice].quantidadeDeMembros = quantidade
-        EquipesDoUsuario.salvar(equipes)
-    }
-
-    private func garantirEspacoParaEquipe(id: String) {
-        guard let indice = equipes.firstIndex(where: { $0.id == id }),
-              UUID(uuidString: equipes[indice].espacoID ?? "") == nil
-        else { return }
-        equipes[indice].espacoID = UUID().uuidString
-        EquipesDoUsuario.salvar(equipes)
-    }
-
-    private func atualizarEspacoDaBiblioteca() {
-        guard let biblioteca else { return }
-        let espaco: EspacoID
-        let equipeParaSincronizar: EquipeDisponivel?
-        if contextoDaConta == .equipe,
-           let equipe = equipeAtiva,
-           let texto = equipe.espacoID,
-           let id = UUID(uuidString: texto) {
-            espaco = EspacoID(rawValue: id)
-            equipeParaSincronizar = equipe.zonaCloudKit == nil ? nil : equipe
-        } else {
-            espaco = Biblioteca.espacoPessoal()
-            equipeParaSincronizar = nil
-        }
-        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
-    }
-
     private func sairDoPerfil() {
         perfil.sair()
-        contextoDaConta = .perfil
         voltarParaBiblioteca()
     }
 
@@ -653,9 +503,6 @@ struct ContentView: View {
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()
-        equipes.removeAll()
-        equipeAtivaID = ""
-        contextoDaConta = .perfil
         consulta = ""
         conversaAberta.removeAll()
         pastaDaBibliotecaSelecionada = nil

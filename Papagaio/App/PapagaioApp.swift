@@ -3,8 +3,6 @@ import SwiftUI
 
 @main
 struct PapagaioApp: App {
-    @NSApplicationDelegateAdaptor(DelegadoDeConvitesCloudKit.self) private var delegadoDeConvites
-
     /// A gravação nasce aqui, e não dentro da `ContentView`, para que o item da
     /// barra de menus observe o mesmo objeto que a janela — sem isso seriam
     /// duas gravações independentes, cada uma com seu cronômetro.
@@ -24,9 +22,11 @@ struct PapagaioApp: App {
             exit(0)
         }
 
-        // Antes de qualquer view ler UserDefaults: instalações antigas têm as
-        // equipes e as pessoas de exemplo gravadas no disco.
-        LimpezaDeDadosFabricados.executarUmaVez()
+        // Instalações que testaram equipes não carregam mais esse estado: a
+        // versão distribuída é exclusivamente local.
+        UserDefaults.standard.removeObject(forKey: "equipesDoUsuario")
+        UserDefaults.standard.removeObject(forKey: "equipeAtiva")
+        UserDefaults.standard.removeObject(forKey: "contextoDaConta")
 
         // Também antes das views: campos de cartão criados nesta versão nascem
         // ligados para quem já tinha personalizado a grade.
