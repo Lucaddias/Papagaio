@@ -120,12 +120,12 @@ final class GravadorViewModel {
         tarefaDeSumicoDosAvisos = nil
         guard !avisos.isEmpty else { return }
 
-        tarefaDeSumicoDosAvisos = Task { [duracaoDosAvisos] in
+        // `[weak self]`: a tarefa dorme 30 s; reter o view model inteiro por
+        // causa de um sumiço de aviso seguraria a gravação toda junto.
+        tarefaDeSumicoDosAvisos = Task { [weak self, duracaoDosAvisos] in
             try? await Task.sleep(for: duracaoDosAvisos)
             guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self.avisos = []
-            }
+            self?.avisos = []
         }
     }
 

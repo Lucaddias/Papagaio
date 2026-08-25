@@ -25,6 +25,10 @@ struct BibliotecaHomeView: View {
     /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
     /// da gravação.
     @Binding var focoNaGravacao: Bool
+    /// Abre o formulário de ficha da entrevista para o arquivo indicado — hoje
+    /// só chamado a partir do selo "Concluído" do próprio cartão, nunca
+    /// sozinho ao fim do processamento.
+    let aoAbrirFicha: (Arquivo) -> Void
 
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
@@ -33,7 +37,7 @@ struct BibliotecaHomeView: View {
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
     @State private var atalhoVisualSelecionado: AtalhoDaBiblioteca?
-    @State private var versaoDasPreferenciasVisuais = 0
+    @State private var invalidacaoVisual = InvalidacaoVisual()
     @State private var criandoPasta = false
     /// O picker não retém o delegate; sem esta referência o "Salvar em…" some
     /// do painel de compartilhamento.
@@ -221,7 +225,7 @@ struct BibliotecaHomeView: View {
 
     private var arquivosFiltrados: [Arquivo] {
         guard let biblioteca else { return [] }
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let fonte: [Arquivo]
         switch secaoSelecionada {
         case .todos:
@@ -342,13 +346,13 @@ struct BibliotecaHomeView: View {
     }
 
     private var pastasCriadas: [String] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         return PreferenciasVisuaisDoArquivo.pastas()
     }
 
     private var informacoesDasPastas: [InformacaoDaPasta] {
         guard let biblioteca else { return [] }
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
 
         var visiveis = atalhoSelecionado == .favoritos
             ? pastasCriadas.filter { AparenciaDasPastas.favorita($0) }
@@ -384,7 +388,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var midiasNaLixeira: [MidiaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let itens = LixeiraDeMidia.itens()
         guard !termo.isEmpty else { return itens }
@@ -398,83 +402,49 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    /// Apagar a pasta leva as conversas dela para a lixeira, junto.
-    ///
-    /// A alternativa — apagar só o rótulo e deixar as conversas soltas em
-    /// "Todas" — parece mais gentil e é pior: quem apaga a pasta "Cliente X"
-    /// quer o projeto fora da vista, e encontraria as mesmas conversas
-    /// espalhadas na grade um segundo depois. Na lixeira nada se perde, e a
-    /// pasta ali dentro permite trazer de volta o conjunto ou um arquivo só.
+    /// O ciclo de vida (mover as conversas junto, retrato na lixeira,
+    /// restauração) vive no `PastasDaBiblioteca`; aqui só entra a seleção
+    /// corrente e a invalidação visual.
     private func apagarPasta(_ nome: String) {
         guard let biblioteca else { return }
-        let conversas = biblioteca.arquivos.filter {
-            PreferenciasVisuaisDoArquivo.pasta($0.id) == nome
-        }
-
         if pastaSelecionada == nome { pastaSelecionada = nil }
-
         Task {
-            for arquivo in conversas {
-                await biblioteca.moverParaLixeira(arquivo)
-            }
-            // Depois de mover: `apagarPasta` lê quem ainda tem o rótulo para
-            // montar o retrato, e o rótulo sobrevive à ida para a lixeira.
-            PreferenciasVisuaisDoArquivo.apagarPasta(nome)
+            await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
     private func conversasDa(_ pasta: PastaNaLixeira) -> [Arquivo] {
         guard let biblioteca else { return [] }
-        // A ordem é a da lixeira, não a de `conversas`: é a mesma ordem dos
-        // outros cartões da tela.
-        return biblioteca.arquivosNaLixeira.filter { pasta.conversas.contains($0.id.rawValue) }
+        return PastasDaBiblioteca.conversas(da: pasta, biblioteca: biblioteca)
     }
 
-    /// Devolve a pasta e tudo o que ainda estava dentro dela.
     private func restaurarPasta(_ pasta: PastaNaLixeira) {
         guard let biblioteca else { return }
-        let conversas = conversasDa(pasta)
-
         Task {
-            for arquivo in conversas where await biblioteca.restaurarDaLixeira(arquivo) {
-                LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
-            }
-            LixeiraDePastas.restaurar(pasta)
+            await PastasDaBiblioteca.restaurar(pasta, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
-    /// Traz uma conversa de volta sem restaurar a pasta.
-    ///
-    /// Ela volta para "Todas", sem rótulo: a pasta não existe mais, e inventar
-    /// uma para ela criaria uma pasta que a pessoa não pediu.
     private func restaurarConversaDaPasta(_ arquivo: Arquivo, de pasta: PastaNaLixeira) {
         guard let biblioteca else { return }
         Task {
-            guard await biblioteca.restaurarDaLixeira(arquivo) else { return }
-            LixeiraDePastas.desvincular(arquivo.id)
+            await PastasDaBiblioteca.restaurarConversa(arquivo, biblioteca: biblioteca)
             atualizarPreferenciasVisuais()
         }
     }
 
-    /// As conversas de uma pasta, como arquivos prontos para sair do app.
-    ///
-    /// Um dossiê por conversa — texto com resumo, transcrição e tarefas — e não
-    /// o áudio: "baixar a pasta" quase sempre quer dizer levar o conteúdo para
-    /// um relatório, e o áudio de doze entrevistas são gigabytes que ninguém
-    /// pediu. Quem quer o áudio de uma conversa usa o Compartilhar dela.
     private func pacoteDaPasta(_ nome: String) -> URL? {
         guard let biblioteca else { return nil }
-        let conversas = biblioteca.arquivos
-            .filter { PreferenciasVisuaisDoArquivo.pasta($0.id) == nome }
-            .map { (arquivo: $0, audio: biblioteca.audio(de: $0)) }
-
-        guard !conversas.isEmpty else { return nil }
-        return try? DossieDaConversa.pastaComTudo(nome: nome, conversas: conversas)
+        return PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
+    ///
+    /// `begin` no lugar de `runModal` e a cópia fora da main: a pasta pode
+    /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
+    /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
         guard let pacote = pacoteDaPasta(nome) else { return }
 
@@ -485,15 +455,17 @@ struct BibliotecaHomeView: View {
         painel.canChooseDirectories = true
         painel.canCreateDirectories = true
 
-        guard painel.runModal() == .OK,
-              let destino = painel.url,
-              destino.startAccessingSecurityScopedResource()
-        else { return }
-        defer { destino.stopAccessingSecurityScopedResource() }
+        painel.begin { resposta in
+            guard resposta == .OK, let destino = painel.url else { return }
+            Task.detached {
+                guard destino.startAccessingSecurityScopedResource() else { return }
+                defer { destino.stopAccessingSecurityScopedResource() }
 
-        let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-        try? FileManager.default.removeItem(at: alvo)
-        try? FileManager.default.copyItem(at: pacote, to: alvo)
+                let alvo = destino.appendingPathComponent(nome, isDirectory: true)
+                try? FileManager.default.removeItem(at: alvo)
+                try? FileManager.default.copyItem(at: pacote, to: alvo)
+            }
+        }
     }
 
     /// Compartilha como um `.zip` único.
@@ -525,7 +497,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var pastasNaLixeira: [PastaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let itens = LixeiraDePastas.itens()
         guard !termo.isEmpty else { return itens }
@@ -533,7 +505,7 @@ struct BibliotecaHomeView: View {
     }
 
     private var tarefasNaLixeira: [TarefaNaLixeira] {
-        _ = versaoDasPreferenciasVisuais
+        _ = invalidacaoVisual.geracao
         let termo = consulta.trimmingCharacters(in: .whitespacesAndNewlines)
         let tarefas = LixeiraDeTarefas.itens()
         guard !termo.isEmpty else { return tarefas }
@@ -609,14 +581,6 @@ struct BibliotecaHomeView: View {
                 ajudaDaBiblioteca
 
                 Spacer(minLength: 0)
-
-                if let biblioteca, biblioteca.processando {
-                    SeloDeStatus(
-                        texto: "Processamento em andamento",
-                        simbolo: "waveform",
-                        estilo: .destaque
-                    )
-                }
             }
 
             filtrosEPastas
@@ -686,14 +650,6 @@ struct BibliotecaHomeView: View {
             )
 
             Spacer(minLength: 16)
-
-            if let biblioteca, biblioteca.processando {
-                SeloDeStatus(
-                    texto: "Processamento em andamento",
-                    simbolo: "waveform",
-                    estilo: .destaque
-                )
-            }
 
             if let biblioteca {
                 AcoesDaLixeira(
@@ -766,7 +722,13 @@ struct BibliotecaHomeView: View {
 
                     capturaEmAndamento
 
-                    if !gravador.avisos.isEmpty {
+                    // Não na Lixeira: o aviso é sobre a captura de áudio que
+                    // acabou de rodar, não sobre nada ali. Sem este filtro,
+                    // o `else` genérico da linha acima (que também cobre
+                    // `.lixeira`, o único outro caso de `secaoSelecionada`)
+                    // deixava o aviso visível ali por alguns segundos, até
+                    // `agendarSumicoDosAvisos` zerá-lo sozinho.
+                    if !gravador.avisos.isEmpty, secaoSelecionada != .lixeira {
                         AvisosDaGravacao(avisos: gravador.avisos)
                     }
 
@@ -1029,6 +991,9 @@ struct BibliotecaHomeView: View {
             processando: biblioteca.estaProcessando(arquivo),
             naFila: biblioteca.estaNaFila(arquivo),
             emOperacaoDeLixeira: biblioteca.estaEmOperacaoDeLixeira(arquivo),
+            fichaPendente: biblioteca.fichaPendente(arquivo.id),
+            seloDeConclusaoRevelado: biblioteca.seloDeConclusaoRevelado(arquivo.id),
+            aoAbrirFicha: { aoAbrirFicha(arquivo) },
             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
             aoRenomear: { novoTitulo in
                 Task { await biblioteca.renomear(arquivo, para: novoTitulo) }
@@ -1072,11 +1037,11 @@ struct BibliotecaHomeView: View {
     }
 
     private func alternarMenu(de arquivo: Arquivo) {
+        // A view já vive na main: o salto por DispatchQueue só atrasava o
+        // clique em um runloop sem ganhar nada.
         let proximo: ArquivoID? = menuAberto == arquivo.id ? nil : arquivo.id
-        DispatchQueue.main.async {
-            withAnimation(.snappy(duration: 0.18)) {
-                menuAberto = proximo
-            }
+        withAnimation(.snappy(duration: 0.18)) {
+            menuAberto = proximo
         }
     }
 
@@ -1085,7 +1050,7 @@ struct BibliotecaHomeView: View {
     }
 
     private func atualizarPreferenciasVisuais() {
-        versaoDasPreferenciasVisuais += 1
+        invalidacaoVisual.marcarMudanca()
     }
 
     private func abrirCriacaoDePasta() {

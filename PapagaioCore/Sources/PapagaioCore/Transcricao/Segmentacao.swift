@@ -81,10 +81,19 @@ public enum Segmentacao {
     ) -> [Trecho] {
         let microfoneMarcado = microfone.map { marcar($0, como: Speaker.eu) }
         let sistemaMarcado = sistema.map { marcar($0, como: Speaker.interlocutor) }
+
+        // Eco: texto igual e simultâneo nos dois canais. A versão anterior
+        // tokenizava cada texto de novo a cada par (N×M tokenizações);
+        // aqui os tokens são pré-computados uma vez por trecho e o Jaccard
+        // só roda em pares que se sobrepõem no tempo.
+        let sistemaComTokens = sistemaMarcado.map { trecho in
+            (trecho: trecho, tokens: tokensDe(trecho.texto))
+        }
         let microfoneSemEco = microfoneMarcado.filter { trechoDoMicrofone in
-            !sistemaMarcado.contains { trechoDoSistema in
-                sobrepoe(trechoDoMicrofone, trechoDoSistema)
-                    && similaridadeDeTexto(trechoDoMicrofone.texto, trechoDoSistema.texto) >= 0.86
+            let tokensDoMicrofone = tokensDe(trechoDoMicrofone.texto)
+            return !sistemaComTokens.contains { item in
+                sobrepoe(trechoDoMicrofone, item.trecho)
+                    && jaccard(tokensDoMicrofone, item.tokens) >= 0.86
             }
         }
         let comFalante = microfoneSemEco + sistemaMarcado
@@ -107,11 +116,13 @@ public enum Segmentacao {
         lhs.start < rhs.end && rhs.start < lhs.end
     }
 
-    private static func similaridadeDeTexto(_ lhs: String, _ rhs: String) -> Double {
-        let tokensEsquerda = Set(lhs.lowercased().split { !$0.isLetter && !$0.isNumber })
-        let tokensDireita = Set(rhs.lowercased().split { !$0.isLetter && !$0.isNumber })
-        let uniao = tokensEsquerda.union(tokensDireita)
+    private static func tokensDe(_ texto: String) -> Set<Substring> {
+        Set(texto.lowercased().split { !$0.isLetter && !$0.isNumber })
+    }
+
+    private static func jaccard(_ lhs: Set<Substring>, _ rhs: Set<Substring>) -> Double {
+        let uniao = lhs.union(rhs)
         guard !uniao.isEmpty else { return 0 }
-        return Double(tokensEsquerda.intersection(tokensDireita).count) / Double(uniao.count)
+        return Double(lhs.intersection(rhs).count) / Double(uniao.count)
     }
 }

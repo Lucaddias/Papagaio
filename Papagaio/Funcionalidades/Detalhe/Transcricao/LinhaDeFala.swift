@@ -15,6 +15,10 @@ struct LinhaDeFala: View {
     let palavraAtiva: PalavraDeFala?
     /// Animação do destaque de palavra, vinda do container.
     let animacao: Animation?
+    /// Nomes escolhidos para as vozes desta conversa ("S1" → "João"...) — ver
+    /// `RotuloDeVoz`. Vazio quando ninguém ainda renomeou nada, e a fala volta
+    /// a mostrar "Voz N".
+    let nomesDeVoz: [String: String]
     let aoTocarFala: () -> Void
     let aoTocarPalavra: (Palavra) -> Void
 
@@ -68,7 +72,7 @@ struct LinhaDeFala: View {
     private var cabecalhoDaFala: some View {
         HStack(spacing: PapagaioTema.Espaco.minimo) {
             if let acustico = fala.falanteAcustico {
-                Text(LinhaDeFala.rotuloDe(acustico))
+                Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
                     .padding(.horizontal, PapagaioTema.Espaco.minimo)
@@ -111,15 +115,5 @@ struct LinhaDeFala: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .multilineTextAlignment(.leading)
         }
-    }
-
-    /// Traduz o rótulo do FluidAudio ("S1") para o que um humano entende
-    /// ("Voz 1"). Rótulo acústico só serve para comparar vozes da mesma
-    /// gravação — nunca é um nome de pessoa.
-    private static func rotuloDe(_ falanteAcustico: String) -> String {
-        if falanteAcustico.hasPrefix("S"), let numero = Int(falanteAcustico.dropFirst()) {
-            return "Voz \(numero)"
-        }
-        return "Voz \(falanteAcustico)"
     }
 }

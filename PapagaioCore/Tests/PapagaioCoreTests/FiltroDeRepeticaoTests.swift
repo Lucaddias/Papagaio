@@ -31,6 +31,59 @@ func colapsaSequenciaLonga() {
     #expect(saida.first?.start == 0)
 }
 
+// MARK: - Palavras com timestamp
+
+private func trechoComPalavras() -> Trecho {
+    Trecho(
+        start: 0,
+        end: 12,
+        texto: "Bom dia. Bom dia. Tudo bem?",
+        speaker: Speaker.eu,
+        palavras: [
+            Palavra(start: 0, end: 2, texto: "Bom"),
+            Palavra(start: 2, end: 4, texto: "dia"),
+            Palavra(start: 5, end: 7, texto: "Bom"),
+            Palavra(start: 7, end: 9, texto: "dia"),
+            Palavra(start: 9, end: 11, texto: "Tudo"),
+            Palavra(start: 11, end: 12, texto: "bem"),
+        ]
+    )
+}
+
+@Test("Trecho sem repetição atravessa com as palavras intactas")
+func filtroPreservaPalavrasSemRepeticao() {
+    // Regressão: o filtro reconstruía o `Trecho` sem `palavras` em todo caso,
+    // mesmo sem remover nada — ligado ao pipeline, matava a navegação palavra
+    // a palavra de graça.
+    let original = Trecho(
+        start: 0,
+        end: 6,
+        texto: "Bom dia. Tudo bem?",
+        speaker: Speaker.eu,
+        palavras: [
+            Palavra(start: 0, end: 2, texto: "Bom"),
+            Palavra(start: 2, end: 4, texto: "dia"),
+            Palavra(start: 4, end: 6, texto: "Tudo bem"),
+        ]
+    )
+
+    let saida = FiltroDeRepeticao.remover([original])
+
+    #expect(saida.count == 1)
+    #expect(saida.first?.palavras == original.palavras)
+}
+
+@Test("Repetição removida leva embora só as palavras da frase repetida")
+func filtroRemovePalavrasDaFraseRepetida() {
+    let saida = FiltroDeRepeticao.remover([trechoComPalavras()])
+
+    let limpo = try! #require(saida.first)
+    #expect(limpo.texto == "Bom dia. Tudo bem?")
+    // Ficam as palavras das frases mantidas; nenhuma âncora aponta para a
+    // cópia removida.
+    #expect(limpo.palavras.map(\.texto) == ["Bom", "dia", "Tudo", "bem"])
+}
+
 @Test("Duas repetições são preservadas — podem ser fala real")
 func preservaRepeticaoCurta() {
     // "Oi? Oi?" numa ligação ruim é conversa, não artefato.

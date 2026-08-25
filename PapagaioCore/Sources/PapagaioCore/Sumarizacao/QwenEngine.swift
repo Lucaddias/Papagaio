@@ -112,12 +112,15 @@ public struct QwenEngine: SummarizationEngine {
     }
 
     private func particionar(_ trechos: [Trecho]) async throws -> [[Trecho]] {
+        // Contagem em lote: um salto só para o ator, no lugar de um
+        // round-trip por trecho — centenas a menos numa conversa longa.
+        let contagens = try await contexto.contarTokens(trechos.map { Self.formatar([$0]) })
+
         var chunks: [[Trecho]] = []
         var atual: [Trecho] = []
         var tokensAtuais = 0
 
-        for trecho in trechos {
-            let tokens = try await contexto.contarTokens(Self.formatar([trecho]))
+        for (trecho, tokens) in zip(trechos, contagens) {
             if tokensAtuais + tokens > Self.tokensPorChunk, !atual.isEmpty {
                 chunks.append(atual)
                 atual = []

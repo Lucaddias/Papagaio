@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// VAD — corta silêncio **dentro** do áudio antes de mandar para o Whisper,
 /// não só decide se o arquivo inteiro tem fala ou não.
@@ -26,6 +27,12 @@ import Foundation
 /// distingue fala real de tom/DC/ruído. Ver `SileroVAD`.
 /// ═══════════════════════════════════════════════════════════════════════
 public enum DetectorDeAtividadeDeVoz {
+    /// Limite de cópias de áudio temporárias por chamada ao Silero. Uma hora
+    /// inteira de áudio com energia não pode virar uma segunda cópia de centenas
+    /// de megabytes só para a inferência; o estado do modelo é preservado entre
+    /// lotes, então a classificação continua exatamente na ordem original.
+    static let quadrosPorLoteDoSilero = 128
+
     public struct JanelaDeFala: Sendable, Equatable {
         public let inicio: TimeInterval
         public let fim: TimeInterval
@@ -44,6 +51,9 @@ public enum DetectorDeAtividadeDeVoz {
     /// concorrentes intercalariam `novaSequencia` e quadros, corrompendo o
     /// `contexto`/`estado` um do outro. A fila garante uma sessão por vez.
     private static let filaDoSilero = FilaEstrita()
+
+    /// Modo degradado (modelo ausente) precisa ser visível, não silencioso.
+    private static let logger = Logger(subsystem: "PapagaioCore", category: "VAD")
 
     /// Portão de arquivo inteiro — mantido só para quem ainda chama esta API
     /// (ex.: testes). Prefira `janelasDeFala` para transcrição de verdade.
@@ -81,6 +91,15 @@ public enum DetectorDeAtividadeDeVoz {
         guard !amostras.isEmpty else { return [] }
         let tamanhoDoQuadro = max(1, Int(duracaoDoQuadro * taxa))
 
+        // Modelo ausente degrada para o portão de energia: um resource de
+        // 2,3 MB fora do bundle não pode transformar toda transcrição em
+        // erro. O portão de energia é mais fraco (não separa fala de
+        // tom/ruído), mas ainda corta o silêncio digital — e avisa.
+        let usaSilero = await sileroVAD.modeloDisponivel()
+        if !usaSilero {
+            Self.logger.warning("Silero VAD ausente — janelas de fala pelo portão de energia (modo degradado).")
+        }
+
         // Sequência nova = contexto e estado do Silero zerados. Sem isto, a
         // "memória" de fala de um arquivo vazaria para o seguinte. Tudo entre
         // o `entrar` e o `sair` é de uma sessão só (ver `filaDoSilero`).
@@ -91,19 +110,39 @@ public enum DetectorDeAtividadeDeVoz {
 
             var quadros: [Bool] = []
             quadros.reserveCapacity(amostras.count / tamanhoDoQuadro + 1)
+            // Energia primeiro em todos os quadros (filtro barato). Os que
+            // passam seguem para o Silero em lotes limitados: um lote com 128
+            // quadros ocupa no máximo ~256 KiB, em vez de duplicar todos os
+            // candidatos de uma hora de áudio na memória.
+            var indicesComEnergia: [Int] = []
             var inicio = 0
             while inicio < amostras.count {
                 let fim = min(inicio + tamanhoDoQuadro, amostras.count)
                 let quadro = amostras[inicio..<fim]
                 let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
-                var temFala = energia >= limiarDeEnergia
-                if temFala {
-                    // O Silero só é consultado quando a energia já passou — é o
-                    // filtro rápido contra silêncio digital.
-                    temFala = try await sileroVAD.probabilidadeDeFala(quadro: Array(quadro)) >= limiarDeFala
-                }
+                let temFala = energia >= limiarDeEnergia
                 quadros.append(temFala)
+                if temFala { indicesComEnergia.append(quadros.count - 1) }
                 inicio = fim
+            }
+            if usaSilero, !indicesComEnergia.isEmpty {
+                var inicioDoLote = 0
+                while inicioDoLote < indicesComEnergia.count {
+                    let fimDoLote = min(
+                        inicioDoLote + quadrosPorLoteDoSilero,
+                        indicesComEnergia.count
+                    )
+                    let indicesDoLote = indicesComEnergia[inicioDoLote..<fimDoLote]
+                    let candidatos = indicesDoLote.map {
+                        let ini = $0 * tamanhoDoQuadro
+                        return Array(amostras[ini..<min(ini + tamanhoDoQuadro, amostras.count)])
+                    }
+                    let probabilidades = try await sileroVAD.probabilidadesDeFala(quadros: candidatos)
+                    for (indice, probabilidade) in zip(indicesDoLote, probabilidades) {
+                        quadros[indice] = probabilidade >= limiarDeFala
+                    }
+                    inicioDoLote = fimDoLote
+                }
             }
             quadroTemFala = quadros
             await filaDoSilero.sair()

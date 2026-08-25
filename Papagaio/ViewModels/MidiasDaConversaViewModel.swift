@@ -3,36 +3,64 @@ import Foundation
 import Observation
 import PapagaioCore
 
-/// Os anexos de uma conversa: a lista, a escolha no painel do sistema e a
-/// cópia para dentro da pasta da gravação.
+/// Os anexos de uma conversa: a lista, os áudios da gravação, a escolha no
+/// painel do sistema, a cópia para dentro da pasta e a lixeira de mídia.
 ///
-/// Estes cinco métodos viviam na `ArquivoDetalheView`, onde `NSOpenPanel`,
-/// cópia de arquivo e tradução de erro do Cocoa dividiam espaço com a
-/// composição da tela.
+/// Tudo isto vivia na `ArquivoDetalheView`, onde `NSOpenPanel`, cópia de
+/// arquivo, lixeira e tradução de erro do Cocoa dividiam espaço com a
+/// composição da tela. A view ficou só com o que é dela: pausar o player
+/// antes de o áudio sair do lugar (ver `aoPausarReproducao`).
 @MainActor
 @Observable
 final class MidiasDaConversaViewModel {
+    /// Anexos escolhidos pela pessoa.
     private(set) var anexos: [AnexoDeMidiaDaConversa] = []
+    /// O áudio da própria gravação entra fixo na lista: depois que a
+    /// transcrição e o resumo estão prontos o arquivo costuma virar só peso
+    /// em disco, e daqui a pessoa consegue apagá-lo sem sair do app.
+    private(set) var anexosDaGravacao: [AnexoDeMidiaDaConversa] = []
+    /// Mídia removida desta conversa, ainda recuperável.
+    private(set) var naLixeira: [MidiaNaLixeira] = []
     var erro: String?
+
+    /// A transcrição já existe? Remover o áudio da gravação só é liberado
+    /// depois dela — sem transcrição o áudio ainda é necessário. Quem sabe se
+    /// ela chegou é a tela; ela mantém isto atualizado.
+    var transcricaoDisponivel = false
+    /// Quem reproduz o áudio pausa aqui antes de o arquivo ir para a lixeira.
+    var aoPausarReproducao: (() -> Void)?
 
     private let arquivoID: ArquivoID
     /// Os anexos são copiados para cá, ao lado do áudio. Guardar só o caminho
     /// de origem deixaria o anexo quebrado assim que a pessoa movesse o
     /// arquivo original.
     private let pastaDaConversa: URL
-    /// Nomeia a subpasta de mídia — para que "Mostrar no Finder" caia numa
-    /// pasta reconhecível pelo título, não por um UUID.
     private let tituloDaConversa: String
+    private let audiosDaGravacao: [URL]
 
-    init(arquivoID: ArquivoID, pastaDaConversa: URL, tituloDaConversa: String) {
+    init(
+        arquivoID: ArquivoID,
+        pastaDaConversa: URL,
+        tituloDaConversa: String,
+        audiosDaGravacao: [URL]
+    ) {
         self.arquivoID = arquivoID
         self.pastaDaConversa = pastaDaConversa
         self.tituloDaConversa = tituloDaConversa
+        self.audiosDaGravacao = audiosDaGravacao
     }
+
+    var todosOsAnexos: [AnexoDeMidiaDaConversa] { anexosDaGravacao + anexos }
+
+    // MARK: - Carga
 
     func carregar() {
         anexos = MidiasDaConversa.carregar(arquivoID)
+        anexosDaGravacao = gravacoes()
+        recarregarLixeira()
     }
+
+    // MARK: - Escolha e cópia
 
     func selecionar() {
         let painel = NSOpenPanel()
@@ -44,10 +72,16 @@ final class MidiasDaConversaViewModel {
         painel.allowsMultipleSelection = true
         painel.resolvesAliases = true
 
-        guard painel.runModal() == .OK else { return }
-
-        for url in painel.urls {
-            adicionar(url)
+        // `begin` no lugar de `runModal`: o painel deixa de travar a main
+        // enquanto a pessoa navega pelos arquivos.
+        painel.begin { [weak self] resposta in
+            guard resposta == .OK else { return }
+            let urls = painel.urls
+            Task { @MainActor [weak self] in
+                for url in urls {
+                    self?.adicionar(url)
+                }
+            }
         }
     }
 
@@ -58,7 +92,11 @@ final class MidiasDaConversaViewModel {
         }
 
         do {
-            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa, tituloDaConversa: tituloDaConversa)
+            let destino = try MidiasDaConversa.copiar(
+                url,
+                para: pastaDaConversa,
+                tituloDaConversa: tituloDaConversa
+            )
             let anexo = try MidiasDaConversa.anexo(para: destino)
             var atualizados = anexos.filter { $0.url != anexo.url }
             atualizados.append(anexo)
@@ -74,21 +112,93 @@ final class MidiasDaConversaViewModel {
         AberturaDeMidia.abrir(anexo.url)
     }
 
+    // MARK: - Remoção (vai para a lixeira)
+
     func remover(_ anexo: AnexoDeMidiaDaConversa) {
+        if anexosDaGravacao.contains(where: { $0.id == anexo.id }) {
+            removerAudioDaGravacao(anexo)
+            return
+        }
+
         let atualizados = anexos.filter { $0.id != anexo.id }
         do {
-            try? MidiasDaConversa.apagarArquivoSalvo(anexo, pastaDaConversa: pastaDaConversa)
+            // Vai para a lixeira em vez de sumir: o anexo pode ser a única
+            // cópia que a pessoa tem, e ela pode ter clicado sem querer.
+            try moverParaLixeira(anexo, daGravacao: false)
             try MidiasDaConversa.salvar(atualizados, para: arquivoID)
             anexos = atualizados
+            // Sem isto o cartão apagado só apareceria na próxima abertura da
+            // aba: a lista de removidos é lida do disco, não deduzida daqui.
+            recarregarLixeira()
         } catch {
             erro = "Não foi possível remover esse arquivo: \(error.localizedDescription)"
         }
     }
 
+    func restaurar(_ item: MidiaNaLixeira) {
+        if LixeiraDeMidia.restaurar(item) {
+            carregar()
+        } else {
+            erro = "Não foi possível restaurar \(item.nome)."
+        }
+    }
+
+    func apagarDeVez(_ item: MidiaNaLixeira) {
+        LixeiraDeMidia.remover(item)
+        recarregarLixeira()
+    }
+
+    /// Remover o áudio cega a reprodução, então só liberamos depois que a
+    /// transcrição existe — que é justamente quando o arquivo deixa de ser
+    /// necessário. O arquivo vai para a lixeira, de onde volta se for o caso.
+    private func removerAudioDaGravacao(_ anexo: AnexoDeMidiaDaConversa) {
+        guard transcricaoDisponivel else {
+            erro = "O áudio da gravação só pode ser removido depois que a transcrição terminar."
+            return
+        }
+
+        aoPausarReproducao?()
+
+        do {
+            try moverParaLixeira(anexo, daGravacao: true)
+            anexosDaGravacao = gravacoes()
+            recarregarLixeira()
+        } catch {
+            erro = "Não foi possível mover o áudio da gravação para a lixeira: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Apoio
+
+    private func gravacoes() -> [AnexoDeMidiaDaConversa] {
+        audiosDaGravacao
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .compactMap { try? MidiasDaConversa.anexo(para: $0) }
+    }
+
+    private func recarregarLixeira() {
+        naLixeira = LixeiraDeMidia.itens()
+            .filter { $0.arquivoID == arquivoID }
+            .sorted { $0.apagadoEm > $1.apagadoEm }
+    }
+
+    private func moverParaLixeira(_ anexo: AnexoDeMidiaDaConversa, daGravacao: Bool) throws {
+        try LixeiraDeMidia.mover(
+            url: anexo.url,
+            nome: anexo.nome,
+            tamanho: anexo.tamanho,
+            tipo: anexo.tipoVisual,
+            daGravacao: daGravacao,
+            arquivoID: arquivoID,
+            conversaTitulo: tituloDaConversa,
+            pastaDaConversa: pastaDaConversa
+        )
+    }
+
     /// O erro do Cocoa para "iPhone bloqueado" chega como um código genérico de
     /// arquivo ilegível, que não diz à pessoa o que fazer. Estes três casos
     /// cobrem o que aparece na prática ao arrastar mídia do celular.
-    private static func mensagemAmigavel(_ error: Error) -> String {
+    static func mensagemAmigavel(_ error: Error) -> String {
         let nsError = error as NSError
         let texto = "\(nsError.localizedDescription) \(nsError.localizedFailureReason ?? "")"
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)

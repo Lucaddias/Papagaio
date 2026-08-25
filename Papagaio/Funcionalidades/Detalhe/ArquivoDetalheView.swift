@@ -39,20 +39,14 @@ struct ArquivoDetalheView: View {
     @State private var notasEditaveis: [NotaDaConversa] = []
     @State private var estadoDeSalvamentoDasNotas = "Salvo"
     @State private var tarefaDeSalvamentoDasNotas: Task<Void, Never>?
-    @State private var anexosDeMidia: [AnexoDeMidiaDaConversa] = []
-    @State private var anexosDaGravacao: [AnexoDeMidiaDaConversa] = []
-    @State private var erroDeMidia: String?
-    @State private var midiasNaLixeiraDaConversa: [MidiaNaLixeira] = []
-    @State private var tarefasDaConversa: [TarefaDaConversa] = []
-    @State private var filtroDeTarefas: FiltroDeTarefas = .tudo
-    @State private var mostrandoCriacaoDeTarefa = false
-    @State private var tituloDaNovaTarefa = ""
-    @State private var responsavelDaNovaTarefa = ""
-    @State private var prioridadeDaNovaTarefa: PrioridadeDaTarefa = .media
-    @State private var statusDaNovaTarefa: StatusDaTarefa = .naoIniciado
-    @State private var prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    @State private var mostrandoEdicaoDeTarefa = false
-    @State private var tarefaEmEdicaoID: UUID?
+    /// Anexos, áudios da gravação e lixeira de mídia num view model próprio —
+    /// a duplicata que vivia aqui (painel, cópia, lixeira, tradução de erro)
+    /// foi removida quando a view passou a usar o VM.
+    @State private var midiasDaConversaVM: MidiasDaConversaViewModel
+    /// As tarefas da conversa num view model próprio: a regra de prazo, o
+    /// formulário e a gravação em disco viviam duplicados aqui (o VM existia
+    /// e ninguém usava). A view só desenha e repassa ações.
+    @State private var tarefasDaConversaVM: TarefasDaConversaViewModel
     @State private var editandoInformacoes = false
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
@@ -64,9 +58,6 @@ struct ArquivoDetalheView: View {
     @State private var participantesEditados = ""
     @State private var dataEditada = Date()
     @State private var duracaoEditada = ""
-    /// Recarrega a ficha depois de salvar: os metadados vêm de `UserDefaults`,
-    /// que não notifica a view sozinho.
-    @State private var versaoDaFicha = 0
     @State private var ditado = DitadoDeNota()
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
@@ -77,6 +68,49 @@ struct ArquivoDetalheView: View {
     @Environment(\.dismiss) private var fechar
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
+
+    init(
+        arquivo: Arquivo,
+        audio: URL,
+        audioSecundario: URL?,
+        importado: Bool,
+        estado: EstadoDoArquivo,
+        processando: Bool,
+        naFila: Bool,
+        responsaveisDisponiveis: [ResponsavelDaTarefa],
+        aoTranscrever: @escaping () -> Void,
+        aoAtualizarNotas: @escaping ([NotaDaConversa]) async -> Void,
+        aoNotificarTarefa: @escaping (_ titulo: String, _ mensagem: String) -> Void,
+        aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
+        aoAtualizarTranscricao: @escaping ([Trecho]) async -> Void,
+        aoDitar: @escaping (URL) async throws -> String
+    ) {
+        self.arquivo = arquivo
+        self.audio = audio
+        self.audioSecundario = audioSecundario
+        self.importado = importado
+        self.estado = estado
+        self.processando = processando
+        self.naFila = naFila
+        self.responsaveisDisponiveis = responsaveisDisponiveis
+        self.aoTranscrever = aoTranscrever
+        self.aoAtualizarNotas = aoAtualizarNotas
+        self.aoNotificarTarefa = aoNotificarTarefa
+        self.aoAtualizarMetadados = aoAtualizarMetadados
+        self.aoAtualizarTranscricao = aoAtualizarTranscricao
+        self.aoDitar = aoDitar
+        _tarefasDaConversaVM = State(
+            initialValue: TarefasDaConversaViewModel(arquivoID: arquivo.id)
+        )
+        _midiasDaConversaVM = State(
+            initialValue: MidiasDaConversaViewModel(
+                arquivoID: arquivo.id,
+                pastaDaConversa: audio.deletingLastPathComponent(),
+                tituloDaConversa: arquivo.resumo?.titulo ?? arquivo.titulo,
+                audiosDaGravacao: [audio, audioSecundario].compactMap { $0 }
+            )
+        )
+    }
     @State private var pairandoNoTitulo = false
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var mostrandoFicha = false
@@ -85,8 +119,7 @@ struct ArquivoDetalheView: View {
     @State private var entrevistadoresDaFicha = ""
     @State private var formatoDaFicha = ""
     private var metadados: MetadadosVisuaisDoArquivo {
-        _ = versaoDaFicha
-        return PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
+        PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
     }
     /// Vazio quando não foi preenchido; o cabeçalho assinala isso em vez de
     /// esconder a linha, para o campo não parecer inexistente.
@@ -107,6 +140,10 @@ struct ArquivoDetalheView: View {
     /// A conversa em falas por falante acústico — `nil` sem diarização, quando
     /// a transcrição continua em blocos de trecho.
     private var falas: [FalaDeFalante]? { FalasDaConversa.agrupar(trechos) }
+    /// Rótulos escolhidos para cada voz acústica, persistidos por conversa.
+    private var nomesDeVoz: [String: String] {
+        PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+    }
     private var notas: [NotaDaConversa] { notasEditaveis }
     private var podeIniciarTranscricao: Bool {
         trechos.isEmpty && !processando && !naFila
@@ -135,9 +172,6 @@ struct ArquivoDetalheView: View {
     private var deveMostrarPlayer: Bool {
         mostrandoPlayer || secaoSelecionada == .transcricao || secaoSelecionada == .notas
     }
-    private var pastaDaConversa: URL {
-        audio.deletingLastPathComponent()
-    }
     /// Pergunta ao próprio player se ele conseguiu abrir o arquivo, em vez de
     /// checar um caminho na mão.
     ///
@@ -150,8 +184,24 @@ struct ArquivoDetalheView: View {
         return reprodutor.duracao <= 0
     }
 
+    /// O AppKit usa um `NSTextView` como field editor de `NSTextField` e
+    /// `TextEditor`. O atalho global não pode roubar a barra de espaço de quem
+    /// está escrevendo uma nota, corrigindo um trecho ou editando metadados.
+    static func atalhoDeReproducaoEstaDisponivel(
+        primeiroRespondedor: NSResponder?
+    ) -> Bool {
+        !(primeiroRespondedor is NSTextView || primeiroRespondedor is NSTextField)
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
+            // O botão sem representação visual registra Space no escopo desta
+            // tela. A ação ainda confere o foco nativo, pois atalhos podem ser
+            // disparados enquanto uma sheet ou um editor de texto está aberto.
+            Button(action: alternarReproducaoComEspaco) { EmptyView() }
+                .keyboardShortcut(.space, modifiers: [])
+                .accessibilityHidden(true)
+
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
                 barraDeAcoes
 
@@ -222,8 +272,15 @@ struct ArquivoDetalheView: View {
         .navigationBarBackButtonHidden(true)
         .task {
             sincronizarNotasComArquivo()
-            carregarMidias()
-            carregarTarefas()
+            midiasDaConversaVM.transcricaoDisponivel = !trechos.isEmpty
+            midiasDaConversaVM.aoPausarReproducao = { reprodutor?.pausar() }
+            midiasDaConversaVM.carregar()
+            tarefasDaConversaVM.aoNotificar = aoNotificarTarefa
+            tarefasDaConversaVM.carregar(
+                base: arquivo.resumo?.proximosPassos ?? [],
+                tituloDaConversa: titulo,
+                dataDaConversa: arquivo.criadoEm
+            )
             let novo = ReprodutorDeArquivo(audio: audio, trechos: trechos, secundario: audioSecundario)
             await novo.preparar()
             // Se a view sumiu no meio do carregamento, o `.task` já foi
@@ -239,6 +296,8 @@ struct ArquivoDetalheView: View {
             // A transcrição chega minutos depois de a tela abrir. Atualizar em
             // vez de recriar mantém a posição de escuta.
             reprodutor?.trechos = novos
+            // E libera (ou não) a remoção do áudio da gravação.
+            midiasDaConversaVM.transcricaoDisponivel = !novos.isEmpty
         }
         .onDisappear {
             // Sem isto o observador periódico sobrevive à view — critério de
@@ -258,12 +317,12 @@ struct ArquivoDetalheView: View {
             defaultFilename: DossieDaConversa.nomeDeArquivo(para: arquivo)
         ) { _ in }
         .alert("Não foi possível adicionar a mídia", isPresented: Binding(
-            get: { erroDeMidia != nil },
-            set: { if !$0 { erroDeMidia = nil } }
+            get: { midiasDaConversaVM.erro != nil },
+            set: { if !$0 { midiasDaConversaVM.erro = nil } }
         )) {
-            Button("OK", role: .cancel) { erroDeMidia = nil }
+            Button("OK", role: .cancel) { midiasDaConversaVM.erro = nil }
         } message: {
-            Text(erroDeMidia ?? "")
+            Text(midiasDaConversaVM.erro ?? "")
         }
         .sheet(isPresented: Binding(
             get: { trechoEmEdicao != nil || falaEmEdicao != nil },
@@ -284,35 +343,34 @@ struct ArquivoDetalheView: View {
                 participantes: $participantesEditados,
                 data: $dataEditada,
                 duracao: $duracaoEditada,
-                importadoEm: arquivo.importadoEm,
                 aoCancelar: { editandoInformacoes = false },
                 aoSalvar: salvarInformacoesDaConversa
             )
         }
-        .sheet(isPresented: $mostrandoCriacaoDeTarefa) {
+        .sheet(isPresented: $tarefasDaConversaVM.mostrandoCriacao) {
             NovaTarefaDaConversaSheet(
                 modo: .criacao,
-                titulo: $tituloDaNovaTarefa,
-                responsavel: $responsavelDaNovaTarefa,
-                prioridade: $prioridadeDaNovaTarefa,
-                status: $statusDaNovaTarefa,
-                prazo: $prazoDaNovaTarefa,
+                titulo: $tarefasDaConversaVM.tituloDaTarefa,
+                responsavel: $tarefasDaConversaVM.responsavelDaTarefa,
+                prioridade: $tarefasDaConversaVM.prioridadeDaTarefa,
+                status: $tarefasDaConversaVM.statusDaTarefa,
+                prazo: $tarefasDaConversaVM.prazoDaTarefa,
                 responsaveisDisponiveis: responsaveisDisponiveis,
-                aoCancelar: cancelarCriacaoDeTarefa,
-                aoAdicionar: adicionarTarefa
+                aoCancelar: tarefasDaConversaVM.cancelarCriacao,
+                aoAdicionar: { tarefasDaConversaVM.adicionar(origem: titulo) }
             )
         }
-        .sheet(isPresented: $mostrandoEdicaoDeTarefa) {
+        .sheet(isPresented: $tarefasDaConversaVM.mostrandoEdicao) {
             NovaTarefaDaConversaSheet(
                 modo: .edicao,
-                titulo: $tituloDaNovaTarefa,
-                responsavel: $responsavelDaNovaTarefa,
-                prioridade: $prioridadeDaNovaTarefa,
-                status: $statusDaNovaTarefa,
-                prazo: $prazoDaNovaTarefa,
+                titulo: $tarefasDaConversaVM.tituloDaTarefa,
+                responsavel: $tarefasDaConversaVM.responsavelDaTarefa,
+                prioridade: $tarefasDaConversaVM.prioridadeDaTarefa,
+                status: $tarefasDaConversaVM.statusDaTarefa,
+                prazo: $tarefasDaConversaVM.prazoDaTarefa,
                 responsaveisDisponiveis: responsaveisDisponiveis,
-                aoCancelar: cancelarEdicaoDeTarefa,
-                aoAdicionar: salvarEdicaoDeTarefa
+                aoCancelar: tarefasDaConversaVM.cancelarEdicao,
+                aoAdicionar: tarefasDaConversaVM.salvarEdicao
             )
         }
     }
@@ -519,16 +577,6 @@ struct ArquivoDetalheView: View {
                     simbolo: "calendar"
                 )
                 dadoDaFicha(arquivo.duracao.comoDuracaoPorExtenso, simbolo: "clock")
-
-                // Só em arquivos importados: a data acima já é a da
-                // gravação em si (lida do arquivo original) — esta linha diz
-                // quando ele entrou no app, que pode ser um dia bem diferente.
-                if importado, let importadoEm = arquivo.importadoEm {
-                    dadoDaFicha(
-                        "Importado em \(DataDigitada.texto(de: importadoEm))",
-                        simbolo: "square.and.arrow.down"
-                    )
-                }
             }
         }
         .padding(PapagaioTema.Espaco.largo)
@@ -652,19 +700,11 @@ struct ArquivoDetalheView: View {
             nomesInformados(entrevistadoEditado) + nomesInformados(entrevistadoresEditados)
         )
 
-        // Antes de sobrescrever: depois, os metadados antigos já não estão
-        // por aqui para comparar, e a foto ficaria presa numa chave que nada
-        // mais lê.
-        let entrevistadoLimpo = entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines)
-        let entrevistadoresLimpos = entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines)
-        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistado, para: entrevistadoLimpo)
-        FotosDePessoas.migrarAoEditarNomes(de: metadados.entrevistadores, para: entrevistadoresLimpos)
-
         PreferenciasVisuaisDoArquivo.definirMetadados(
             MetadadosVisuaisDoArquivo(
-                entrevistado: entrevistadoLimpo,
+                entrevistado: entrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
                 emailDoEntrevistado: emailDoEntrevistadoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
-                entrevistadores: entrevistadoresLimpos,
+                entrevistadores: entrevistadoresEditados.trimmingCharacters(in: .whitespacesAndNewlines),
                 emailDosEntrevistadores: emailDosEntrevistadoresEditado.trimmingCharacters(in: .whitespacesAndNewlines),
                 descricao: descricaoEditada.trimmingCharacters(in: .whitespacesAndNewlines),
                 formato: formatoEditado.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -798,6 +838,14 @@ struct ArquivoDetalheView: View {
                     }
                 }
 
+                if !resumo.citacoes.isEmpty {
+                    secao("Citações") {
+                        ForEach(Array(resumo.citacoes.enumerated()), id: \.offset) { _, citacao in
+                            citacaoClicavel(citacao)
+                        }
+                    }
+                }
+
             }
             // O card acompanha a janela (até o limite de página) em vez de ficar
             // preso a 720pt: em tela cheia sobrava um vazio enorme à direita.
@@ -815,13 +863,14 @@ struct ArquivoDetalheView: View {
     }
 
     private var tarefas: some View {
-        TarefasDaConversaView(
-            tarefas: tarefasDaConversa,
-            filtro: $filtroDeTarefas,
-            aoAdicionar: { mostrandoCriacaoDeTarefa = true },
-            aoAlternarConclusao: alternarConclusaoDaTarefa,
-            aoEditar: iniciarEdicaoDaTarefa,
-            aoMover: moverTarefa
+        @Bindable var vm = tarefasDaConversaVM
+        return TarefasDaConversaView(
+            tarefas: vm.tarefas,
+            filtro: $vm.filtro,
+            aoAdicionar: { vm.mostrandoCriacao = true },
+            aoAlternarConclusao: vm.alternarConclusao,
+            aoEditar: vm.iniciarEdicao,
+            aoMover: vm.mover
         )
     }
 
@@ -838,279 +887,67 @@ struct ArquivoDetalheView: View {
         .padding(.top, PapagaioTema.Espaco.curto)
     }
 
+    /// A citação tem âncora de tempo — clicar leva o áudio até a origem dela.
+    /// O `start` vem do modelo e pode ser inventado (R-14), então só vira botão
+    /// quando cai dentro da duração do arquivo.
+    @ViewBuilder
+    private func citacaoClicavel(_ citacao: Citacao) -> some View {
+        let ancora = citacao.start.flatMap { inicio in
+            trechos.contains { inicio >= $0.start && inicio <= $0.end } ? inicio : nil
+        }
+        // `maxWidth: .infinity` no bloco inteiro: antes cada citação encolhia
+        // até o tamanho do seu próprio texto, e a coluna ficava com a borda
+        // direita serrilhada — quatro caixas de larguras diferentes empilhadas.
+        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
+            Rectangle()
+                .frame(width: 3)
+                .foregroundStyle(PapagaioTema.destaque)
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text(citacao.texto)
+                    .font(PapagaioTema.Tipo.apoio)
+                    .italic()
+                    .foregroundStyle(PapagaioTema.texto)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let ancora {
+                    Button(ancora.comoRelogio) {
+                        Task { await reprodutor?.saltar(paraSegundo: ancora) }
+                    }
+                    .buttonStyle(.link)
+                    .font(PapagaioTema.Tipo.legenda)
+                    .tint(PapagaioTema.destaqueEscuro)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(PapagaioTema.Espaco.medio)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+    }
+
     // MARK: - Mídia
 
     private var midia: some View {
         MidiaDaConversaView(
-            anexos: anexosDaGravacao + anexosDeMidia,
-            aoAdicionar: selecionarMidias,
-            aoAbrir: abrirMidia,
-            aoRemover: removerMidia,
-            naLixeira: midiasNaLixeiraDaConversa,
-            aoRestaurar: { item in
-                if LixeiraDeMidia.restaurar(item) {
-                    carregarMidias()
-                    recarregarLixeiraDeMidia()
-                } else {
-                    erroDeMidia = "Não foi possível restaurar \(item.nome)."
-                }
+            anexos: midiasDaConversaVM.todosOsAnexos,
+            aoAdicionar: midiasDaConversaVM.selecionar,
+            aoSoltarArquivos: { urls in
+                urls.forEach(midiasDaConversaVM.adicionar)
             },
-            aoApagarDeVez: { item in
-                LixeiraDeMidia.remover(item)
-                recarregarLixeiraDeMidia()
-            }
+            aoAbrir: midiasDaConversaVM.abrir,
+            aoRemover: midiasDaConversaVM.remover,
+            naLixeira: midiasDaConversaVM.naLixeira,
+            aoRestaurar: midiasDaConversaVM.restaurar,
+            aoApagarDeVez: midiasDaConversaVM.apagarDeVez
         )
-    }
-
-    private func recarregarLixeiraDeMidia() {
-        midiasNaLixeiraDaConversa = LixeiraDeMidia.itens()
-            .filter { $0.arquivoID == arquivo.id }
-            .sorted { $0.apagadoEm > $1.apagadoEm }
-    }
-
-    private func carregarMidias() {
-        anexosDeMidia = MidiasDaConversa.carregar(arquivo.id)
-        anexosDaGravacao = gravacoesDaConversa()
-        recarregarLixeiraDeMidia()
-    }
-
-    /// O áudio da própria gravação entra fixo na lista de mídia: depois que a
-    /// transcrição e o resumo estão prontos o arquivo costuma virar só peso em
-    /// disco, e daqui o usuário consegue apagá-lo sem sair do app.
-    private func gravacoesDaConversa() -> [AnexoDeMidiaDaConversa] {
-        [audio, audioSecundario]
-            .compactMap { $0 }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .compactMap { try? MidiasDaConversa.anexo(para: $0) }
-    }
-
-    private func selecionarMidias() {
-        let painel = NSOpenPanel()
-        painel.title = "Adicionar mídia"
-        painel.prompt = "Adicionar"
-        painel.message = "Escolha fotos, vídeos, áudios, PDFs ou outros arquivos para salvar nesta conversa."
-        painel.canChooseFiles = true
-        painel.canChooseDirectories = false
-        painel.allowsMultipleSelection = true
-        painel.resolvesAliases = true
-
-        guard painel.runModal() == .OK else { return }
-
-        for url in painel.urls {
-            adicionarMidia(url)
-        }
-    }
-
-    private func adicionarMidia(_ url: URL) {
-        let acessando = url.startAccessingSecurityScopedResource()
-        defer {
-            if acessando { url.stopAccessingSecurityScopedResource() }
-        }
-
-        do {
-            let destino = try MidiasDaConversa.copiar(url, para: pastaDaConversa, tituloDaConversa: titulo)
-            let anexo = try MidiasDaConversa.anexo(para: destino)
-            var atualizados = anexosDeMidia.filter { $0.url != anexo.url }
-            atualizados.append(anexo)
-            atualizados.sort { $0.data > $1.data }
-            try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
-            anexosDeMidia = atualizados
-        } catch {
-            erroDeMidia = mensagemAmigavelParaArquivo(error)
-        }
-    }
-
-    private func abrirMidia(_ anexo: AnexoDeMidiaDaConversa) {
-        AberturaDeMidia.abrir(anexo.url)
-    }
-
-    private func removerMidia(_ anexo: AnexoDeMidiaDaConversa) {
-        if anexosDaGravacao.contains(where: { $0.id == anexo.id }) {
-            removerAudioDaGravacao(anexo)
-            return
-        }
-
-        let atualizados = anexosDeMidia.filter { $0.id != anexo.id }
-        do {
-            // Vai para a lixeira em vez de sumir: o anexo pode ser a única
-            // cópia que a pessoa tem, e ela pode ter clicado sem querer.
-            try moverParaLixeira(anexo, daGravacao: false)
-            try MidiasDaConversa.salvar(atualizados, para: arquivo.id)
-            anexosDeMidia = atualizados
-            // Sem isto o cartão apagado só apareceria na próxima abertura da
-            // aba: a lista de removidos é lida do disco, não deduzida daqui.
-            recarregarLixeiraDeMidia()
-        } catch {
-            erroDeMidia = "Não foi possível remover esse arquivo: \(error.localizedDescription)"
-        }
-    }
-
-    private func moverParaLixeira(_ anexo: AnexoDeMidiaDaConversa, daGravacao: Bool) throws {
-        try LixeiraDeMidia.mover(
-            url: anexo.url,
-            nome: anexo.nome,
-            tamanho: anexo.tamanho,
-            tipo: anexo.tipoVisual,
-            daGravacao: daGravacao,
-            arquivoID: arquivo.id,
-            conversaTitulo: titulo,
-            pastaDaConversa: pastaDaConversa
-        )
-    }
-
-    /// Remover o áudio cega a reprodução, então só liberamos depois que a
-    /// transcrição existe — que é justamente quando o arquivo deixa de ser
-    /// necessário. O arquivo vai para a lixeira, de onde volta se for o caso.
-    private func removerAudioDaGravacao(_ anexo: AnexoDeMidiaDaConversa) {
-        guard !trechos.isEmpty else {
-            erroDeMidia = "O áudio da gravação só pode ser removido depois que a transcrição terminar."
-            return
-        }
-
-        reprodutor?.pausar()
-
-        do {
-            try moverParaLixeira(anexo, daGravacao: true)
-            anexosDaGravacao = gravacoesDaConversa()
-            recarregarLixeiraDeMidia()
-        } catch {
-            erroDeMidia = "Não foi possível mover o áudio da gravação para a lixeira: \(error.localizedDescription)"
-        }
     }
 
     // MARK: - Tarefas
-
-    private func carregarTarefas() {
-        let carregadas = TarefasDaConversa.carregar(
-            arquivo.id,
-            base: arquivo.resumo?.proximosPassos ?? [],
-            tituloDaConversa: titulo,
-            dataDaConversa: arquivo.criadoEm
-        )
-        let ajustadas = carregadas.map { tarefaAjustadaPeloPrazo($0) }
-        tarefasDaConversa = ajustadas
-        if ajustadas != carregadas {
-            salvarTarefas()
-        }
-    }
-
-    private func adicionarTarefa() {
-        let tituloLimpo = tituloDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tituloLimpo.isEmpty else { return }
-
-        let tarefa = tarefaAjustadaPeloPrazo(
-            TarefaDaConversa(
-                titulo: tituloLimpo,
-                origem: titulo,
-                prioridade: prioridadeDaNovaTarefa,
-                status: statusDaNovaTarefa,
-                responsavel: responsavelLimpo,
-                prazo: prazoDaNovaTarefa
-            )
-        )
-        tarefasDaConversa.append(tarefa)
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefa)
-        limparNovaTarefa()
-        mostrandoCriacaoDeTarefa = false
-    }
-
-    private func cancelarCriacaoDeTarefa() {
-        limparNovaTarefa()
-        mostrandoCriacaoDeTarefa = false
-    }
-
-    private func iniciarEdicaoDaTarefa(_ tarefa: TarefaDaConversa) {
-        tarefaEmEdicaoID = tarefa.id
-        tituloDaNovaTarefa = tarefa.titulo
-        responsavelDaNovaTarefa = tarefa.responsavel ?? ""
-        prioridadeDaNovaTarefa = tarefa.prioridade
-        statusDaNovaTarefa = tarefa.status
-        prazoDaNovaTarefa = tarefa.prazo ?? Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-        mostrandoEdicaoDeTarefa = true
-    }
-
-    private func salvarEdicaoDeTarefa() {
-        let tituloLimpo = tituloDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !tituloLimpo.isEmpty,
-              let tarefaEmEdicaoID,
-              let indice = tarefasDaConversa.firstIndex(where: { $0.id == tarefaEmEdicaoID })
-        else { return }
-
-        var tarefa = tarefasDaConversa[indice]
-        tarefa.titulo = tituloLimpo
-        tarefa.responsavel = responsavelLimpo
-        tarefa.prioridade = prioridadeDaNovaTarefa
-        tarefa.status = statusDaNovaTarefa
-        tarefa.prazo = prazoDaNovaTarefa
-        tarefa = tarefaAjustadaPeloPrazo(tarefa)
-        tarefasDaConversa[indice] = tarefa
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefa)
-        cancelarEdicaoDeTarefa()
-    }
-
-    private func cancelarEdicaoDeTarefa() {
-        tarefaEmEdicaoID = nil
-        limparNovaTarefa()
-        mostrandoEdicaoDeTarefa = false
-    }
-
-    private func limparNovaTarefa() {
-        tituloDaNovaTarefa = ""
-        responsavelDaNovaTarefa = ""
-        prioridadeDaNovaTarefa = .media
-        statusDaNovaTarefa = .naoIniciado
-        prazoDaNovaTarefa = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
-    }
-
-    private var responsavelLimpo: String? {
-        let valor = responsavelDaNovaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
-        return valor.isEmpty ? nil : valor
-    }
-
-    private func alternarConclusaoDaTarefa(_ tarefa: TarefaDaConversa) {
-        guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == tarefa.id }) else { return }
-        tarefasDaConversa[indice].status = tarefasDaConversa[indice].status == .concluida ? .emAndamento : .concluida
-        salvarTarefas()
-    }
-
-    private func moverTarefa(_ id: UUID, para destino: DestinoDeTarefa) {
-        guard let indice = tarefasDaConversa.firstIndex(where: { $0.id == id }) else { return }
-        tarefasDaConversa[indice].status = destino.status
-        tarefasDaConversa[indice] = tarefaAjustadaPeloPrazo(tarefasDaConversa[indice])
-        salvarTarefas()
-        notificarPrazoSeNecessario(tarefasDaConversa[indice])
-    }
-
-    private func salvarTarefas() {
-        TarefasDaConversa.salvar(tarefasDaConversa, para: arquivo.id)
-    }
-
-    private func tarefaAjustadaPeloPrazo(_ tarefa: TarefaDaConversa) -> TarefaDaConversa {
-        var ajustada = tarefa
-        guard ajustada.status != .concluida, prazoEstaPerto(ajustada.prazo) else { return ajustada }
-        ajustada.prioridade = .alta
-        return ajustada
-    }
-
-    private func prazoEstaPerto(_ prazo: Date?) -> Bool {
-        guard let prazo else { return false }
-        let calendario = Calendar.current
-        let hoje = calendario.startOfDay(for: Date())
-        let diaDoPrazo = calendario.startOfDay(for: prazo)
-        let dias = calendario.dateComponents([.day], from: hoje, to: diaDoPrazo).day ?? Int.max
-        return dias <= 2
-    }
-
-    private func notificarPrazoSeNecessario(_ tarefa: TarefaDaConversa) {
-        guard tarefa.status != .concluida, prazoEstaPerto(tarefa.prazo) else { return }
-        let data = tarefa.prazo?.formatted(.dateTime.day().month().year()) ?? "em breve"
-        aoNotificarTarefa(
-            "Prazo perto",
-            "\(tarefa.titulo) vence \(data) e foi marcada como prioridade alta."
-        )
-    }
+    //
+    // Regra de prazo, formulário e gravação vivem no
+    // `TarefasDaConversaViewModel` — a duplicata que existia aqui foi
+    // removida quando a view passou a usar o VM (o VM existia e ninguém
+    // usava).
 
     private func revelarPlayer() {
         guard !mostrandoPlayer else { return }
@@ -1234,6 +1071,20 @@ struct ArquivoDetalheView: View {
         )
     }
 
+    private func alternarReproducaoComEspaco() {
+        guard Self.atalhoDeReproducaoEstaDisponivel(
+            primeiroRespondedor: NSApp.keyWindow?.firstResponder
+        ), let reprodutor, reprodutor.duracao > 0 else {
+            return
+        }
+
+        if reprodutor.tocando {
+            reprodutor.pausar()
+        } else {
+            reprodutor.tocar()
+        }
+    }
+
     // MARK: - Transcrição
 
     /// Sem `ScrollView` próprio: o conteúdo da seção já vive dentro de um.
@@ -1306,20 +1157,6 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    private func mensagemAmigavelParaArquivo(_ error: Error) -> String {
-        let nsError = error as NSError
-        let texto = "\(nsError.localizedDescription) \(nsError.localizedFailureReason ?? "")"
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-
-        if texto.contains("iphone") || texto.contains("locked") || texto.contains("bloqueado") {
-            return "Você precisa desbloquear seu iPhone antes de importar esse arquivo."
-        }
-        if nsError.domain == NSCocoaErrorDomain && [257, 260, 513].contains(nsError.code) {
-            return "Não consegui acessar esse arquivo. Se ele estiver no iPhone, desbloqueie o aparelho e tente importar de novo."
-        }
-        return "Não foi possível guardar esse arquivo: \(error.localizedDescription)"
-    }
-
     @ViewBuilder
     private var transcricao: some View {
         if trechos.isEmpty {
@@ -1357,6 +1194,7 @@ struct ArquivoDetalheView: View {
                         ativo: falaEstaAtiva(fala, no: reprodutor),
                         palavraAtiva: palavraAtiva(fala, no: reprodutor),
                         animacao: animacaoDeInterface,
+                        nomesDeVoz: nomesDeVoz,
                         aoTocarFala: { tocar(fala, no: reprodutor) },
                         aoTocarPalavra: { palavra in
                             tocar(palavra, no: reprodutor)
@@ -1432,6 +1270,7 @@ struct ArquivoDetalheView: View {
                             // certa, não na transcrição inteira.
                             indiceDePalavraAtiva: ativo ? reprodutor.indiceDePalavraAtiva : nil,
                             animacao: animacaoDeInterface,
+                            nomesDeVoz: nomesDeVoz,
                             aoTocarLinha: { tocar(trecho, no: reprodutor) },
                             aoTocarPalavra: { palavra in
                                 tocar(palavra, no: reprodutor)
