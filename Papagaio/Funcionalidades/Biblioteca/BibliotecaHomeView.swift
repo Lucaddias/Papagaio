@@ -842,6 +842,13 @@ struct BibliotecaHomeView: View {
                 Button("Esvaziar lixeira", role: .destructive) {
                     Task { @MainActor in
                         await biblioteca.esvaziarLixeira()
+                        // A exclusão de conversas parou em uma falha. Tarefas,
+                        // anexos e retratos de pasta ainda podem depender delas;
+                        // preservamos todos os registros para uma nova tentativa.
+                        guard biblioteca.erroDaLixeira == nil else {
+                            atualizarPreferenciasVisuais()
+                            return
+                        }
                         LixeiraDeTarefas.esvaziar()
                         do {
                             try LixeiraDeMidia.esvaziar()
