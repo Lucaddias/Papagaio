@@ -15,10 +15,10 @@
 			</array>
 		</dict>
 	</array>
-<key>GOOGLE_CLIENT_ID</key>
- 	<string>SEU_CLIENT_ID_AQUI</string>
- 	<key>GOOGLE_CLIENT_SECRET</key>
- 	<string>SEU_CLIENT_SECRET_AQUI</string>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>$(GOOGLE_CLIENT_ID)</string>
+	<key>GOOGLE_CLIENT_SECRET</key>
+	<string>$(GOOGLE_CLIENT_SECRET)</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Loro grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
 </dict>

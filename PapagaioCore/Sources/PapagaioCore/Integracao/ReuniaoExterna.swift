@@ -68,6 +68,70 @@ public struct ReuniaoExterna: Sendable, Identifiable, Equatable {
         guard let transcricao, !transcricao.isEmpty else { return false }
         return true
     }
+
+    // MARK: - Parsing helpers for Google Calendar integration
+
+    /// Parse ISO8601 date-time string with optional fractional seconds
+    public static func parseDateTime(_ string: String) -> Date? {
+        let formatador = ISO8601DateFormatter()
+        formatador.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let data = formatador.date(from: string) { return data }
+        let formatadorSemFracao = ISO8601DateFormatter()
+        formatadorSemFracao.formatOptions = [.withInternetDateTime]
+        return formatadorSemFracao.date(from: string)
+    }
+
+    /// Parse date-only string (yyyy-MM-dd)
+public static func parseDate(_ string: String) -> Date? {
+        let formatador = DateFormatter()
+        formatador.locale = Locale(identifier: "en_US_POSIX")
+        formatador.dateFormat = "yyyy-MM-dd"
+        formatador.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatador.date(from: string)
+    }
+
+    /// Creates a ReuniaoExterna from a Google Calendar event dictionary
+    public static func fromGoogleEvent(_ evento: [String: Any]) -> ReuniaoExterna? {
+        guard let id = evento["id"] as? String,
+              !id.isEmpty
+        else { return nil }
+
+        let titulo = (evento["summary"] as? String) ?? "Evento sem título"
+
+        let inicio: Date
+        if let startDateTime = evento["start"] as? [String: Any],
+           let dateTimeStr = startDateTime["dateTime"] as? String {
+            inicio = Self.parseDateTime(dateTimeStr) ?? Date()
+        } else if let startDate = evento["start"] as? [String: Any],
+                  let dateStr = startDate["date"] as? String {
+            inicio = Self.parseDate(dateStr) ?? Date()
+        } else {
+            inicio = Date()
+        }
+
+        let participantes: [String]
+        if let attendees = evento["attendees"] as? [[String: Any]] {
+            participantes = attendees.compactMap { a in
+                if let email = a["email"] as? String { return email }
+                if let displayName = a["displayName"] as? String { return displayName }
+                return nil
+            }
+        } else {
+            participantes = []
+        }
+
+        let notas = evento["description"] as? String
+
+        return ReuniaoExterna(
+            id: id,
+            titulo: titulo,
+            data: inicio,
+            participantes: participantes,
+            notas: notas,
+            resumo: nil,
+            transcricao: nil
+        )
+    }
 }
 
 /// Contrato de uma fonte de reuniões externas.

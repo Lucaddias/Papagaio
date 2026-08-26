@@ -3,6 +3,12 @@ import PapagaioCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Caixa de referência para transportar a reunião pendente do Calendar
+/// entre a View e o handler `modelo.aoProduzirAudio` instalado uma vez.
+final class CaixaPendente: ObservableObject {
+    @Published var pendente: ReuniaoPendenteCalendar?
+}
+
 /// Coordenador da interface inicial.
 ///
 /// Mantém a identidade dos view models e as integrações de sistema (navegação,
@@ -41,6 +47,11 @@ struct ContentView: View {
     @State private var participantesDaFicha = "1"
     @State private var dataDaFicha = Date()
     @State private var duracaoDaFicha = ""
+    /// Caixa de referência para a pendente em gravação: o handler
+    /// `modelo.aoProduzirAudio` é instalado uma vez e sobrevive a
+    /// reconstruções da View. Um `@State` puro seria capturado com valor
+    /// obsoleto; a caixa mantém a referência viva.
+    @StateObject private var pendenteEmGravacao = CaixaPendente()
     @State private var consulta = ""
     @State private var legendaDaBarra: LegendaDaBarra?
     @State private var confirmandoCancelamentoDaGravacao = false
@@ -277,36 +288,39 @@ struct ContentView: View {
                                aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
                                aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
                                aoSoltarArquivos: importarArrastados,
-                               aoPrepararGravacaoParaReuniao: { arquivo in
-                                   focoNaGravacao = true
-                                   telaSelecionada = .biblioteca
-                                   secaoDaBiblioteca = .todos
-                                   pastaDaBibliotecaSelecionada = nil
-                                   tituloDaFicha = arquivo.titulo
-                                   dataDaFicha = arquivo.criadoEm
-                                   duracaoDaFicha = arquivo.duracao.comoDuracaoPorExtenso
-                                   let metadados = PreferenciasVisuaisDoArquivo.metadados(arquivo.id)
-                                   entrevistadoresDaFicha = metadados.entrevistadores
-                                   emailDosEntrevistadoresDaFicha = metadados.emailDosEntrevistadores
-                                   arquivoParaConfigurar = arquivo
-                               },
-                               aoImportarNotasDaReuniao: { arquivo in
-                                   guard let googleCalendar else { return }
-                                   Task {
-                                       do {
-                                           let id = arquivo.idExterno?.replacingOccurrences(of: "google-calendar-api:", with: "") ?? ""
-                                           if let detalhe = try await googleCalendar.obterDetalhesReuniao(id: id),
-                                              let notas = detalhe.notas, !notas.isEmpty {
-                                               await biblioteca?.atualizarNotas([NotaDaConversa(texto: notas, start: 0)], de: arquivo)
-                                           }
-                                       } catch { }
-                                   }
-                               },
-                               aoIgnorarReuniao: { arquivo in
-                                   Task { @MainActor in
-                                       await biblioteca?.moverParaLixeira(arquivo)
-                                   }
-                               },
+aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    // Marca ANTES de iniciar: se a pessoa
+                                    // finalizar rápido, o handler de áudio
+                                    // já precisa saber que é uma pendente.
+                                    pendenteEmGravacao.pendente = pendente
+                                    tituloDaFicha = pendente.titulo
+                                    dataDaFicha = pendente.dataHora
+                                    entrevistadoresDaFicha = pendente.participantes.joined(separator: "\n")
+                                    arquivoParaConfigurar = nil
+                                    Task {
+                                        await aoAlternarGravacao()
+                                        withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = true }
+                                    }
+                                },
+                                aoImportarAudioDaReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    guard let bib = biblioteca else { return }
+                                    let painel = NSOpenPanel()
+                                    painel.title = "Escolha o arquivo de áudio da reunião"
+                                    painel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav]
+                                    painel.allowsMultipleSelection = false
+                                    guard painel.runModal() == .OK, let url = painel.url else { return }
+                                    Task {
+                                        let acesso = url.startAccessingSecurityScopedResource()
+                                        defer { if acesso { url.stopAccessingSecurityScopedResource() } }
+                                        await googleCalendar?.importarAudioParaReuniao(pendente, audioURL: url, biblioteca: bib)
+                                    }
+                                },
+                                aoIgnorarReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    Task { @MainActor in
+                                        googleCalendar?.ignorarPendente(pendente)
+                                        biblioteca?.moverPendenteParaLixeira(pendente)
+                                    }
+                                },
                                focoNaGravacao: $focoNaGravacao)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
@@ -358,15 +372,6 @@ struct ContentView: View {
                 }
             }
 
-            // Timer de sincronização automática a cada 15 min
-            Task { @MainActor [weak conexaoGoogle] in
-                while true {
-                    try? await Task.sleep(for: .seconds(15 * 60))
-                    guard let conexaoGoogle, conexaoGoogle.estado.conectado else { continue }
-                    await conexaoGoogle.importarTodas(biblioteca: nova)
-                }
-            }
-
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos
             )
@@ -377,24 +382,41 @@ struct ContentView: View {
             // A gravação entrega o áudio; a biblioteca salva e processa. Esta
             // ligação permanece na raiz para não desaparecer ao redesenhar uma
             // subview de biblioteca.
+            // Caixa capturada por referência: `@State` não pode ser lido
+            // diretamente num handler instalado uma vez (captura obsoleta).
+            let caixaPendente = pendenteEmGravacao
+            let gcalCapturado = googleCalendar
             modelo.aoProduzirAudio = { titulo, pasta, duracao, notas, dataDeGravacao in
-                if let arquivo = await nova.registrar(
-                    titulo: titulo,
-                    pastaRelativa: pasta,
-                    duracao: duracao,
-                    notas: notas,
-                    dataDeGravacao: dataDeGravacao
-                ) {
-                    if let pastaDaBibliotecaSelecionada {
-                        PreferenciasVisuaisDoArquivo.definirPasta(
-                            pastaDaBibliotecaSelecionada,
-                            para: arquivo.id
-                        )
-                    }
-                    if nova.processamentoAutomatico {
-                        arquivosAguardandoFicha.insert(arquivo.id)
-                    } else {
-                        abrirFichaDaEntrevista(para: arquivo)
+                if let pendente = caixaPendente.pendente {
+                    // Gravação iniciada a partir de uma reunião pendente do
+                    // Calendar: o título vem do evento, não do relógio.
+                    let audioURL = nova.armazenamento.resolver(relativo: pasta)
+                        .appendingPathComponent(Armazenamento.Nome.microfone)
+                    _ = await gcalCapturado?.importarAudioParaReuniao(
+                        pendente, audioURL: audioURL, biblioteca: nova
+                    )
+                    await MainActor.run { caixaPendente.pendente = nil }
+                    await MainActor.run { focoNaGravacao = false }
+                } else {
+                    // Gravação normal
+                    if let arquivo = await nova.registrar(
+                        titulo: titulo,
+                        pastaRelativa: pasta,
+                        duracao: duracao,
+                        notas: notas,
+                        dataDeGravacao: dataDeGravacao
+                    ) {
+                        if let pastaDaBibliotecaSelecionada {
+                            PreferenciasVisuaisDoArquivo.definirPasta(
+                                pastaDaBibliotecaSelecionada,
+                                para: arquivo.id
+                            )
+                        }
+                        if nova.processamentoAutomatico {
+                            arquivosAguardandoFicha.insert(arquivo.id)
+                        } else {
+                            abrirFichaDaEntrevista(para: arquivo)
+                        }
                     }
                 }
             }
@@ -719,6 +741,9 @@ struct ContentView: View {
 
     private func aoCancelarGravacao() async {
         await modelo.cancelar()
+        // Cancelar não produz áudio: sem isto, a próxima gravação comum seria
+        // erroneamente roteada para a pendente do Calendar marcada antes.
+        pendenteEmGravacao.pendente = nil
         focoNaGravacao = false
     }
 

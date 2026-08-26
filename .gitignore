@@ -25,3 +25,6 @@ PapagaioCore/Sources/PapagaioCore/ModelosDeDiarizacao/
 
 # Lixo do Finder.
 .DS_Store
+
+# Credenciais OAuth do Google Calendar (locais por dev, nunca versionar).
+Config/Secrets.xcconfig

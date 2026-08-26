@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 import PapagaioCore
@@ -914,20 +915,123 @@ final class Biblioteca {
         return .prontoParaTranscrever
     }
 
-    /// Reuniões do Google Calendar importadas que ainda não ocorreram (futuras).
-    /// Usadas para a seção "Próximas reuniões" no topo da biblioteca.
-    var reunioesPendentesCalendar: [Arquivo] {
-        let agora = Date()
-        return arquivos.filter { arquivo in
-            guard arquivo.idExterno?.hasPrefix("google-calendar-api:") == true else { return false }
-            return arquivo.criadoEm > agora
-        }.sorted { $0.criadoEm < $1.criadoEm }
+    /// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
+    var reunioesPendentesCalendar: [ReuniaoPendenteCalendar] = []
+
+    /// Reuniões pendentes movidas para a lixeira.
+    var reunioesPendentesNaLixeira: [ReuniaoPendenteCalendar] = []
+
+    /// Cria um Arquivo definitivo a partir de uma reunião pendente + áudio.
+    ///
+    /// O áudio é obrigatório: gravar ou importar são os únicos caminhos que
+    /// transformam uma pendente em conversa. O arquivo entra na biblioteca
+    /// (array em memória **e** banco) e, quando o áudio veio de fora, na fila
+    /// de processamento — mesma jornada do `registrar` normal.
+    @discardableResult
+    func criarArquivoDeReuniaoPendente(_ pendente: ReuniaoPendenteCalendar, audioURL: URL) async -> Arquivo? {
+        let idExterno = pendente.idExterno
+        guard !arquivos.contains(where: { $0.idExterno == idExterno }),
+              !arquivosNaLixeira.contains(where: { $0.idExterno == idExterno }),
+              !reunioesPendentesNaLixeira.contains(where: { $0.id == pendente.id })
+        else { return nil }
+
+        // Sem pasta não há transcrição possível — falha antes de sujar o banco.
+        guard FileManager.default.fileExists(atPath: audioURL.path) else {
+            erros[ArquivoID().rawValue] = "O arquivo de áudio escolhido não foi encontrado."
+            return nil
+        }
+
+        var arquivo = Arquivo(
+            titulo: pendente.titulo,
+            criadoEm: pendente.dataHora,
+            duracao: 0,
+            pastaRelativa: "",
+            espaco: espaco,
+            trechos: [],
+            notas: pendente.descricao.map { [NotaDaConversa(texto: $0, start: 0)] } ?? [],
+            resumo: nil,
+            idExterno: idExterno
+        )
+
+        do {
+            if audioURL.lastPathComponent.hasPrefix(Armazenamento.Nome.microfone) {
+                // Veio da gravação interna (`microfone.wav`): a pasta já existe
+                // no lugar canônico; só apontamos para ela.
+                let relativa = audioURL.deletingLastPathComponent().lastPathComponent
+                let pastaPai = audioURL.deletingLastPathComponent().deletingLastPathComponent()
+                guard pastaPai.lastPathComponent == Armazenamento.pastaGravacoes else {
+                    throw ErroDeImportacao.pastaInesperada
+                }
+                arquivo.pastaRelativa = "\(Armazenamento.pastaGravacoes)/\(relativa)"
+            } else {
+                // Importado: pasta nova + extensão preservada (`gravacao.<ext>`).
+                let idNovo = UUID()
+                let destino = try armazenamento.criarArquivoImportado(
+                    id: idNovo,
+                    extensao: audioURL.pathExtension.lowercased()
+                )
+                try FileManager.default.copyItem(at: audioURL, to: destino)
+                arquivo.pastaRelativa = Armazenamento.caminhoRelativo(id: idNovo)
+                // Duração real lida do arquivo: alimenta a estimativa de
+                // progresso e o cartão desde o primeiro segundo.
+                arquivo.duracao = await Self.duracaoDoAudio(audioURL)
+            }
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível copiar o áudio da reunião: \(error)"
+            return nil
+        }
+
+        do {
+            try await repositorio.salvar(arquivo)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível criar arquivo da reunião: \(error)"
+            return nil
+        }
+
+        // Em memória ANTES de enfileirar: o loop da fila resolve o próximo
+        // arquivo buscando neste array — ausente aqui, o processamento morria
+        // silenciosamente no primeiro tick.
+        arquivos.insert(arquivo, at: 0)
+        arquivos.sort { $0.criadoEm > $1.criadoEm }
+        enfileirarProcessamento(arquivo)
+        return arquivo
     }
 
-    /// Reuniões do Google Calendar que foram ignoradas (movidas para lixeira).
-    var reunioesIgnoradasCalendar: [Arquivo] {
-        return arquivosNaLixeira.filter { arquivo in
-            arquivo.idExterno?.hasPrefix("google-calendar-api:") == true
-        }.sorted { $0.criadoEm > $1.criadoEm }
+    enum ErroDeImportacao: LocalizedError {
+        case pastaInesperada
+
+        var errorDescription: String? {
+            switch self {
+            case .pastaInesperada:
+                "A gravação não estava na pasta esperada da biblioteca."
+            }
+        }
+    }
+
+    /// Duração em segundos lida dos metadados do arquivo de áudio.
+    /// Falha silenciosa devolve 0 — o pipeline recalcula ao transcrever.
+    private static func duracaoDoAudio(_ url: URL) async -> TimeInterval {
+        await Task.detached {
+            let asset = AVURLAsset(url: url)
+            return (try? await asset.load(.duration).seconds) ?? 0
+        }.value
+    }
+
+    /// Move uma pendente para a lixeira de pendentes
+    func moverPendenteParaLixeira(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesCalendar.removeAll { $0.id == pendente.id }
+        reunioesPendentesNaLixeira.append(pendente)
+    }
+
+    /// Restaura uma pendente da lixeira
+    func restaurarPendenteDaLixeira(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
+        reunioesPendentesCalendar.append(pendente)
+        reunioesPendentesCalendar.sort { $0.dataHora < $1.dataHora }
+    }
+
+    /// Apaga definitivamente uma pendente da lixeira
+    func apagarPendenteDefinitivamente(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
     }
 }

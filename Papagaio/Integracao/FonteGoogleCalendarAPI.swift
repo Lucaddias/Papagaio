@@ -32,6 +32,53 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
     }
 
     func listarReunioes() async throws -> [ReuniaoExterna] {
+        let eventos = try await listarEventos()
+        return eventos.map { evento in
+            ReuniaoExterna(
+                id: evento.id,
+                titulo: evento.titulo,
+                data: evento.dataHora,
+                participantes: evento.participantes,
+                notas: evento.descricao,
+                resumo: nil,
+                transcricao: nil
+            )
+        }
+    }
+
+    func obterReuniao(id: String, incluirTranscricao: Bool) async throws -> ReuniaoExterna {
+        let token = try await obterToken(false)
+
+        var pedido = URLRequest(url: baseURL.appendingPathComponent("calendars/primary/events/\(id)"))
+        pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        pedido.timeoutInterval = 15
+
+        let (dados, resposta) = try await URLSession.shared.data(for: pedido)
+        guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            if (resposta as? HTTPURLResponse)?.statusCode == 404 {
+                throw FonteGoogleCalendarErro.reuniaoNaoEncontrada(id)
+            }
+            throw FonteGoogleCalendarErro.respostaInesperada
+        }
+        guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any],
+              let reuniao = ReuniaoExterna.fromGoogleEvent(json)
+        else {
+            throw FonteGoogleCalendarErro.respostaInesperada
+        }
+        return reuniao
+    }
+
+    // MARK: - Internal
+
+    struct EventoCalendarSimples {
+        let id: String
+        let titulo: String
+        let dataHora: Date
+        let participantes: [String]
+        let descricao: String?
+    }
+
+    func listarEventos() async throws -> [EventoCalendarSimples] {
         let token = try await obterToken(false)
 
         let agora = Date()
@@ -66,19 +113,54 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
             return []
         }
 
-        let reunioes = itens
+        let eventos = itens
             .filter { evento in
-                // Só reuniões reais: eventType == "default" E attendees não vazio
                 let tipo = evento["eventType"] as? String ?? "default"
                 let attendees = evento["attendees"] as? [[String: Any]]
                 return tipo == "default" && (attendees?.isEmpty == false)
             }
-            .compactMap { ReuniaoExterna(fromGoogleEvent: $0) }
-        registro.info("\(reunioes.count) reuniões futuras (com participantes) carregadas do Google Calendar")
-        return reunioes
+            .compactMap { evento -> EventoCalendarSimples? in
+                guard let id = evento["id"] as? String, !id.isEmpty else { return nil }
+                let titulo = (evento["summary"] as? String) ?? "Evento sem título"
+
+                let inicio: Date
+                if let startDateTime = evento["start"] as? [String: Any],
+                   let dateTimeStr = startDateTime["dateTime"] as? String {
+                    inicio = ReuniaoExterna.parseDateTime(dateTimeStr) ?? Date()
+                } else if let startDate = evento["start"] as? [String: Any],
+                          let dateStr = startDate["date"] as? String {
+                    inicio = ReuniaoExterna.parseDate(dateStr) ?? Date()
+                } else {
+                    inicio = Date()
+                }
+
+                let participantes: [String]
+                if let attendees = evento["attendees"] as? [[String: Any]] {
+                    participantes = attendees.compactMap { a in
+                        if let email = a["email"] as? String { return email }
+                        if let displayName = a["displayName"] as? String { return displayName }
+                        return nil
+                    }
+                } else {
+                    participantes = []
+                }
+
+                let descricao = evento["description"] as? String
+
+                return EventoCalendarSimples(
+                    id: id,
+                    titulo: titulo,
+                    dataHora: inicio,
+                    participantes: participantes,
+                    descricao: descricao
+                )
+            }
+        registro.info("\(eventos.count) eventos futuros (com participantes) carregados do Google Calendar")
+        return eventos
     }
 
-    func obterReuniao(id: String, incluirTranscricao: Bool) async throws -> ReuniaoExterna {
+    // Internal method for detailed event fetch
+    func obterEventoDetalhado(id: String) async throws -> EventoCalendarSimples? {
         let token = try await obterToken(false)
 
         var pedido = URLRequest(url: baseURL.appendingPathComponent("calendars/primary/events/\(id)"))
@@ -88,16 +170,48 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         let (dados, resposta) = try await URLSession.shared.data(for: pedido)
         guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             if (resposta as? HTTPURLResponse)?.statusCode == 404 {
-                throw FonteGoogleCalendarErro.reuniaoNaoEncontrada(id)
+                return nil
             }
             throw FonteGoogleCalendarErro.respostaInesperada
         }
-        guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any],
-              let reuniao = ReuniaoExterna(fromGoogleEvent: json)
-        else {
-            throw FonteGoogleCalendarErro.respostaInesperada
+        guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any] else {
+            return nil
         }
-        return reuniao
+
+        guard let id = json["id"] as? String, !id.isEmpty else { return nil }
+        let titulo = (json["summary"] as? String) ?? "Evento sem título"
+
+        let inicio: Date
+        if let startDateTime = json["start"] as? [String: Any],
+           let dateTimeStr = startDateTime["dateTime"] as? String {
+            inicio = ReuniaoExterna.parseDateTime(dateTimeStr) ?? Date()
+        } else if let startDate = json["start"] as? [String: Any],
+                  let dateStr = startDate["date"] as? String {
+            inicio = ReuniaoExterna.parseDate(dateStr) ?? Date()
+        } else {
+            inicio = Date()
+        }
+
+        let participantes: [String]
+        if let attendees = json["attendees"] as? [[String: Any]] {
+            participantes = attendees.compactMap { a in
+                if let email = a["email"] as? String { return email }
+                if let displayName = a["displayName"] as? String { return displayName }
+                return nil
+            }
+        } else {
+            participantes = []
+        }
+
+        let descricao = json["description"] as? String
+
+        return EventoCalendarSimples(
+            id: id,
+            titulo: titulo,
+            dataHora: inicio,
+            participantes: participantes,
+            descricao: descricao
+        )
     }
 }
 
@@ -115,70 +229,5 @@ enum FonteGoogleCalendarErro: LocalizedError {
         case let .reuniaoNaoEncontrada(id):
             return "A reunião \(id) não foi encontrada no Google Calendar."
         }
-    }
-}
-
-extension ReuniaoExterna {
-    init?(fromGoogleEvent evento: [String: Any]) {
-        guard let id = evento["id"] as? String,
-              !id.isEmpty
-        else { return nil }
-
-        let titulo = (evento["summary"] as? String) ?? "Evento sem título"
-
-        let inicio: Date
-        if let startDateTime = evento["start"] as? [String: Any],
-           let dateTimeStr = startDateTime["dateTime"] as? String {
-            inicio = Self.parseDateTime(dateTimeStr) ?? Date()
-        } else if let startDate = evento["start"] as? [String: Any],
-                  let dateStr = startDate["date"] as? String {
-            inicio = Self.parseDate(dateStr) ?? Date()
-        } else {
-            inicio = Date()
-        }
-
-        let participantes: [String]
-        if let attendees = evento["attendees"] as? [[String: Any]] {
-            participantes = attendees.compactMap { a in
-                if let email = a["email"] as? String {
-                    return email
-                }
-                if let displayName = a["displayName"] as? String {
-                    return displayName
-                }
-                return nil
-            }
-        } else {
-            participantes = []
-        }
-
-        let notas = evento["description"] as? String
-
-        self.init(
-            id: id,
-            titulo: titulo,
-            data: inicio,
-            participantes: participantes,
-            notas: notas,
-            resumo: nil,
-            transcricao: nil
-        )
-    }
-
-    private static func parseDateTime(_ string: String) -> Date? {
-        let formatador = ISO8601DateFormatter()
-        formatador.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let data = formatador.date(from: string) { return data }
-        let formatadorSemFracao = ISO8601DateFormatter()
-        formatadorSemFracao.formatOptions = [.withInternetDateTime]
-        return formatadorSemFracao.date(from: string)
-    }
-
-    private static func parseDate(_ string: String) -> Date? {
-        let formatador = DateFormatter()
-        formatador.locale = Locale(identifier: "en_US_POSIX")
-        formatador.dateFormat = "yyyy-MM-dd"
-        formatador.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatador.date(from: string)
     }
 }

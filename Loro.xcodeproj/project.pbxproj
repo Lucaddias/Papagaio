@@ -27,6 +27,7 @@
 /* Begin PBXFileReference section */
 		PA00000000000000000006 /* Loro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loro.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA00000000000000000013 /* Papagaio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Papagaio.entitlements; sourceTree = "<group>"; };
+		PA00000000000000000020 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -70,6 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				PA00000000000000000013 /* Papagaio.entitlements */,
+				PA00000000000000000020 /* Base.xcconfig */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -213,6 +215,7 @@
 		};
 		PA0000000000000000000E /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = PA00000000000000000020 /* Base.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/Papagaio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -245,6 +248,7 @@
 		};
 		PA0000000000000000000F /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = PA00000000000000000020 /* Base.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/Papagaio.entitlements;
 				CODE_SIGN_STYLE = Automatic;

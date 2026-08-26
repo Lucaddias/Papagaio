@@ -499,7 +499,6 @@ struct ConfiguracoesView: View {
                 Spacer()
 
                 Button("Desconectar") {
-                    selecionadasGoogle.removeAll()
                     Task { await googleCalendar.desconectar() }
                 }
                 .buttonStyle(.bordered)
@@ -536,12 +535,12 @@ struct ConfiguracoesView: View {
                         .font(PapagaioTema.Tipo.apoio)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                 }
-            } else if googleCalendar.reunioes.isEmpty {
+            } else if googleCalendar.reunioesPendentes.isEmpty {
                 Text("Nenhuma reunião futura encontrada.")
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             } else {
-                Text("\(googleCalendar.reunioes.count) reunião(ões) com participantes — sincronizadas automaticamente na aba Calendário da biblioteca.")
+                Text("\(googleCalendar.reunioesPendentes.count) reunião(ões) com participantes — sincronizadas automaticamente na aba Calendário da biblioteca.")
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)
@@ -555,53 +554,6 @@ struct ConfiguracoesView: View {
             }
         }
     }
-
-    private func linhaDeReuniaoGoogleCalendar(_ reuniao: ReuniaoExterna) -> some View {
-        let marcada = Binding(
-            get: { selecionadasGoogle.contains(reuniao.id) },
-            set: { marcada in
-                if marcada {
-                    selecionadasGoogle.insert(reuniao.id)
-                } else {
-                    selecionadasGoogle.remove(reuniao.id)
-                }
-            }
-        )
-
-        return Toggle(isOn: marcada) {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text(reuniao.titulo)
-                    .font(PapagaioTema.Tipo.corpo)
-                    .foregroundStyle(PapagaioTema.texto)
-                    .lineLimit(1)
-
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    Text(reuniao.data.formatted(date: .abbreviated, time: .shortened))
-                    if !reuniao.participantes.isEmpty {
-                        Text("·")
-                        Text(reuniao.participantes.prefix(3).joined(separator: ", "))
-                    }
-                }
-                .font(PapagaioTema.Tipo.apoio)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-            }
-        }
-        .toggleStyle(.checkbox)
-    }
-
-    private func importarSelecionadasGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel) {
-        let ids = selecionadasGoogle
-        Task {
-            guard let biblioteca else { return }
-            let salvas = await googleCalendar.importar(ids, biblioteca: biblioteca)
-            if salvas > 0 {
-                selecionadasGoogle.subtract(ids)
-            }
-        }
-    }
-
-    @State private var selecionadasGoogle: Set<String> = []
-}
 
 /// Botão de tema com uma miniatura da interface no esquema correspondente.
 private struct AmostraDeAparencia: View {
@@ -681,8 +633,8 @@ private struct AmostraDeAparencia: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .stroke(traco, lineWidth: 1)
-                    }
-            }
+}
+        }  // close ZStack
             .padding(PapagaioTema.Espaco.curto)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -694,4 +646,5 @@ private struct AmostraDeAparencia: View {
         }
         .accessibilityHidden(true)
     }
+}
 }
