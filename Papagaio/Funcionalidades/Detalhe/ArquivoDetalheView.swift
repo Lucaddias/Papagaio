@@ -1014,9 +1014,11 @@ struct ArquivoDetalheView: View {
         delegadoDeCompartilhamento = opcoes
         picker.delegate = opcoes
 
-        if let view = NSApp.keyWindow?.contentView {
-            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        guard let view = NSApp.keyWindow?.contentView else {
+            itens.compactMap { $0 as? URL }.forEach(DossieDaConversa.descartarArquivoTemporario)
+            return
         }
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
     }
 
     private var avisoDeAudioRemovido: some View {

@@ -501,7 +501,10 @@ struct BibliotecaHomeView: View {
                 let zip = try await Task.detached {
                     try DossieDaConversa.zipar(pacote)
                 }.value
-                guard let view = NSApp.keyWindow?.contentView else { return }
+                guard let view = NSApp.keyWindow?.contentView else {
+                    DossieDaConversa.descartarArquivoTemporario(zip)
+                    return
+                }
 
                 // O mesmo painel do cartão de conversa, com o delegate que
                 // acrescenta "Salvar em…".
