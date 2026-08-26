@@ -209,10 +209,13 @@ final class Biblioteca {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
         else { return false }
 
-        await cancelarProcessamentoDoArquivo(arquivo.id)
-
+        // `cancelarProcessamentoDoArquivo` também remove o id da fila. A
+        // posição precisa ser capturada antes: se o save do soft delete
+        // falhar, a conversa continua ativa e deve voltar ao processamento
+        // que a própria pessoa já tinha pedido.
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
-        if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
+        let estavaEmProcessamento = arquivoEmProcessamento == arquivo.id
+        await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let chave = arquivo.id.rawValue
         let faseAnterior = fases[chave]
@@ -238,10 +241,10 @@ final class Biblioteca {
             // devolvemos a posição anterior da fila em vez de perder trabalho.
             fases[chave] = faseAnterior
             erros[chave] = erroAnterior
-            if let indiceNaFila {
+            if estavaEmProcessamento || indiceNaFila != nil {
                 filaDeProcessamento.insert(
                     arquivo.id,
-                    at: min(indiceNaFila, filaDeProcessamento.count)
+                    at: min(indiceNaFila ?? filaDeProcessamento.count, filaDeProcessamento.count)
                 )
                 iniciarProximoProcessamentoSeNecessario()
             }
