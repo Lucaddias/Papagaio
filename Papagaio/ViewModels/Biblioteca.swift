@@ -108,9 +108,7 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
-    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
     private var espaco: EspacoID
-    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -145,31 +143,32 @@ final class Biblioteca {
         return EspacoID(rawValue: novo)
     }
 
-    /// Troca o acervo exibido sem misturar uma equipe ao perfil pessoal.
-    /// Processamentos em curso continuam com o arquivo que os originou; a
-    /// troca só limpa a fila visual, que pertence à biblioteca aberta.
-    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
-        let mudouDeEspaco = espaco != novoEspaco
-        self.equipeCloudKit = equipeCloudKit
-        if mudouDeEspaco {
-            filaDeProcessamento.removeAll()
-            espaco = novoEspaco
-            arquivos.removeAll()
-            arquivosNaLixeira.removeAll()
-            fases.removeAll()
-            erros.removeAll()
-            erroDaLixeira = nil
-        }
-        await carregar()
-        await baixarAtualizacoesDaEquipe()
-    }
-
     // MARK: - Ciclo de vida
 
     func preparar() async {
+        guard await migrarDadosDeEquipesRemovidas() else { return }
         await ciclo.iniciarMonitoramento()
         await ciclo.encerrarNaSaidaDoApp()
         await carregar()
+    }
+
+    /// A remoção das telas de equipe não pode transformar os registros desses
+    /// espaços em dados invisíveis. A marca só é gravada após `SwiftData`
+    /// salvar, para que uma falha temporária seja tentada novamente na próxima
+    /// abertura sem descartar nenhuma conversa.
+    private func migrarDadosDeEquipesRemovidas() async -> Bool {
+        guard MigracaoDeRemocaoDeEquipes.bibliotecaPrecisaSerMigrada() else {
+            return true
+        }
+
+        do {
+            try await repositorio.migrarTodosOsEspacos(para: espaco)
+            MigracaoDeRemocaoDeEquipes.concluirMigracaoDaBiblioteca()
+            return true
+        } catch {
+            erroDeCarregamento = "Não foi possível migrar a biblioteca existente: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func carregar() async {
@@ -214,7 +213,6 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
-        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
@@ -226,14 +224,18 @@ final class Biblioteca {
     /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,
     /// a execução atual é cancelada antes do soft delete para a UI não ficar
     /// presa esperando o pipeline terminar.
-    func moverParaLixeira(_ arquivo: Arquivo) async {
+    @discardableResult
+    func moverParaLixeira(_ arquivo: Arquivo) async -> Bool {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
-        else { return }
+        else { return false }
 
-        await cancelarProcessamentoDoArquivo(arquivo.id)
-
+        // `cancelarProcessamentoDoArquivo` também remove o id da fila. A
+        // posição precisa ser capturada antes: se o save do soft delete
+        // falhar, a conversa continua ativa e deve voltar ao processamento
+        // que a própria pessoa já tinha pedido.
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
-        if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
+        let estavaEmProcessamento = arquivoEmProcessamento == arquivo.id
+        await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let chave = arquivo.id.rawValue
         let faseAnterior = fases[chave]
@@ -253,20 +255,21 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
-            await sincronizar(movido)
+            return true
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
             fases[chave] = faseAnterior
             erros[chave] = erroAnterior
-            if let indiceNaFila {
+            if estavaEmProcessamento || indiceNaFila != nil {
                 filaDeProcessamento.insert(
                     arquivo.id,
-                    at: min(indiceNaFila, filaDeProcessamento.count)
+                    at: min(indiceNaFila ?? filaDeProcessamento.count, filaDeProcessamento.count)
                 )
                 iniciarProximoProcessamentoSeNecessario()
             }
             erroDaLixeira = "Não foi possível mover o arquivo para a lixeira: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -290,7 +293,6 @@ final class Biblioteca {
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
             arquivos.sort { $0.criadoEm > $1.criadoEm }
-            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -316,16 +318,13 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
-            if let equipeCloudKit {
-                try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit)
-            }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
-            // Sem isto o arquivo apagado deixa favorito, pasta, capa e
-            // metadados órfãos em UserDefaults para sempre.
-            PreferenciasVisuaisDoArquivo.remover(arquivo.id)
+            // O registro e a pasta já saíram; agora nenhum store auxiliar
+            // pode continuar apontando para esta conversa inexistente.
+            LimpezaDeArquivo.executar(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
@@ -364,7 +363,19 @@ final class Biblioteca {
 
         if let tarefa { await tarefa.value }
 
-        try armazenamento.removerTodasAsGravacoes()
+        // O repositório separa os registros por espaço. Apagar a pasta
+        // `Gravacoes` inteira aqui apagava o áudio de outros espaços que
+        // ainda continuavam no banco, deixando conversas sem mídia. Só as
+        // pastas referenciadas pela conta atual participam desta exclusão.
+        let arquivosAtivos = try await repositorio.listar(espaco: espaco)
+        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espaco)
+        let arquivosDaConta = arquivosAtivos + arquivosArquivados
+        let pastasDaConta = Set(
+            arquivosDaConta.map(\.pastaRelativa).filter { !$0.isEmpty }
+        )
+        for pastaRelativa in pastasDaConta {
+            try armazenamento.removerGravacao(relativa: pastaRelativa)
+        }
         try await repositorio.apagarTodosOsDados(espaco: espaco)
 
         arquivos.removeAll()
@@ -407,7 +418,6 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
-            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -441,7 +451,6 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
-            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -456,7 +465,6 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
-            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -476,7 +484,6 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
-            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -492,7 +499,8 @@ final class Biblioteca {
         let destino = armazenamento.resolver(relativo: pastaNovaRelativa)
 
         do {
-            if FileManager.default.fileExists(atPath: origem.path) {
+            let origemExiste = FileManager.default.fileExists(atPath: origem.path)
+            if origemExiste {
                 try FileManager.default.copyItem(at: origem, to: destino)
             } else {
                 try FileManager.default.createDirectory(at: destino, withIntermediateDirectories: true)
@@ -525,13 +533,32 @@ final class Biblioteca {
                 )
             }
 
+            if origemExiste {
+                let anexosCopiados = try MidiasDaConversa.anexosCopiados(
+                    de: arquivo.id,
+                    da: origem,
+                    para: destino
+                )
+                if !anexosCopiados.isEmpty {
+                    try MidiasDaConversa.salvar(anexosCopiados, para: novoID)
+                }
+            }
+            TarefasGeraisStore.duplicar(arquivo, para: copia)
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
-            await sincronizar(copia)
             return copia
         } catch {
-            try? FileManager.default.removeItem(at: destino)
-            erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            // O id novo ainda não é visível em lugar nenhum. Se a cópia de
+            // disco, seus bookmarks ou o registro falharem, eliminar os dois
+            // resíduos impede que uma tentativa posterior herde mídia órfã.
+            MidiasDaConversa.remover(novoID)
+            TarefasGeraisStore.remover(novoID)
+            do {
+                try armazenamento.removerGravacao(relativa: pastaNovaRelativa)
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            } catch {
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription). A cópia incompleta permaneceu no armazenamento para não apagar dados de forma insegura."
+            }
             return nil
         }
     }
@@ -696,7 +723,6 @@ final class Biblioteca {
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
             substituir(final)
-            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
@@ -754,35 +780,6 @@ final class Biblioteca {
             arquivos[indice] = arquivo
         } else {
             arquivos.insert(arquivo, at: 0)
-        }
-    }
-
-    private func sincronizar(_ arquivo: Arquivo) async {
-        guard let equipeCloudKit else { return }
-        do {
-            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
-        } catch {
-            // O acervo local já foi salvo. A próxima troca de equipe tenta
-            // baixar o estado remoto novamente, sem descartar a edição local.
-            aoNotificar?(
-                "Conversa salva só neste Mac",
-                "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.",
-                .aviso
-            )
-        }
-    }
-
-    private func baixarAtualizacoesDaEquipe() async {
-        guard let equipeCloudKit else { return }
-        do {
-            let remotos = try await sincronizadorCloudKit.baixar(da: equipeCloudKit)
-            for arquivo in remotos {
-                try await repositorio.salvar(arquivo)
-            }
-            await carregar()
-        } catch {
-            // A equipe continua útil offline com a cópia local. A UI de
-            // estado da sincronização entra na fase de acabamento.
         }
     }
 

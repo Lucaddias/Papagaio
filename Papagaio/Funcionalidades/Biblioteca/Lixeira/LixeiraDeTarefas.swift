@@ -34,8 +34,19 @@ enum LixeiraDeTarefas {
         itens().forEach { restaurar($0, arquivos: arquivos) }
     }
 
-    static func esvaziar() {
-        UserDefaults.standard.removeObject(forKey: chave)
+    static func esvaziar(em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave)
+    }
+
+    static func removerRegistros(
+        do arquivoID: ArquivoID,
+        em defaults: UserDefaults = .standard
+    ) {
+        guard let dados = defaults.data(forKey: chave),
+              let atuais = try? JSONDecoder().decode([TarefaNaLixeira].self, from: dados),
+              let novos = try? JSONEncoder().encode(atuais.filter { $0.arquivoID != arquivoID })
+        else { return }
+        defaults.set(novos, forKey: chave)
     }
 
     private static func salvar(_ itens: [TarefaNaLixeira]) {
@@ -100,17 +111,22 @@ struct CartaoDaTarefaNaLixeira: View {
             }
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                // Sem `.lineLimit` — mesmo ajuste de `CartaoDaLixeira`: o
+                // título da tarefa e o nome da conversa vêm de dados reais,
+                // sem tamanho garantido. `.fixedSize` garante que o texto
+                // puxa a altura do cartão consigo (só tem `minHeight`, não
+                // `maxHeight`) em vez de ser espremido.
                 Text(item.tarefa.titulo)
                     .font(.title.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario.opacity(0.68))
                     .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.68))
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Text("Tarefa removida de \(item.conversaTitulo). Restaure para voltar ao painel de tarefas dessa conversa.")
                     .font(.body)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .lineSpacing(3)
-                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 0)

@@ -92,16 +92,19 @@ final class MidiasDaConversaViewModel {
         }
 
         do {
-            let destino = try MidiasDaConversa.copiar(
+            var atualizados: [AnexoDeMidiaDaConversa] = []
+            try MidiasDaConversa.copiar(
                 url,
                 para: pastaDaConversa,
-                tituloDaConversa: tituloDaConversa
+                tituloDaConversa: tituloDaConversa,
+                aposCopiar: { destino in
+                    let anexo = try MidiasDaConversa.anexo(para: destino)
+                    atualizados = anexos.filter { $0.url != anexo.url }
+                    atualizados.append(anexo)
+                    atualizados.sort { $0.data > $1.data }
+                    try MidiasDaConversa.salvar(atualizados, para: arquivoID)
+                }
             )
-            let anexo = try MidiasDaConversa.anexo(para: destino)
-            var atualizados = anexos.filter { $0.url != anexo.url }
-            atualizados.append(anexo)
-            atualizados.sort { $0.data > $1.data }
-            try MidiasDaConversa.salvar(atualizados, para: arquivoID)
             anexos = atualizados
         } catch {
             erro = Self.mensagemAmigavel(error)
@@ -123,9 +126,12 @@ final class MidiasDaConversaViewModel {
         let atualizados = anexos.filter { $0.id != anexo.id }
         do {
             // Vai para a lixeira em vez de sumir: o anexo pode ser a única
-            // cópia que a pessoa tem, e ela pode ter clicado sem querer.
-            try moverParaLixeira(anexo, daGravacao: false)
-            try MidiasDaConversa.salvar(atualizados, para: arquivoID)
+            // cópia que a pessoa tem, e ela pode ter clicado sem querer. A
+            // lista de bookmarks é gravada dentro da própria operação: se
+            // ela falhar, o arquivo volta ao caminho que a lista ainda usa.
+            try moverParaLixeira(anexo, daGravacao: false) {
+                try MidiasDaConversa.salvar(atualizados, para: arquivoID)
+            }
             anexos = atualizados
             // Sem isto o cartão apagado só apareceria na próxima abertura da
             // aba: a lista de removidos é lida do disco, não deduzida daqui.
@@ -144,7 +150,11 @@ final class MidiasDaConversaViewModel {
     }
 
     func apagarDeVez(_ item: MidiaNaLixeira) {
-        LixeiraDeMidia.remover(item)
+        do {
+            try LixeiraDeMidia.remover(item)
+        } catch {
+            erro = "Não foi possível apagar \(item.nome): \(error.localizedDescription)"
+        }
         recarregarLixeira()
     }
 
@@ -182,7 +192,11 @@ final class MidiasDaConversaViewModel {
             .sorted { $0.apagadoEm > $1.apagadoEm }
     }
 
-    private func moverParaLixeira(_ anexo: AnexoDeMidiaDaConversa, daGravacao: Bool) throws {
+    private func moverParaLixeira(
+        _ anexo: AnexoDeMidiaDaConversa,
+        daGravacao: Bool,
+        aposMover: () throws -> Void = {}
+    ) throws {
         try LixeiraDeMidia.mover(
             url: anexo.url,
             nome: anexo.nome,
@@ -191,7 +205,8 @@ final class MidiasDaConversaViewModel {
             daGravacao: daGravacao,
             arquivoID: arquivoID,
             conversaTitulo: tituloDaConversa,
-            pastaDaConversa: pastaDaConversa
+            pastaDaConversa: pastaDaConversa,
+            aposMover: aposMover
         )
     }
 

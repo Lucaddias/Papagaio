@@ -20,6 +20,11 @@ struct FiltroDeConversas: View {
     @Binding var atalhoSelecionado: AtalhoDaBiblioteca?
     let aoLimparAtalhoVisual: () -> Void
     var compacto = false
+    /// Só o glifo, sem o texto — a pastilha vira um botão redondo pequeno, e
+    /// o nome do filtro passa a viver só no `.help()` (tooltip ao passar o
+    /// mouse). Usado quando nem o texto compacto cabe na janela; ver
+    /// `BibliotecaHomeView.filtrosEPastas`.
+    var somenteIcone = false
 
     var body: some View {
         HStack(spacing: PapagaioTema.Espaco.curto) {
@@ -36,7 +41,8 @@ struct FiltroDeConversas: View {
                 PastilhaDeFiltro(
                     filtro: filtro,
                     selecionada: selecionado == filtro,
-                    compacto: compacto
+                    compacto: compacto,
+                    somenteIcone: somenteIcone
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -64,14 +70,29 @@ private struct PastilhaDeFiltro: View {
     let filtro: FiltroDaBiblioteca
     let selecionada: Bool
     let compacto: Bool
+    var somenteIcone: Bool = false
     @State private var pairando = false
 
+    /// Calculado antes da cadeia de modificadores, e não com ternários
+    /// aninhados dentro dela: o compilador do Swift se perde tentando
+    /// inferir o tipo de `.frame(minWidth:height:)` com dois `?:` dentro do
+    /// mesmo argumento — "Cannot infer contextual base" era exatamente esse
+    /// sintoma, não um erro de lógica.
+    private var alturaDaPastilha: CGFloat { compacto ? 36 : PapagaioTema.Altura.compacta }
+    private var larguraMinima: CGFloat { somenteIcone ? alturaDaPastilha : 0 }
+    private var paddingHorizontal: CGFloat {
+        if somenteIcone || compacto { return PapagaioTema.Espaco.curto }
+        return PapagaioTema.Espaco.medio
+    }
+
     var body: some View {
-        Label(filtro.rawValue, systemImage: filtro.simbolo)
+        conteudo
             .font((compacto ? Font.caption : Font.callout).weight(.semibold))
             .foregroundStyle(corDoTexto)
-            .padding(.horizontal, compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.medio)
-            .frame(height: compacto ? 36 : PapagaioTema.Altura.compacta)
+            .padding(.horizontal, paddingHorizontal)
+            // Não existe `.frame(minWidth:height:)` — mesmo ajuste feito em
+            // `AtalhosDaBiblioteca.BotaoTextualDeAtalhoDaBiblioteca`.
+            .frame(minWidth: larguraMinima, minHeight: alturaDaPastilha, maxHeight: alturaDaPastilha)
             .background(fundo, in: Capsule())
             .overlay {
                 Capsule().stroke(
@@ -81,6 +102,13 @@ private struct PastilhaDeFiltro: View {
                     lineWidth: 1
                 )
             }
+            // Sem `.fixedSize()`, numa janela estreita o SwiftUI comprimia o
+            // rótulo abaixo da largura natural dele — "Todas" virava "To...",
+            // "Favoritos" virava "Fa-v..." quebrado ao meio com hífen. Com
+            // isto o texto nunca encolhe; quem cede espaço numa janela
+            // estreita é o rótulo inteiro sumindo (`somenteIcone`), decidido
+            // por `BibliotecaHomeView.filtrosEPastas`.
+            .fixedSize()
             // A forma de clique é o retângulo inteiro da pastilha.
             //
             // Sem ela, o alvo era só o que está **desenhado** — e a pastilha
@@ -95,6 +123,18 @@ private struct PastilhaDeFiltro: View {
             .onHover { pairando = $0 }
             .animation(.easeOut(duration: 0.14), value: pairando)
             .animation(.easeOut(duration: 0.14), value: selecionada)
+    }
+
+    /// Ícone sozinho no modo compacto — o nome do filtro continua acessível
+    /// pelo `.help(filtro.rawValue)` aplicado em `FiltroDeConversas`, que
+    /// vira o tooltip ao passar o mouse.
+    @ViewBuilder
+    private var conteudo: some View {
+        if somenteIcone {
+            Image(systemName: filtro.simbolo)
+        } else {
+            Label(filtro.rawValue, systemImage: filtro.simbolo)
+        }
     }
 
     private var corDoTexto: Color {

@@ -33,6 +33,7 @@ struct BibliotecaHomeView: View {
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
     @State private var erroDaLixeiraDeMidia: String?
+    @State private var erroDeExportacao: String?
     @State private var menuAberto: ArquivoID?
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
@@ -62,22 +63,30 @@ struct BibliotecaHomeView: View {
             // da esquerda parar de responder enquanto a da direita, mais para
             // dentro da linha, seguia funcionando. Era exatamente o sintoma.
             //
-            // Com uma instância só não existe a quem confundir. As pastilhas são
-            // pequenas e o `Spacer` cede primeiro, então a linha aguenta janela
-            // estreita sem precisar de arranjo alternativo.
-            HStack(spacing: PapagaioTema.Espaco.largo) {
-                FiltroDeConversas(
-                    selecionado: $filtroSelecionado,
-                    pastaSelecionada: $pastaSelecionada,
-                    atalhoSelecionado: $atalhoSelecionado,
-                    aoLimparAtalhoVisual: limparAtalhoVisual
-                )
+            // Com uma instância só não existe a quem confundir. As pastilhas
+            // têm `.fixedSize()` (ver `FiltroDeConversas` e
+            // `AtalhosDaBiblioteca`) — não comprimem mais o texto numa
+            // janela estreita, então precisam de outra válvula de escape.
+            //
+            // `ViewThatFits` decide entre três versões da *mesma* linha,
+            // cada uma cabendo em menos espaço que a anterior: com o texto
+            // inteiro (janela comum); só com o glifo, nome no tooltip (a
+            // pastilha "Favoritos" some de vista, mas continua ali, dando pra
+            // clicar — não fica cortada pela metade como antes, mostrando
+            // que existe algo sem dizer o quê); e por fim a versão com glifo
+            // dentro de uma `ScrollView` horizontal, para uma janela tão
+            // apertada que nem os quatro ícones cabem lado a lado. Um
+            // `Spacer` mede como do tamanho do `minLength` dele nesta
+            // comparação de `ViewThatFits` — por isso todas cabem exatamente
+            // quando deveriam, sem escolher a versão errada.
+            ViewThatFits(in: .horizontal) {
+                linhaDeFiltros()
+                linhaDeFiltros(somenteIcone: true)
 
-                Spacer(minLength: PapagaioTema.Espaco.curto)
-
-                atalhosDaBiblioteca
+                ScrollView(.horizontal, showsIndicators: false) {
+                    linhaDeFiltros(somenteIcone: true)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             // Acima do que vem depois — inclusive da grade de pastas, que é
             // irmã desta linha dentro do mesmo `if`.
             //
@@ -142,6 +151,29 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// A linha de filtro ("Todas"/"Pastas") mais os atalhos
+    /// ("Recentes"/"Favoritos"), com o `Spacer` que empurra os atalhos pro
+    /// canto direito. Extraída à parte porque `filtrosEPastas` usa a mesma
+    /// visão mais de uma vez dentro de um `ViewThatFits` — ver o comentário
+    /// lá. `somenteIcone` esconde o texto das pastilhas (fica só o glifo,
+    /// com o nome no tooltip) para a versão mais compacta.
+    private func linhaDeFiltros(somenteIcone: Bool = false) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
+            FiltroDeConversas(
+                selecionado: $filtroSelecionado,
+                pastaSelecionada: $pastaSelecionada,
+                atalhoSelecionado: $atalhoSelecionado,
+                aoLimparAtalhoVisual: limparAtalhoVisual,
+                somenteIcone: somenteIcone
+            )
+
+            Spacer(minLength: PapagaioTema.Espaco.curto)
+
+            atalhosDaBiblioteca(somenteIcone: somenteIcone)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// O que era o subtítulo da página, agora sob demanda.
     ///
     /// Texto que se lê uma vez e depois só ocupa a primeira dobra da tela
@@ -169,7 +201,7 @@ struct BibliotecaHomeView: View {
         filtroSelecionado == .pastas ? "Biblioteca de Conversas (Pastas)" : "Biblioteca de Conversas"
     }
 
-    private var atalhosDaBiblioteca: some View {
+    private func atalhosDaBiblioteca(somenteIcone: Bool = false) -> some View {
         AtalhosDaBiblioteca(
             selecionado: $atalhoVisualSelecionado,
             aoSelecionarRecentes: {
@@ -196,7 +228,8 @@ struct BibliotecaHomeView: View {
                     atalhoSelecionado = .favoritos
                     atalhoVisualSelecionado = .favoritos
                 }
-            }
+            },
+            somenteIcone: somenteIcone
         )
     }
 
@@ -213,9 +246,30 @@ struct BibliotecaHomeView: View {
                 aoFinalizar: aoAlternarGravacao,
                 aoCancelar: aoCancelarGravacao
             )
+            // A janela flutuante nasce daqui: sabendo onde este cartão está
+            // na tela, ela consegue "encolher" a partir do lugar certo em vez
+            // de simplesmente aparecer no canto.
+            .rastreandoJanela { janelaHospedeira = $0 }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { retangulo in
+                gravador.origemDoPainelNaTela = converterParaTela(retangulo)
+            }
+            // Some da tela (foco saiu da captura, ou a gravação terminou) —
+            // sem isto a próxima vez que o painel flutuante nascer usaria uma
+            // origem de uma sessão anterior, num lugar errado da tela.
+            .onDisappear { gravador.origemDoPainelNaTela = nil }
 
             PainelDeNotasDuranteGravacao(gravador: gravador)
         }
+    }
+
+    /// A janela local do cartão de gravação — só serve para converter a
+    /// geometria dele em coordenadas de tela; ver `capturaEmAndamento`.
+    @State private var janelaHospedeira: NSWindow?
+
+    private func converterParaTela(_ retangulo: CGRect) -> CGRect? {
+        guard let janela = janelaHospedeira, let vistaDeConteudo = janela.contentView else { return nil }
+        let retanguloNaJanela = vistaDeConteudo.convert(retangulo, to: nil)
+        return janela.convertToScreen(retanguloNaJanela)
     }
 
     /// Tela de captura: gravando **e** com o foco nela.
@@ -435,9 +489,9 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    private func pacoteDaPasta(_ nome: String) -> URL? {
-        guard let biblioteca else { return nil }
-        return PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
+    private func pacoteDaPasta(_ nome: String) async throws -> URL {
+        guard let biblioteca else { throw PastasDaBiblioteca.Erro.pastaVazia }
+        return try await PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
@@ -446,24 +500,43 @@ struct BibliotecaHomeView: View {
     /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
     /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome) else { return }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                let painel = NSOpenPanel()
+                painel.title = "Escolha onde salvar a pasta \(nome)"
+                painel.prompt = "Salvar aqui"
+                painel.canChooseFiles = false
+                painel.canChooseDirectories = true
+                painel.canCreateDirectories = true
 
-        let painel = NSOpenPanel()
-        painel.title = "Escolha onde salvar a pasta \(nome)"
-        painel.prompt = "Salvar aqui"
-        painel.canChooseFiles = false
-        painel.canChooseDirectories = true
-        painel.canCreateDirectories = true
+                painel.begin { resposta in
+                    guard resposta == .OK, let destino = painel.url else {
+                        DossieDaConversa.descartarPastaTemporaria(pacote)
+                        return
+                    }
+                    Task.detached {
+                        defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
+                        let acesso = destino.startAccessingSecurityScopedResource()
+                        defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
-        painel.begin { resposta in
-            guard resposta == .OK, let destino = painel.url else { return }
-            Task.detached {
-                guard destino.startAccessingSecurityScopedResource() else { return }
-                defer { destino.stopAccessingSecurityScopedResource() }
-
-                let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-                try? FileManager.default.removeItem(at: alvo)
-                try? FileManager.default.copyItem(at: pacote, to: alvo)
+                        let alvo = destino.appendingPathComponent(
+                            pacote.lastPathComponent, isDirectory: true
+                        )
+                        do {
+                            if FileManager.default.fileExists(atPath: alvo.path) {
+                                try FileManager.default.removeItem(at: alvo)
+                            }
+                            try FileManager.default.copyItem(at: pacote, to: alvo)
+                        } catch {
+                            await MainActor.run {
+                                erroDeExportacao = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            } catch {
+                erroDeExportacao = error.localizedDescription
             }
         }
     }
@@ -474,19 +547,29 @@ struct BibliotecaHomeView: View {
     /// painel de compartilhamento é o que trava e-mail e mensagem — e do outro
     /// lado ninguém remonta a estrutura de pastas na mão.
     private func compartilharPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome),
-              let zip = try? DossieDaConversa.zipar(pacote),
-              let view = NSApp.keyWindow?.contentView
-        else { return }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
+                let zip = try await Task.detached {
+                    try DossieDaConversa.zipar(pacote)
+                }.value
+                guard let view = NSApp.keyWindow?.contentView else {
+                    DossieDaConversa.descartarArquivoTemporario(zip)
+                    return
+                }
 
-        // O mesmo painel do cartão de conversa, com o delegate que acrescenta
-        // "Salvar em…". Sem ele, compartilhar uma pasta oferecia só os apps —
-        // e guardar num diretório, que é o caso mais comum, ficava de fora.
-        let picker = NSSharingServicePicker(items: [zip])
-        let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
-        delegadoDeCompartilhamento = opcoes
-        picker.delegate = opcoes
-        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+                // O mesmo painel do cartão de conversa, com o delegate que
+                // acrescenta "Salvar em…".
+                let picker = NSSharingServicePicker(items: [zip])
+                let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
+                delegadoDeCompartilhamento = opcoes
+                picker.delegate = opcoes
+                picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+            } catch {
+                erroDeExportacao = error.localizedDescription
+            }
+        }
     }
 
     /// As pastas cujo nome casa com a busca. Vazio sem termo digitado.
@@ -638,6 +721,31 @@ struct BibliotecaHomeView: View {
     /// tudo dentro do mesmo cartão com borda e sombra, e não solto no fundo
     /// da janela como um texto qualquer.
     private var cabecalhoDaLixeira: some View {
+        // `ViewThatFits` entre a linha normal (botões com texto) e a
+        // compacta (só o glifo, nome no tooltip) — mesma solução da
+        // biblioteca (`filtrosEPastas`). "Restaurar Tudo" e "Esvaziar
+        // Lixeira" por extenso, lado a lado com o título "Lixeira", não
+        // cabem numa janela estreita (a janela chega a 460pt — ver
+        // `ContentView.swift`); sem isto os botões ficavam espremidos ou
+        // cortados fora do cartão.
+        ViewThatFits(in: .horizontal) {
+            linhaDaLixeira()
+            linhaDaLixeira(somenteIcone: true)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+    }
+
+    private func linhaDaLixeira(somenteIcone: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
             Text(tituloDaPagina)
                 .font(.title2.weight(.semibold))
@@ -655,29 +763,26 @@ struct BibliotecaHomeView: View {
                 AcoesDaLixeira(
                     temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
                     aoRestaurarTudo: {
-                        Task { await biblioteca.restaurarTudoDaLixeira() }
-                        LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
-                        LixeiraDeMidia.restaurarTudo()
-                        LixeiraDePastas.restaurarTudo()
-                        atualizarPreferenciasVisuais()
+                        Task { @MainActor in
+                            await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
+                            // Uma conversa que não conseguiu sair da lixeira não pode
+                            // recuperar suas tarefas antes dela. Assim o item continua
+                            // visível e recuperável numa nova tentativa.
+                            LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos)
+                            if !LixeiraDeMidia.restaurarTudo() {
+                                erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados. Revise os itens restantes na lixeira."
+                            }
+                            atualizarPreferenciasVisuais()
+                        }
                     },
                     aoEsvaziar: {
                         confirmandoEsvaziarLixeira = true
-                    }
+                    },
+                    somenteIcone: somenteIcone
                 )
             }
         }
-        .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            PapagaioTema.superficie,
-            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1.5)
-        }
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
     var body: some View {
@@ -784,13 +889,21 @@ struct BibliotecaHomeView: View {
         } message: {
             Text("Essa ação remove o áudio, a transcrição e o resumo do Mac e não pode ser desfeita.")
         }
-        .alert("Não foi possível restaurar", isPresented: Binding(
+        .alert("Não foi possível concluir", isPresented: Binding(
             get: { erroDaLixeiraDeMidia != nil },
             set: { if !$0 { erroDaLixeiraDeMidia = nil } }
         )) {
             Button("OK", role: .cancel) { erroDaLixeiraDeMidia = nil }
         } message: {
             Text(erroDaLixeiraDeMidia ?? "")
+        }
+        .alert("Não foi possível exportar", isPresented: Binding(
+            get: { erroDeExportacao != nil },
+            set: { if !$0 { erroDeExportacao = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeExportacao = nil }
+        } message: {
+            Text(erroDeExportacao ?? "")
         }
         .confirmationDialog(
             "Esvaziar lixeira?",
@@ -799,11 +912,24 @@ struct BibliotecaHomeView: View {
         ) {
             if let biblioteca {
                 Button("Esvaziar lixeira", role: .destructive) {
-                    Task { await biblioteca.esvaziarLixeira() }
-                    LixeiraDeTarefas.esvaziar()
-                    LixeiraDeMidia.esvaziar()
-                    LixeiraDePastas.esvaziar()
-                    atualizarPreferenciasVisuais()
+                    Task { @MainActor in
+                        await biblioteca.esvaziarLixeira()
+                        // A exclusão de conversas parou em uma falha. Tarefas,
+                        // anexos e retratos de pasta ainda podem depender delas;
+                        // preservamos todos os registros para uma nova tentativa.
+                        guard biblioteca.erroDaLixeira == nil else {
+                            atualizarPreferenciasVisuais()
+                            return
+                        }
+                        LixeiraDeTarefas.esvaziar()
+                        do {
+                            try LixeiraDeMidia.esvaziar()
+                        } catch {
+                            erroDaLixeiraDeMidia = error.localizedDescription
+                        }
+                        LixeiraDePastas.esvaziar()
+                        atualizarPreferenciasVisuais()
+                    }
                 }
             }
             Button("Cancelar", role: .cancel) {}
@@ -841,15 +967,31 @@ struct BibliotecaHomeView: View {
         // `.top`, e não `.center`: centralizado, um cartão mais baixo flutuava
         // no meio da linha e nem topo nem base batiam com o vizinho.
         //
-        // Quatro colunas fixas, e não `.adaptive`: o pedido foi por uma
-        // fileira sempre com quatro cartões (três de conversa mais o de
-        // adicionar, na primeira) — cartões mais largos, mais
-        // horizontalizados, sem mexer em nada do que tem dentro deles.
-        let colunas = Array(
-            repeating: GridItem(.flexible(minimum: 220), spacing: PapagaioTema.Espaco.largo, alignment: .top),
-            count: 4
-        )
-        let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: PapagaioTema.Espaco.secao, alignment: .top)]
+        // `.adaptive(minimum:)` **sem** `maximum` — e não colunas medidas por
+        // `.onGeometryChange`.
+        //
+        // A primeira versão desta grade usava um `maximum` (380/430) na
+        // `.adaptive`, e isso é o que causava a faixa vazia do lado direito
+        // quando só 1-2 colunas cabiam numa janela mais larga que
+        // `N × maximum`: a coluna trava no teto e não estica até preencher.
+        // A correção não era medir a largura na mão — era simplesmente não
+        // dar teto nenhum à coluna (o padrão do `GridItem.adaptive` já é
+        // `maximum: .infinity`). Sem teto, cada coluna sempre estica para
+        // preencher a linha inteira, do jeito que `.flexible` fazia, mas
+        // resolvido pelo próprio sistema de layout — de graça, no mesmo
+        // quadro, sem o atraso de um quadro entre a janela mudar de tamanho
+        // e o estado medido reagir, que é o que fazia a grade parecer
+        // quebrada durante o arrasto contínuo da borda da janela.
+        //
+        // Monitor enorme não estica a coluna ao infinito porque a página
+        // inteira já tem teto de largura em `larguraDeConteudoPapagaio` — a
+        // grade nunca vê uma largura maior que esse teto.
+        let colunas = [
+            GridItem(.adaptive(minimum: 320), spacing: PapagaioTema.Espaco.largo, alignment: .top)
+        ]
+        let colunasDaLixeira = [
+            GridItem(.adaptive(minimum: 270), spacing: PapagaioTema.Espaco.secao, alignment: .top)
+        ]
 
         switch secaoSelecionada {
         case .todos:
@@ -940,7 +1082,11 @@ struct BibliotecaHomeView: View {
                                 atualizarPreferenciasVisuais()
                             },
                             aoApagarDefinitivamente: {
-                                LixeiraDeMidia.remover(item)
+                                do {
+                                    try LixeiraDeMidia.remover(item)
+                                } catch {
+                                    erroDaLixeiraDeMidia = "Não foi possível apagar “\(item.nome)”: \(error.localizedDescription)"
+                                }
                                 atualizarPreferenciasVisuais()
                             },
                             aoRevelarNoFinder: { LixeiraDeMidia.revelarNoFinder(item) }

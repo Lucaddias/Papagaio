@@ -38,6 +38,15 @@ public enum DetectorDeAtividadeDeVoz {
         public let fim: TimeInterval
     }
 
+    /// Janela pronta para seguir ao Whisper, já com sua posição na linha do
+    /// tempo original. Nunca contém mais de `limiteDaJanela` de fala contínua,
+    /// para que uma apresentação sem pausas não volte a crescer sem limite na
+    /// memória.
+    struct JanelaEmFluxo: Sendable {
+        let inicio: TimeInterval
+        let amostras: [Float]
+    }
+
     /// Instância compartilhada do Silero: o modelo de 2,3 MB fica residente
     /// entre arquivos. O caminho inexistente é proposital — `SessaoOnnx`
     /// devolve erro de carga em vez de crashar se o resource faltar.
@@ -54,6 +63,214 @@ public enum DetectorDeAtividadeDeVoz {
 
     /// Modo degradado (modelo ausente) precisa ser visível, não silencioso.
     private static let logger = Logger(subsystem: "PapagaioCore", category: "VAD")
+
+    /// Mantém o estado do VAD entre blocos decodificados. A sessão segura a
+    /// fila do Silero do início ao fim do arquivo: intercalar duas sequências
+    /// corromperia o estado recorrente do modelo entre blocos.
+    final class SessaoEmFluxo {
+        private let taxa: Double
+        private let tamanhoDoQuadro: Int
+        private let limiarDeEnergia: Float
+        private let limiarDeFala: Float
+        private let silencioParaCortar: Int
+        private let margemEmAmostras: Int
+        private let limiteDaJanela: Int
+
+        private var usaSilero = false
+        private var iniciou = false
+        private var preRoll: [Float] = []
+        private var amostrasDaJanela: [Float] = []
+        private var inicioDaJanela: Int?
+        private var fimDaUltimaFala = 0
+        private var proximaAmostra = 0
+        /// Depois de um corte forçado, a nova janela começa com um overlap que
+        /// já foi entregue. Ela só deve seguir ao Whisper se receber fala nova;
+        /// caso contrário, transcreveríamos novamente apenas a cauda anterior.
+        private var temFalaNovaNaJanela = false
+
+        init(
+            taxa: Double = FormatoAudio.taxaCanonica,
+            duracaoDoQuadro: TimeInterval = 0.032,
+            limiarDeEnergia: Float = 0.008,
+            limiarDeFala: Float = 0.5,
+            silencioMinimoParaCortar: TimeInterval = 0.6,
+            margem: TimeInterval = 0.2,
+            limiteDaJanela: TimeInterval = 60
+        ) {
+            self.taxa = taxa
+            self.tamanhoDoQuadro = max(1, Int(duracaoDoQuadro * taxa))
+            self.limiarDeEnergia = limiarDeEnergia
+            self.limiarDeFala = limiarDeFala
+            self.silencioParaCortar = max(1, Int(silencioMinimoParaCortar * taxa))
+            self.margemEmAmostras = max(0, Int(margem * taxa))
+            self.limiteDaJanela = max(1, Int(limiteDaJanela * taxa))
+        }
+
+        func iniciar() async {
+            guard !iniciou else { return }
+            usaSilero = await DetectorDeAtividadeDeVoz.sileroVAD.modeloDisponivel()
+            if !usaSilero {
+                DetectorDeAtividadeDeVoz.logger.warning("Silero VAD ausente — janelas de fala pelo portão de energia (modo degradado).")
+            }
+            await DetectorDeAtividadeDeVoz.filaDoSilero.entrar()
+            await DetectorDeAtividadeDeVoz.sileroVAD.novaSequencia()
+            iniciou = true
+        }
+
+        func receber(_ bloco: DecodificadorDeAudio.Bloco) async throws -> [JanelaEmFluxo] {
+            precondition(iniciou)
+            guard !bloco.amostras.isEmpty else { return [] }
+
+            // A origem sempre entrega 16 kHz mono. Recalcular a posição a cada
+            // bloco elimina deriva de ponto flutuante em gravações longas.
+            proximaAmostra = Int((bloco.inicio * taxa).rounded())
+            let quantidadeDeQuadros = (bloco.amostras.count + tamanhoDoQuadro - 1) / tamanhoDoQuadro
+            var falaPorQuadro = Array(repeating: false, count: quantidadeDeQuadros)
+            var indicesComEnergia: [Int] = []
+
+            for indice in 0..<quantidadeDeQuadros {
+                let inicio = indice * tamanhoDoQuadro
+                let fim = min(inicio + tamanhoDoQuadro, bloco.amostras.count)
+                let quadro = bloco.amostras[inicio..<fim]
+                let energia = sqrt(quadro.reduce(Float.zero) { $0 + $1 * $1 } / Float(max(1, quadro.count)))
+                if energia >= limiarDeEnergia {
+                    falaPorQuadro[indice] = true
+                    indicesComEnergia.append(indice)
+                }
+            }
+
+            if usaSilero, !indicesComEnergia.isEmpty {
+                var inicioDoLote = 0
+                while inicioDoLote < indicesComEnergia.count {
+                    let fimDoLote = min(
+                        inicioDoLote + DetectorDeAtividadeDeVoz.quadrosPorLoteDoSilero,
+                        indicesComEnergia.count
+                    )
+                    let indices = indicesComEnergia[inicioDoLote..<fimDoLote]
+                    let candidatos = indices.map { indice in
+                        let inicio = indice * tamanhoDoQuadro
+                        return Array(bloco.amostras[inicio..<min(inicio + tamanhoDoQuadro, bloco.amostras.count)])
+                    }
+                    let probabilidades = try await DetectorDeAtividadeDeVoz.sileroVAD
+                        .probabilidadesDeFala(quadros: candidatos)
+                    for (indice, probabilidade) in zip(indices, probabilidades) {
+                        falaPorQuadro[indice] = probabilidade >= limiarDeFala
+                    }
+                    inicioDoLote = fimDoLote
+                }
+            }
+
+            var prontas: [JanelaEmFluxo] = []
+            for indice in 0..<quantidadeDeQuadros {
+                let inicio = indice * tamanhoDoQuadro
+                let fim = min(inicio + tamanhoDoQuadro, bloco.amostras.count)
+                let quadro = Array(bloco.amostras[inicio..<fim])
+                prontas.append(contentsOf: processar(
+                    quadro, temFala: falaPorQuadro[indice], inicioAbsoluto: proximaAmostra
+                ))
+                proximaAmostra += quadro.count
+            }
+            return prontas
+        }
+
+        func finalizar() async -> [JanelaEmFluxo] {
+            defer {
+                preRoll.removeAll(keepingCapacity: false)
+                amostrasDaJanela.removeAll(keepingCapacity: false)
+                inicioDaJanela = nil
+            }
+            guard iniciou else { return [] }
+            let janelas = fecharJanela(incluindoMargem: true)
+            await DetectorDeAtividadeDeVoz.filaDoSilero.sair()
+            iniciou = false
+            return janelas
+        }
+
+        func cancelar() async {
+            guard iniciou else { return }
+            await DetectorDeAtividadeDeVoz.filaDoSilero.sair()
+            iniciou = false
+            preRoll.removeAll(keepingCapacity: false)
+            amostrasDaJanela.removeAll(keepingCapacity: false)
+            inicioDaJanela = nil
+        }
+
+        private func processar(
+            _ quadro: [Float], temFala: Bool, inicioAbsoluto: Int
+        ) -> [JanelaEmFluxo] {
+            var prontas: [JanelaEmFluxo] = []
+            if inicioDaJanela == nil {
+                if temFala {
+                    inicioDaJanela = inicioAbsoluto - preRoll.count
+                    amostrasDaJanela = preRoll
+                    amostrasDaJanela.append(contentsOf: quadro)
+                    fimDaUltimaFala = inicioAbsoluto + quadro.count
+                    temFalaNovaNaJanela = true
+                    preRoll.removeAll(keepingCapacity: true)
+                } else {
+                    acrescentarAoPreRoll(quadro)
+                }
+                return prontas
+            }
+
+            amostrasDaJanela.append(contentsOf: quadro)
+            if temFala {
+                fimDaUltimaFala = inicioAbsoluto + quadro.count
+                temFalaNovaNaJanela = true
+            } else if inicioAbsoluto + quadro.count - fimDaUltimaFala > silencioParaCortar {
+                prontas.append(contentsOf: fecharJanela(incluindoMargem: true))
+                return prontas
+            }
+
+            // Não existe um limite prático confiável no arquivo de entrada:
+            // alguém pode falar sem pausar por horas. O overlap curto preserva
+            // a fronteira acústica sem deixar a janela crescer indefinidamente.
+            if amostrasDaJanela.count >= limiteDaJanela {
+                prontas.append(contentsOf: fecharJanela(incluindoMargem: false, manterSobreposicao: true))
+            }
+            return prontas
+        }
+
+        private func acrescentarAoPreRoll(_ quadro: [Float]) {
+            preRoll.append(contentsOf: quadro)
+            if preRoll.count > margemEmAmostras {
+                preRoll.removeFirst(preRoll.count - margemEmAmostras)
+            }
+        }
+
+        private func fecharJanela(
+            incluindoMargem: Bool,
+            manterSobreposicao: Bool = false
+        ) -> [JanelaEmFluxo] {
+            guard let inicio = inicioDaJanela, !amostrasDaJanela.isEmpty else { return [] }
+            let fimDaFalaRelativo = max(0, fimDaUltimaFala - inicio)
+            let limite = incluindoMargem
+                ? min(amostrasDaJanela.count, fimDaFalaRelativo + margemEmAmostras)
+                : amostrasDaJanela.count
+            let prontas: [JanelaEmFluxo]
+            if temFalaNovaNaJanela {
+                prontas = [JanelaEmFluxo(
+                    inicio: TimeInterval(inicio) / taxa,
+                    amostras: Array(amostrasDaJanela.prefix(limite))
+                )]
+            } else {
+                prontas = []
+            }
+
+            if manterSobreposicao {
+                let sobreposicao = Array(amostrasDaJanela.suffix(margemEmAmostras))
+                inicioDaJanela = inicio + amostrasDaJanela.count - sobreposicao.count
+                amostrasDaJanela = sobreposicao
+                temFalaNovaNaJanela = false
+            } else {
+                preRoll = Array(amostrasDaJanela.suffix(margemEmAmostras))
+                amostrasDaJanela.removeAll(keepingCapacity: true)
+                inicioDaJanela = nil
+                temFalaNovaNaJanela = false
+            }
+            return prontas
+        }
+    }
 
     /// Portão de arquivo inteiro — mantido só para quem ainda chama esta API
     /// (ex.: testes). Prefira `janelasDeFala` para transcrição de verdade.

@@ -17,8 +17,7 @@ jobs:
         run: ./Scripts/bootstrap-runtimes.sh
 
       - name: swift test
-        working-directory: PapagaioCore
-        run: swift test
+        run: ./Scripts/testa-papagaio-core.sh
 
   build-app:
     name: Build do app (Loro.xcodeproj)

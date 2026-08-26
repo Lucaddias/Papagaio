@@ -14,7 +14,7 @@ private actor RepositorioEspiao: ArquivoRepository {
     private(set) var salvos: [Arquivo] = []
 
     func salvar(_ a: Arquivo) async throws { salvos.append(a) }
-    func buscar(termo: String) async throws -> [Arquivo] { [] }
+    func buscar(termo: String, espaco: EspacoID) async throws -> [Arquivo] { [] }
     func listar(espaco: EspacoID) async throws -> [Arquivo] { salvos }
     func apagar(_ id: ArquivoID) async throws {}
 }

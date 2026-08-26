@@ -52,9 +52,17 @@ enum LixeiraDePastas {
     /// aqui só volta o rótulo. Ver `devolverRotulo`.
     @MainActor
     static func restaurar(_ item: PastaNaLixeira) {
+        recriar(item)
+        remover(item)
+    }
+
+    /// Recria a pasta sem retirar seu retrato da lixeira. É usado durante uma
+    /// restauração parcial: se uma conversa falhar, o vínculo continua
+    /// disponível para a próxima tentativa.
+    @MainActor
+    static func recriar(_ item: PastaNaLixeira) {
         PreferenciasVisuaisDoArquivo.criarPasta(item.nome)
         AparenciaDasPastas.restaurar(item.aparencia, para: item.nome)
-        remover(item)
     }
 
     /// Recoloca o rótulo da pasta numa conversa que acabou de sair da lixeira.
@@ -101,8 +109,29 @@ enum LixeiraDePastas {
         salvar(atuais)
     }
 
-    static func esvaziar() {
-        UserDefaults.standard.removeObject(forKey: chave)
+    static func esvaziar(em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave)
+    }
+
+    static func removerReferencias(
+        ao arquivoID: ArquivoID,
+        em defaults: UserDefaults = .standard
+    ) {
+        guard let dados = defaults.data(forKey: chave),
+              let atuais = try? JSONDecoder().decode([PastaNaLixeira].self, from: dados)
+        else { return }
+
+        let novos = atuais.map { item in
+            PastaNaLixeira(
+                id: item.id,
+                nome: item.nome,
+                conversas: item.conversas.filter { $0 != arquivoID.rawValue },
+                aparencia: item.aparencia,
+                apagadaEm: item.apagadaEm
+            )
+        }
+        guard let codificados = try? JSONEncoder().encode(novos) else { return }
+        defaults.set(codificados, forKey: chave)
     }
 
     private static func salvar(_ itens: [PastaNaLixeira]) {

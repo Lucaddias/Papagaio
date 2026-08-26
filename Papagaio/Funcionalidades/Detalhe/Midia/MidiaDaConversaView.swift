@@ -45,8 +45,15 @@ struct MidiaDaConversaView: View {
             // conversa está logo acima, e "Foto, vídeo, áudio ou arquivo" já
             // aparece dentro do cartão de adicionar. Eram três textos dizendo
             // a mesma coisa, empurrando os arquivos para baixo da dobra.
+            // Sem `maximum` na `.adaptive`: com um teto (era 380), quando só
+            // 1-2 colunas cabem numa janela mais larga que `N × maximum`, a
+            // coluna trava no teto e sobra uma faixa vazia do lado direito —
+            // o mesmo bug de alinhamento já corrigido na grade da
+            // Biblioteca (ver `BibliotecaHomeView.gradeDeConversas`). Sem
+            // teto, o padrão do `GridItem.adaptive` (`maximum: .infinity`)
+            // faz a coluna sempre esticar até preencher a linha inteira.
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 270, maximum: 380), spacing: PapagaioTema.Espaco.largo, alignment: .top)],
+                columns: [GridItem(.adaptive(minimum: 270), spacing: PapagaioTema.Espaco.largo, alignment: .top)],
                 spacing: PapagaioTema.Espaco.largo
             ) {
                 // Não é `Button`: um `.dropDestination` encadeado direto

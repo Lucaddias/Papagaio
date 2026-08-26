@@ -95,22 +95,18 @@ func tempoPorExtenso() {
 // MARK: - Tema
 
 @Test("Os tokens de cor mudam entre claro e escuro")
-func temaTemDuasAparencias() throws {
+func temaTemDuasAparencias() {
     // Antes eram cores fixas claras e a `ContentView` forçava
     // `.preferredColorScheme(.light)`: quem usa o Mac no escuro recebia uma
     // janela branca no meio do sistema.
     let claro = NSAppearance(named: .aqua)
     let escuro = NSAppearance(named: .darkAqua)
 
-    func componentes(_ cor: Color, _ aparencia: NSAppearance?) throws -> [CGFloat] {
+    func componentes(_ cor: Color, _ aparencia: NSAppearance?) -> [CGFloat] {
         var resultado: [CGFloat] = []
-        try (aparencia ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
-            let convertida = try? #require(
-                NSColor(cor).usingColorSpace(.sRGB)
-            )
-            if let convertida {
-                resultado = [convertida.redComponent, convertida.greenComponent, convertida.blueComponent]
-            }
+        (aparencia ?? NSAppearance.currentDrawing()).performAsCurrentDrawingAppearance {
+            guard let convertida = NSColor(cor).usingColorSpace(.sRGB) else { return }
+            resultado = [convertida.redComponent, convertida.greenComponent, convertida.blueComponent]
         }
         return resultado
     }
@@ -121,8 +117,8 @@ func temaTemDuasAparencias() throws {
         ("texto", PapagaioTema.texto),
         ("destaqueEscuro", PapagaioTema.destaqueEscuro),
     ] {
-        let noClaro = try componentes(cor, claro)
-        let noEscuro = try componentes(cor, escuro)
+        let noClaro = componentes(cor, claro)
+        let noEscuro = componentes(cor, escuro)
         #expect(noClaro != noEscuro, "\(nome) não muda entre as aparências")
     }
 }

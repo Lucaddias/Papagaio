@@ -115,7 +115,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             modelContext.insert(persistida)
         }
 
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Busca com **prioridade de título**.
@@ -130,9 +130,10 @@ public actor SwiftDataRepository: ArquivoRepository {
     ///
     /// A assinatura precisa sobreviver a uma eventual migração para FTS5 sem
     /// mudar — por isso o retorno é `[Arquivo]` puro, sem tipo de score.
-    public func buscar(termo: String) async throws -> [Arquivo] {
+    public func buscar(termo: String, espaco: EspacoID) async throws -> [Arquivo] {
         let limpo = termo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpo.isEmpty else { return [] }
+        let alvo = espaco.rawValue
 
         let ordem = [SortDescriptor(\ArquivoPersistido.criadoEm, order: .reverse)]
 
@@ -142,7 +143,14 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
-        let bucketA = try modelContext.fetch(porTitulo).filter { $0.apagadoEm == nil }
+        let bucketA = try modelContext.fetch(porTitulo)
+            .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
+            // O descritor usa `criadoEm` porque SwiftData não traduz a
+            // coalescência de `importadoEm ?? criadoEm` para SQL de forma
+            // portátil. A ordenação final mantém o mesmo critério usado no
+            // bucket de corpo: quando entrou na biblioteca, e não quando o
+            // áudio foi originalmente gravado.
+            .sorted { ($0.importadoEm ?? $0.criadoEm) > ($1.importadoEm ?? $1.criadoEm) }
         let idsDoTitulo = Set(bucketA.map(\.id))
 
         // Bucket B — o termo está no corpo: visão geral, trecho, insight ou nota.
@@ -166,7 +174,9 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porVisaoGeral.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
-        acrescentar(try modelContext.fetch(porVisaoGeral).filter { $0.apagadoEm == nil })
+        acrescentar(try modelContext.fetch(porVisaoGeral).filter {
+            $0.apagadoEm == nil && $0.espaco?.id == alvo
+        })
 
         let porTrecho = FetchDescriptor<TrechoPersistido>(
             predicate: #Predicate { $0.texto.localizedStandardContains(limpo) }
@@ -174,7 +184,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porTrecho)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         let porInsight = FetchDescriptor<InsightPersistido>(
@@ -183,7 +193,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porInsight)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         let porNota = FetchDescriptor<NotaPersistida>(
@@ -192,7 +202,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porNota)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         // `importadoEm ?? criadoEm`, e não só `criadoEm`: numa importação
@@ -234,7 +244,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm == nil else { return }
         persistido.apagadoEm = Date()
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Devolve o mesmo registro — incluindo trechos, resumo e pasta de áudio —
@@ -243,7 +253,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm != nil else { return }
         persistido.apagadoEm = nil
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Apaga o registro **e os arquivos em disco** de maneira definitiva.
@@ -267,17 +277,16 @@ public actor SwiftDataRepository: ArquivoRepository {
 
         let relativo = persistido.pastaRelativa
 
-        // O registro sai do banco **primeiro**, com `save`, e a mídia por
-        // último. Se a remoção da mídia falhar, sobra áudio órfão em disco —
-        // recuperável. A ordem antiga apagava os arquivos antes do `save`:
-        // se ele falhasse, sobrava um registro sem mídia que não toca mais e
-        // que a pessoa não tem como consertar.
-        modelContext.delete(persistido)
-        try modelContext.save()
-
+        // A mídia sai primeiro para que uma falha no filesystem deixe o
+        // registro intacto na lixeira e a operação possa ser repetida. Se o
+        // `save` falhar depois, a pasta já ausente é aceita pelo armazenamento
+        // e uma nova tentativa consegue concluir a remoção do registro.
         if !relativo.isEmpty {
             try removerMidia(relativo)
         }
+
+        modelContext.delete(persistido)
+        try salvarContexto()
     }
 
     /// Exclui todos os registros de um espaço, ativos e na lixeira. É usado
@@ -298,10 +307,48 @@ public actor SwiftDataRepository: ArquivoRepository {
         for espacoPersistido in try modelContext.fetch(descritorDoEspaco) {
             modelContext.delete(espacoPersistido)
         }
-        try modelContext.save()
+        try salvarContexto()
+    }
+
+    /// A versão local-first não oferece mais seleção de equipes. Para não
+    /// esconder conversas criadas nos espaços antigos, reúne todos os registros
+    /// (ativos, na lixeira e também os legados sem relação de espaço) no espaço
+    /// pessoal antes de a interface começar a listá-los.
+    ///
+    /// Esta operação é idempotente: depois da primeira execução, todos os
+    /// arquivos já apontam para `destino` e nenhum espaço antigo resta para
+    /// remover.
+    public func migrarTodosOsEspacos(para destino: EspacoID) throws {
+        let idDoDestino = destino.rawValue
+        let espacoDestino = try espacoPersistido(destino)
+        let arquivos = try modelContext.fetch(FetchDescriptor<ArquivoPersistido>())
+
+        for arquivo in arquivos where arquivo.espaco?.id != idDoDestino {
+            arquivo.espaco = espacoDestino
+        }
+
+        let espacos = try modelContext.fetch(FetchDescriptor<EspacoPersistido>())
+        for espaco in espacos where espaco.id != idDoDestino {
+            modelContext.delete(espaco)
+        }
+
+        try salvarContexto()
     }
 
     // MARK: - Apoio
+
+    /// Todo caminho que muta o SwiftData passa por aqui. Sem rollback, uma
+    /// falha de disco deixa os objetos em memória marcados para inserção,
+    /// edição ou exclusão e uma operação posterior pode persistir esse estado
+    /// parcial por acidente.
+    private func salvarContexto() throws {
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
 
     private func buscarPersistido(id: ArquivoID) throws -> ArquivoPersistido? {
         let alvo = id.rawValue

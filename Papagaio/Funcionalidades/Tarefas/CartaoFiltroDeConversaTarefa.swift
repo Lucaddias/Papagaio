@@ -40,10 +40,14 @@ struct CartaoFiltroDeConversaTarefa: View {
                     .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    // Sem `.lineLimit`: um título de conversa comprido não
+                    // pode virar "..." — ver o mesmo ajuste em
+                    // `CartaoDeTarefaGeral`. O cartão cresce em altura (a
+                    // largura continua fixa, é uma fileira de pastilhas do
+                    // mesmo tamanho) em vez de esconder o nome.
                     Text(conversa.titulo)
                         .font(.headline.weight(.bold))
                         .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.texto)
-                        .lineLimit(1)
 
                     VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                         Label("\(conversa.tarefas.count) \(conversa.tarefas.count == 1 ? "Tarefa" : "Tarefas")", systemImage: "list.clipboard")
@@ -63,7 +67,12 @@ struct CartaoFiltroDeConversaTarefa: View {
             .padding(.horizontal, PapagaioTema.Espaco.largo)
             // Recuo extra à esquerda para o conteúdo não encostar na tarja.
             .padding(.leading, PapagaioTema.Espaco.curto)
-            .frame(width: 254, height: 82)
+            // `.frame(width:minHeight:)` mistura os dois overloads de
+            // `.frame` que não se misturam (o de tamanho fixo `width:height:`
+            // e o flexível `minWidth:...:minHeight:...`) — daí o "extra
+            // argument". `minWidth`/`maxWidth` iguais fixam a largura do
+            // mesmo jeito que `width:` fixaria.
+            .frame(minWidth: 254, maxWidth: 254, minHeight: 82, alignment: .leading)
             .background(selecionado ? PapagaioTema.destaqueSuave.opacity(0.82) : PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
             .overlay(alignment: .leading) {
                 // A tarja resume o status das tarefas desta conversa — a
