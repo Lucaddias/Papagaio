@@ -458,8 +458,12 @@ struct BibliotecaHomeView: View {
                 painel.canCreateDirectories = true
 
                 painel.begin { resposta in
-                    guard resposta == .OK, let destino = painel.url else { return }
+                    guard resposta == .OK, let destino = painel.url else {
+                        DossieDaConversa.descartarPastaTemporaria(pacote)
+                        return
+                    }
                     Task.detached {
+                        defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
                         let acesso = destino.startAccessingSecurityScopedResource()
                         defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
@@ -493,6 +497,7 @@ struct BibliotecaHomeView: View {
         Task { @MainActor in
             do {
                 let pacote = try await pacoteDaPasta(nome)
+                defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
                 let zip = try await Task.detached {
                     try DossieDaConversa.zipar(pacote)
                 }.value

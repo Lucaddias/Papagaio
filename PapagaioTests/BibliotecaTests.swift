@@ -448,7 +448,6 @@ func exportacaoNaoMisturaTitulosIguais() throws {
     let exportada = try DossieDaConversa.pastaComTudo(
         nome: "Cliente/Projeto", conversas: conversas
     )
-    defer { try? FileManager.default.removeItem(at: exportada.deletingLastPathComponent()) }
 
     #expect(exportada.lastPathComponent == "Cliente-Projeto")
     let pastas = try FileManager.default.contentsOfDirectory(
@@ -461,4 +460,38 @@ func exportacaoNaoMisturaTitulosIguais() throws {
         #expect(itens.contains(Armazenamento.Nome.microfone))
         #expect(itens.contains("entrevista-repetida.md"))
     }
+
+    let raizTemporaria = exportada.deletingLastPathComponent()
+    DossieDaConversa.descartarPastaTemporaria(exportada)
+    #expect(!FileManager.default.fileExists(atPath: raizTemporaria.path))
+}
+
+@Test("Exportar uma conversa descarta a pasta intermediária após criar o zip")
+func pacoteDaConversaNaoAcumulaPastaIntermediaria() throws {
+    let fm = FileManager.default
+    let origem = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try fm.createDirectory(at: origem, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: origem) }
+
+    let audio = origem.appendingPathComponent(Armazenamento.Nome.microfone)
+    try Data("audio".utf8).write(to: audio)
+    let arquivo = Arquivo(
+        titulo: "Pacote temporário \(UUID().uuidString)",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: EspacoID()
+    )
+    let base = DossieDaConversa.nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
+
+    let pacote = try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: audio)
+    defer { try? fm.removeItem(at: pacote.deletingLastPathComponent()) }
+
+    let intermediarias = try fm.contentsOfDirectory(
+        at: fm.temporaryDirectory,
+        includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter { url in
+        url.lastPathComponent.hasPrefix("\(base)-")
+            && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+    #expect(intermediarias.isEmpty)
+    #expect(fm.fileExists(atPath: pacote.path))
 }

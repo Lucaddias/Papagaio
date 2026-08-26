@@ -37,10 +37,16 @@ enum DossieDaConversa {
     /// externa e sem escrever um compactador à mão.
     static func pacoteComAudio(arquivo: Arquivo, audioPrincipal: URL) throws -> URL {
         let base = nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
-        let pasta = FileManager.default.temporaryDirectory
+        let fm = FileManager.default
+        let raizDoPacote = fm.temporaryDirectory
             .appendingPathComponent("\(base)-\(UUID().uuidString)", isDirectory: true)
+        let pasta = raizDoPacote
             .appendingPathComponent(base, isDirectory: true)
-        try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+        try fm.createDirectory(at: pasta, withIntermediateDirectories: true)
+        // O zip de saída é independente da pasta montada aqui. Esta cópia
+        // intermediária pode conter horas de áudio e antes ficava no tmp a
+        // cada exportação, mesmo quando tudo dava certo.
+        defer { try? fm.removeItem(at: raizDoPacote) }
 
         try gerar(arquivo: arquivo)
             .write(to: pasta.appendingPathComponent("\(base).md"), atomically: true, encoding: .utf8)
@@ -113,49 +119,69 @@ enum DossieDaConversa {
             .appendingPathComponent(nomeSeguro, isDirectory: true)
         try fm.createDirectory(at: raiz, withIntermediateDirectories: true)
 
-        for (arquivo, audio) in conversas {
-            let base = nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
-            let pastaDaConversa = pastaDisponivel(nome: base, em: raiz)
-            try fm.createDirectory(at: pastaDaConversa, withIntermediateDirectories: true)
+        do {
+            for (arquivo, audio) in conversas {
+                let base = nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
+                let pastaDaConversa = pastaDisponivel(nome: base, em: raiz)
+                try fm.createDirectory(at: pastaDaConversa, withIntermediateDirectories: true)
 
-            try gerar(arquivo: arquivo).write(
-                to: pastaDaConversa.appendingPathComponent("\(base).md"),
-                atomically: true,
-                encoding: .utf8
-            )
-
-            // Os dois canais quando existem: uma gravação de microfone e
-            // sistema chegaria pela metade só com o principal.
-            let audios = [
-                audio,
-                audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistema),
-                audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistemaM4ALegado),
-            ]
-            var audiosCopiados = Set<String>()
-            for origem in audios
-            where fm.fileExists(atPath: origem.path)
-                && audiosCopiados.insert(origem.standardizedFileURL.path).inserted {
-                try fm.copyItem(
-                    at: origem,
-                    to: pastaDaConversa.appendingPathComponent(origem.lastPathComponent)
+                try gerar(arquivo: arquivo).write(
+                    to: pastaDaConversa.appendingPathComponent("\(base).md"),
+                    atomically: true,
+                    encoding: .utf8
                 )
+
+                // Os dois canais quando existem: uma gravação de microfone e
+                // sistema chegaria pela metade só com o principal.
+                let audios = [
+                    audio,
+                    audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistema),
+                    audio.deletingLastPathComponent().appendingPathComponent(Armazenamento.Nome.sistemaM4ALegado),
+                ]
+                var audiosCopiados = Set<String>()
+                for origem in audios
+                where fm.fileExists(atPath: origem.path)
+                    && audiosCopiados.insert(origem.standardizedFileURL.path).inserted {
+                    try fm.copyItem(
+                        at: origem,
+                        to: pastaDaConversa.appendingPathComponent(origem.lastPathComponent)
+                    )
+                }
+
+                let anexos = MidiasDaConversa.carregar(arquivo.id)
+                guard !anexos.isEmpty else { continue }
+                let pastaDeMidia = pastaDaConversa.appendingPathComponent("Mídia", isDirectory: true)
+                try fm.createDirectory(at: pastaDeMidia, withIntermediateDirectories: true)
+                for anexo in anexos where fm.fileExists(atPath: anexo.url.path) {
+                    let acesso = anexo.url.startAccessingSecurityScopedResource()
+                    defer { if acesso { anexo.url.stopAccessingSecurityScopedResource() } }
+                    try fm.copyItem(
+                        at: anexo.url,
+                        to: pastaDeMidia.appendingPathComponent(anexo.nome)
+                    )
+                }
             }
 
-            let anexos = MidiasDaConversa.carregar(arquivo.id)
-            guard !anexos.isEmpty else { continue }
-            let pastaDeMidia = pastaDaConversa.appendingPathComponent("Mídia", isDirectory: true)
-            try fm.createDirectory(at: pastaDeMidia, withIntermediateDirectories: true)
-            for anexo in anexos where fm.fileExists(atPath: anexo.url.path) {
-                let acesso = anexo.url.startAccessingSecurityScopedResource()
-                defer { if acesso { anexo.url.stopAccessingSecurityScopedResource() } }
-                try fm.copyItem(
-                    at: anexo.url,
-                    to: pastaDeMidia.appendingPathComponent(anexo.nome)
-                )
-            }
+            return raiz
+        } catch {
+            // Não devolvemos pacote parcial e tampouco o abandonamos no tmp.
+            try? fm.removeItem(at: raiz.deletingLastPathComponent())
+            throw error
         }
+    }
 
-        return raiz
+    /// Descarta a raiz temporária criada por `pastaComTudo`. A validação
+    /// impede que uma URL externa ou a própria pasta temporária do sistema
+    /// seja removida por engano.
+    static func descartarPastaTemporaria(_ pasta: URL) {
+        let fm = FileManager.default
+        let temporario = fm.temporaryDirectory.standardizedFileURL
+        let raizDoPacote = pasta.deletingLastPathComponent().standardizedFileURL
+        let componentesTemporarios = temporario.pathComponents
+        guard raizDoPacote.pathComponents.starts(with: componentesTemporarios),
+              raizDoPacote.pathComponents.count == componentesTemporarios.count + 1
+        else { return }
+        try? fm.removeItem(at: raizDoPacote)
     }
 
     /// Compacta uma pasta, do mesmo jeito que o "Comprimir" do Finder.
