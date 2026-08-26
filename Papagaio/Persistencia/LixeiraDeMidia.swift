@@ -42,6 +42,7 @@ enum LixeiraDeMidia {
         em defaults: UserDefaults = .standard,
         aposMover: () throws -> Void = {}
     ) throws {
+        try validarOrigem(url, naPastaDaConversa: pastaDaConversa)
         let pasta = pastaDaConversa.appendingPathComponent(
             "\(NomeDeArquivoSeguro.gerar(de: conversaTitulo)) (excluídos)",
             isDirectory: true
@@ -227,6 +228,22 @@ enum LixeiraDeMidia {
         let caminho = try validarCaminhos(do: item, armazenamento: armazenamento)
         guard fm.fileExists(atPath: caminho.path) else { return }
         try fm.removeItem(at: caminho)
+    }
+
+    /// A lista de anexos vem de bookmarks persistidos. Antes de mover, ela não
+    /// pode conceder a um bookmark legado/corrompido poder de retirar um
+    /// arquivo de fora da conversa.
+    private static func validarOrigem(
+        _ origem: URL,
+        naPastaDaConversa pastaDaConversa: URL
+    ) throws {
+        let origemCanonica = origem.standardizedFileURL.resolvingSymlinksInPath()
+        let pastaCanonica = pastaDaConversa.standardizedFileURL.resolvingSymlinksInPath()
+        let componentesDaPasta = pastaCanonica.pathComponents
+        let componentesDaOrigem = origemCanonica.pathComponents
+        guard componentesDaOrigem.count > componentesDaPasta.count,
+              Array(componentesDaOrigem.prefix(componentesDaPasta.count)) == componentesDaPasta
+        else { throw Erro.caminhoForaDasGravacoes }
     }
 
     /// Áudio canônico da gravação é descoberto diretamente na pasta da

@@ -51,6 +51,33 @@ func apagarAnexoDaLixeiraMantemDiscoERegistroEmSincronia() throws {
 }
 
 @MainActor
+@Test("Lixeira não move arquivo externo mesmo com bookmark inválido")
+func moverParaLixeiraRecusaArquivoForaDaConversa() throws {
+    let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
+    defer {
+        try? FileManager.default.removeItem(at: raiz)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    let conversa = armazenamento.raiz
+        .appendingPathComponent(Armazenamento.pastaGravacoes, isDirectory: true)
+        .appendingPathComponent("Conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    let externo = raiz.appendingPathComponent("fora.txt")
+    try Data("preservar".utf8).write(to: externo)
+
+    #expect(throws: LixeiraDeMidia.Erro.self) {
+        try LixeiraDeMidia.mover(
+            url: externo, nome: "fora.txt", tamanho: 9, tipo: "Documento",
+            daGravacao: false, arquivoID: ArquivoID(), conversaTitulo: "Conversa",
+            pastaDaConversa: conversa, em: defaults
+        )
+    }
+    #expect(FileManager.default.fileExists(atPath: externo.path))
+    #expect(LixeiraDeMidia.itens(em: defaults).isEmpty)
+}
+
+@MainActor
 @Test("Falha ao atualizar a conversa desfaz o movimento para a lixeira")
 func moverParaLixeiraDesfazQuandoPersistenciaDaConversaFalha() throws {
     let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
