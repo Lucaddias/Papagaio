@@ -302,7 +302,15 @@ public actor SwiftDataRepository: ArquivoRepository {
         for espacoPersistido in try modelContext.fetch(descritorDoEspaco) {
             modelContext.delete(espacoPersistido)
         }
-        try modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // A exclusão da conta é uma única transação no banco. Se o save
+            // falhar, manter o contexto com objetos já marcados para remoção
+            // faria uma tentativa posterior partir de um estado ambíguo.
+            modelContext.rollback()
+            throw error
+        }
     }
 
     // MARK: - Apoio

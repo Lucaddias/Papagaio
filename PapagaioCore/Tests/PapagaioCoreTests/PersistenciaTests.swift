@@ -141,6 +141,27 @@ func persistenciaApagarEhRetomavelSeMidiaFalhar() async throws {
     #expect(try await repo.listar(espaco: espaco).isEmpty)
 }
 
+@Test("Excluir dados de um espaço preserva os demais espaços")
+func persistenciaExcluiSomenteODominioDaContaAtual() async throws {
+    let repo = try repositorioDeTeste()
+    let minhaConta = EspacoID()
+    let outraConta = EspacoID()
+    let ativo = arquivoDeExemplo(titulo: "ativo", espaco: minhaConta)
+    let naLixeira = arquivoDeExemplo(titulo: "lixeira", espaco: minhaConta)
+    let deOutraConta = arquivoDeExemplo(titulo: "outra", espaco: outraConta)
+
+    try await repo.salvar(ativo)
+    try await repo.salvar(naLixeira)
+    try await repo.moverParaLixeira(naLixeira.id)
+    try await repo.salvar(deOutraConta)
+
+    try await repo.apagarTodosOsDados(espaco: minhaConta)
+
+    #expect(try await repo.listar(espaco: minhaConta).isEmpty)
+    #expect(try await repo.listarNaLixeira(espaco: minhaConta).isEmpty)
+    #expect(try await repo.listar(espaco: outraConta).map(\.id) == [deOutraConta.id])
+}
+
 @Test("Espaço ausente em registro legado devolve sempre o mesmo id")
 func espacoAusenteUsaIdEstavel() {
     // Registro legado sem a relação de espaço: o fallback não pode inventar
