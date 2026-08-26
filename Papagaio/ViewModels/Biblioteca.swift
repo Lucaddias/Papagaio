@@ -420,6 +420,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -453,6 +454,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -467,6 +469,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -486,6 +489,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -548,6 +552,7 @@ final class Biblioteca {
             TarefasGeraisStore.duplicar(arquivo, para: copia)
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            await sincronizar(copia)
             return copia
         } catch {
             // O id novo ainda não é visível em lugar nenhum. Se a cópia de
@@ -725,6 +730,7 @@ final class Biblioteca {
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
             substituir(final)
+            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
