@@ -32,6 +32,7 @@ struct TarefasView: View {
     private var tarefasPorConversa: [TarefasDaConversaGeral] {
         conversas.compactMap { arquivo -> TarefasDaConversaGeral? in
             let tarefas = painelDeTarefas.tarefas(de: arquivo)
+                .filter { !$0.pendenteDeRevisao }
                 .sorted(by: OrdenacaoDeTarefas.porDeadline)
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
@@ -268,7 +269,11 @@ struct TarefasView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: PapagaioTema.Espaco.medio) {
+                // `.top`, e não o padrão `.center`: os cartões não têm mais
+                // altura fixa (um título comprido agora estica em vez de
+                // truncar), e centralizados um cartão mais alto deixava os
+                // vizinhos baixos flutuando no meio da fileira.
+                HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                     ForEach(tarefasPorConversa) { conversa in
                         CartaoFiltroDeConversaTarefa(
                             conversa: conversa,
@@ -338,11 +343,15 @@ struct TarefasView: View {
 
     private var resumoDoKanban: some View {
         HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            // Sem limite de linha, e sem truncar: o título vem do nome da
+            // conversa (ou de "N conversas selecionadas"), tamanho fora do
+            // controle da tela — cortar com "..." escondia informação que a
+            // pessoa clicou justamente para ver. `layoutPriority` continua
+            // garantindo que ele ganha espaço dos filtros antes de quebrar
+            // linha à toa.
             Label(tituloDoKanban, systemImage: "list.clipboard")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(PapagaioTema.texto)
-                .lineLimit(1)
-                .truncationMode(.tail)
                 .layoutPriority(1)
 
             Text("\(tarefasVisiveis.count) \(tarefasVisiveis.count == 1 ? "Tarefa" : "Tarefas")")
@@ -571,7 +580,8 @@ extension TarefasView {
             status: statusDoEditor,
             responsavel: responsavelDoEditor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : responsavelDoEditor,
             prazo: prazoDoEditor,
-            descricao: descricao.isEmpty ? nil : descricao
+            descricao: descricao.isEmpty ? nil : descricao,
+            prioridadeDefinidaManualmente: true
         )
 
         painelDeTarefas.salvar(tarefaAtualizada, em: arquivo, substituindo: tarefaEmEdicao != nil)

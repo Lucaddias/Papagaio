@@ -35,6 +35,16 @@ struct ArquivoDetalheView: View {
     @State private var secaoSelecionada: SecaoDoDetalhe = .resumo
     @State private var mostrandoPlayer = false
     @State private var tempoEmEdicao: TimeInterval?
+    /// Altura de verdade do player flutuante, medida — e não mais os "116"
+    /// fixos que existiam aqui, calibrados só para a versão de uma linha
+    /// (88pt). Na versão empilhada (janela estreita, `compacto: true`), o
+    /// player passou a ter a altura que o próprio conteúdo pede — que pode
+    /// passar bem de 116 quando o título ocupa duas linhas — e a reserva de
+    /// baixo da rolagem continuava fixa nesse valor antigo. Resultado: o
+    /// player (opaco) cobria o fim da transcrição/notas, e rolar até lá
+    /// parecia "travado" sem realmente estar. Medindo a altura de verdade,
+    /// a reserva sempre cobre exatamente o que o player ocupa.
+    @State private var alturaMedidaDoPlayer: CGFloat = 116
     @State private var mostrandoExportador = false
     @State private var notasEditaveis: [NotaDaConversa] = []
     @State private var estadoDeSalvamentoDasNotas = "Salvo"
@@ -47,6 +57,10 @@ struct ArquivoDetalheView: View {
     /// formulário e a gravação em disco viviam duplicados aqui (o VM existia
     /// e ninguém usava). A view só desenha e repassa ações.
     @State private var tarefasDaConversaVM: TarefasDaConversaViewModel
+    /// Muda a cada renomeação de voz — `nomesDeVoz` lê direto do
+    /// `UserDefaults`, que o SwiftUI não observa sozinho; sem um `@State`
+    /// junto dele, salvar um nome novo não redesenhava a transcrição.
+    @State private var geracaoDeNomesDeVoz = 0
     @State private var editandoInformacoes = false
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
@@ -142,7 +156,28 @@ struct ArquivoDetalheView: View {
     private var falas: [FalaDeFalante]? { FalasDaConversa.agrupar(trechos) }
     /// Rótulos escolhidos para cada voz acústica, persistidos por conversa.
     private var nomesDeVoz: [String: String] {
-        PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+        _ = geracaoDeNomesDeVoz
+        return PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+    }
+    /// Rótulos brutos da diarização ("S1", "S2"...), na ordem em que cada um
+    /// aparece pela primeira vez na conversa — é essa ordem que decide se
+    /// "Voz 1" é a primeira pessoa a falar ou a segunda.
+    private var vozesAcusticas: [String] {
+        var vistas = Set<String>()
+        var ordem: [String] = []
+        for trecho in trechos {
+            for palavra in trecho.palavras {
+                guard let falante = palavra.falanteAcustico, vistas.insert(falante).inserted else { continue }
+                ordem.append(falante)
+            }
+        }
+        return ordem
+    }
+    /// Nomes já digitados na ficha da entrevista, para sugerir enquanto a
+    /// pessoa nomeia uma voz — quem apareceu na gravação costuma ser
+    /// exatamente quem está na ficha.
+    private var sugestoesDeNomeDeVoz: [String] {
+        nomesDePessoas(metadados.entrevistado) + nomesDePessoas(metadados.entrevistadores)
     }
     private var notas: [NotaDaConversa] { notasEditaveis }
     private var podeIniciarTranscricao: Bool {
@@ -217,7 +252,7 @@ struct ArquivoDetalheView: View {
                         ScrollView {
                             conteudoDaSecao
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(.bottom, deveMostrarPlayer ? 116 : 0)
+                                .padding(.bottom, deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
                         }
                         // Barra de rolagem escondida nesta tela.
                         //
@@ -241,7 +276,21 @@ struct ArquivoDetalheView: View {
                 avisoDeAudioRemovido
                     .transition(.opacity)
             } else if deveMostrarPlayer, let reprodutor {
+                // `.frame(maxHeight: .infinity, alignment: .bottom)`, e não
+                // só o `alignment: .bottom` do `ZStack` em volta: depois de
+                // `BarraDeAudioDaConversa` passar a usar `.fixedSize(vertical:)`
+                // para não ficar mais alta que o necessário, ela relatava uma
+                // altura "ideal" curta o bastante para o `ZStack` encaixá-la
+                // sem grudar de verdade no fundo da janela — sobrava uma
+                // faixa vazia embaixo dela. Esta `.frame` força a área
+                // reservada a ir até o fim da janela e só então alinha o
+                // player (com sua altura própria, inalterada) na base dela.
                 barraFlutuante(reprodutor)
+                    // Medida antes do `.frame(maxHeight: .infinity)` logo
+                    // abaixo — ali embaixo o próprio player já reportaria a
+                    // altura da janela inteira, não a dele.
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { alturaMedidaDoPlayer = $0 }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
                     .transition(
                         reduzirMovimento
                             ? .opacity
@@ -253,9 +302,10 @@ struct ArquivoDetalheView: View {
         // isto o topo ficava transparente e mostrava o papel de parede,
         // que era a faixa estranha acima do título.
         // Anuncia o espaço do player para quem posiciona o selo de gravação.
-        // 116 é a altura da barra flutuante mais o respiro dela; zero quando o
-        // player não está na tela, e aí o selo volta para o canto de baixo.
-        .alturaDoPlayerPapagaio(deveMostrarPlayer ? 116 : 0)
+        // `alturaMedidaDoPlayer` (medida de verdade, ver o `@State` acima) —
+        // zero quando o player não está na tela, e aí o selo volta para o
+        // canto de baixo.
+        .alturaDoPlayerPapagaio(deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         // Piso baixo de propósito: acima disso o conteúdo era desenhado mais
@@ -838,14 +888,6 @@ struct ArquivoDetalheView: View {
                     }
                 }
 
-                if !resumo.citacoes.isEmpty {
-                    secao("Citações") {
-                        ForEach(Array(resumo.citacoes.enumerated()), id: \.offset) { _, citacao in
-                            citacaoClicavel(citacao)
-                        }
-                    }
-                }
-
             }
             // O card acompanha a janela (até o limite de página) em vez de ficar
             // preso a 720pt: em tela cheia sobrava um vazio enorme à direita.
@@ -865,12 +907,16 @@ struct ArquivoDetalheView: View {
     private var tarefas: some View {
         @Bindable var vm = tarefasDaConversaVM
         return TarefasDaConversaView(
-            tarefas: vm.tarefas,
+            tarefas: vm.tarefasAceitas,
+            sugestoes: vm.sugestoes,
             filtro: $vm.filtro,
             aoAdicionar: { vm.mostrandoCriacao = true },
             aoAlternarConclusao: vm.alternarConclusao,
             aoEditar: vm.iniciarEdicao,
-            aoMover: vm.mover
+            aoMover: vm.mover,
+            aoAceitarSugestao: vm.aceitarSugestao,
+            aoEditarSugestao: vm.iniciarEdicao,
+            aoRejeitarSugestao: vm.rejeitarSugestao
         )
     }
 
@@ -885,44 +931,6 @@ struct ArquivoDetalheView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, PapagaioTema.Espaco.curto)
-    }
-
-    /// A citação tem âncora de tempo — clicar leva o áudio até a origem dela.
-    /// O `start` vem do modelo e pode ser inventado (R-14), então só vira botão
-    /// quando cai dentro da duração do arquivo.
-    @ViewBuilder
-    private func citacaoClicavel(_ citacao: Citacao) -> some View {
-        let ancora = citacao.start.flatMap { inicio in
-            trechos.contains { inicio >= $0.start && inicio <= $0.end } ? inicio : nil
-        }
-        // `maxWidth: .infinity` no bloco inteiro: antes cada citação encolhia
-        // até o tamanho do seu próprio texto, e a coluna ficava com a borda
-        // direita serrilhada — quatro caixas de larguras diferentes empilhadas.
-        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-            Rectangle()
-                .frame(width: 3)
-                .foregroundStyle(PapagaioTema.destaque)
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text(citacao.texto)
-                    .font(PapagaioTema.Tipo.apoio)
-                    .italic()
-                    .foregroundStyle(PapagaioTema.texto)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let ancora {
-                    Button(ancora.comoRelogio) {
-                        Task { await reprodutor?.saltar(paraSegundo: ancora) }
-                    }
-                    .buttonStyle(.link)
-                    .font(PapagaioTema.Tipo.legenda)
-                    .tint(PapagaioTema.destaqueEscuro)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(PapagaioTema.Espaco.medio)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PapagaioTema.destaqueSuave.opacity(0.42), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
     }
 
     // MARK: - Mídia
@@ -1178,12 +1186,37 @@ struct ArquivoDetalheView: View {
                 )
             }
         } else if let reprodutor {
-            if let falas {
-                transcricaoDeFalas(falas, no: reprodutor)
-            } else {
-                transcricaoDeTrechos(no: reprodutor)
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                // Só quando a diarização de fato separou vozes — uma
+                // conversa de canal único não tem "quem é quem" para nomear.
+                if !vozesAcusticas.isEmpty {
+                    EditorDeNomesDeVoz(
+                        vozes: vozesAcusticas,
+                        nomes: nomesDeVoz,
+                        sugestoes: sugestoesDeNomeDeVoz,
+                        aoRenomear: renomearVoz
+                    )
+                }
+
+                if let falas {
+                    transcricaoDeFalas(falas, no: reprodutor)
+                } else {
+                    transcricaoDeTrechos(no: reprodutor)
+                }
             }
         }
+    }
+
+    /// Salva (ou apaga, se o nome ficou vazio) o rótulo de uma voz acústica.
+    private func renomearVoz(_ vozAcustica: String, novoNome: String) {
+        var mapa = PreferenciasVisuaisDoArquivo.nomesDeVoz(arquivo.id)
+        if novoNome.isEmpty {
+            mapa.removeValue(forKey: vozAcustica)
+        } else {
+            mapa[vozAcustica] = novoNome
+        }
+        PreferenciasVisuaisDoArquivo.definirNomesDeVoz(mapa, para: arquivo.id)
+        geracaoDeNomesDeVoz += 1
     }
 
     /// Leitura por fala de falante: a voz é a unidade, não o bloco de texto.
@@ -1206,25 +1239,10 @@ struct ArquivoDetalheView: View {
                         aoTocarFala: { tocar(fala, no: reprodutor) },
                         aoTocarPalavra: { palavra in
                             tocar(palavra, no: reprodutor)
-                        }
+                        },
+                        aoEditar: { iniciarEdicaoDaFala(fala) }
                     )
                     .id(fala.id)
-                    // Lápis visível, como na linha de trecho: a correção de
-                    // uma fala reescreve os trechos de onde ela saiu.
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            iniciarEdicaoDaFala(fala)
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(PapagaioTema.destaqueEscuro)
-                                .frame(width: 26, height: 26)
-                                .background(PapagaioTema.destaqueSuave, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Corrigir o texto da fala em \(fala.inicio.comoRelogio)")
-                        .padding(PapagaioTema.Espaco.curto)
-                    }
                 }
             }
             .onChange(of: reprodutor.indiceAtivo) { _, novo in
@@ -1282,27 +1300,10 @@ struct ArquivoDetalheView: View {
                             aoTocarLinha: { tocar(trecho, no: reprodutor) },
                             aoTocarPalavra: { palavra in
                                 tocar(palavra, no: reprodutor)
-                            }
+                            },
+                            aoEditar: { iniciarEdicaoDoTrecho(trecho) }
                         )
                         .id(trecho.id)
-                        // Lápis visível: escondido só no menu de contexto,
-                        // ninguém descobria que dava para corrigir o texto.
-                        // Fica sobreposto para a linha do Felipe continuar
-                        // intacta — o clique simples segue tocando.
-                        .overlay(alignment: .topTrailing) {
-                            Button {
-                                iniciarEdicaoDoTrecho(trecho)
-                            } label: {
-                                Image(systemName: "pencil")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                                    .frame(width: 26, height: 26)
-                                    .background(PapagaioTema.destaqueSuave, in: Circle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Corrigir o texto do trecho em \(trecho.start.comoRelogio)")
-                            .padding(PapagaioTema.Espaco.curto)
-                        }
                 }
             }
             .onChange(of: reprodutor.indiceAtivo) { _, novo in

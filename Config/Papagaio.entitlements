@@ -8,6 +8,13 @@
 	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Sem isto, o macOS recusa carregar PapagaioCore.framework (pacote Swift
+	     local, não um target comum) com "mapping process and mapped file
+	     (non-platform) have different Team IDs" — a Validação de Biblioteca do
+	     sandbox às vezes não reconhece a assinatura do próprio framework do
+	     pacote local como sendo da mesma equipe do app, mesmo sendo. -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 	<key>com.apple.security.files.bookmarks.app-scope</key>

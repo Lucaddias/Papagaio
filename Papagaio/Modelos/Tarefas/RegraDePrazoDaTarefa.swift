@@ -19,10 +19,15 @@ enum RegraDePrazoDaTarefa {
     private static let diasParaMedia = 7
 
     /// Aplica a régua a uma tarefa. Tarefas concluídas não mudam — prioridade
-    /// de algo já feito não tem para quem servir.
+    /// de algo já feito não tem para quem servir — e tarefas cuja prioridade a
+    /// pessoa já escolheu à mão também não: a régua é para promover sugestões
+    /// esquecidas, não para desfazer uma escolha manual.
     static func ajustada(_ tarefa: TarefaDaConversa) -> TarefaDaConversa {
         var ajustada = tarefa
-        guard ajustada.status != .concluida, let dias = diasAte(ajustada.prazo) else { return ajustada }
+        guard !ajustada.prioridadeEhManual,
+              ajustada.status != .concluida,
+              let dias = diasAte(ajustada.prazo)
+        else { return ajustada }
 
         if dias <= diasParaAlta {
             ajustada.prioridade = .alta

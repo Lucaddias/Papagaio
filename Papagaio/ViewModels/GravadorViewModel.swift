@@ -48,6 +48,15 @@ final class GravadorViewModel {
     var rascunhoDaNota = ""
     var proximaNotaSeraCritica = false
 
+    /// Posição e tamanho, em coordenadas de tela, do cartão de gravação
+    /// dentro da janela principal — atualizado a cada mudança de layout
+    /// enquanto ele está visível.
+    ///
+    /// Vive aqui, e não como `@State` da view, para que o painel flutuante
+    /// (que nasce fora da hierarquia da `ContentView`) saiba de onde "nascer"
+    /// e encolher até o canto, em vez de simplesmente aparecer lá.
+    var origemDoPainelNaTela: CGRect?
+
     private var sessao: SessaoGravacao?
     private var tarefaNivel: Task<Void, Never>?
     private var tarefaDeSumicoDosAvisos: Task<Void, Never>?

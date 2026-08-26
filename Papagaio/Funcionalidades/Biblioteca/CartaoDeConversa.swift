@@ -361,20 +361,20 @@ struct CartaoDeConversa: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Conversa \(titulo). \(estado.descricao)")
-        // Altura fixa, e não "o que o conteúdo pedir".
+        // Altura mínima, não mais fixa.
         //
-        // Com os campos configuráveis, deixar a altura seguir o conteúdo fazia
+        // Com os campos configuráveis, deixar a altura totalmente livre fazia
         // a grade inteira mudar de proporção a cada interruptor: desligando
         // tudo, os cartões viravam faixas de 90pt e a primeira fileira ficava
-        // alta sozinha, presa ao cartão de nova conversa. Fixando, a grade é a
-        // mesma sempre — o cartão perde conteúdo por dentro, não muda de forma.
-        //
-        // 318 é a mesma altura dos cartões da aba Mídia, então as duas grades
-        // do app têm o mesmo módulo.
+        // alta sozinha, presa ao cartão de nova conversa. Por isso o mínimo
+        // continua travado em 336 — mesma altura-base dos cartões da aba
+        // Mídia, para as duas grades manterem o mesmo módulo. Mas sem
+        // `maxHeight`: títulos e descrições mais longos agora esticam o
+        // cartão em vez de cortar com reticências, principalmente em colunas
+        // mais estreitas (grades maiores, mais colunas por fileira).
         .frame(
             maxWidth: .infinity,
             minHeight: Self.alturaDoCartao,
-            maxHeight: Self.alturaDoCartao,
             alignment: .top
         )
         // As duas camadas vêm **depois** do `frame`, e não antes.
@@ -560,14 +560,19 @@ struct CartaoDeConversa: View {
             // ancorado embaixo, e não centralizado.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 // Sem reticências: em vez de cortar o nome da conversa, o
-                // título quebra em duas linhas e encolhe até caber. Título
-                // truncado obriga a abrir a conversa para saber qual é —
-                // exatamente o que a grade existe para evitar.
+                // título quebra em quantas linhas precisar. Título truncado
+                // obriga a abrir a conversa para saber qual é — exatamente o
+                // que a grade existe para evitar.
                 Text(titulo)
                     .font(.system(size: 20, weight: .regular))
                     .foregroundStyle(corDoTextoDaFaixa)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.6)
+                    // Sem limite de linhas: títulos gerados por IA não têm
+                    // tamanho garantido, e com colunas mais estreitas (grades
+                    // maiores) duas linhas encolhidas a 0.6 ainda cortavam
+                    // com reticências. Agora o título quebra em quantas
+                    // linhas precisar — a faixa e o cartão crescem para
+                    // acompanhar (ver `.frame` logo abaixo, sem `maxHeight`).
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(titulo)
@@ -582,7 +587,6 @@ struct CartaoDeConversa: View {
                     Text(metadados.descricao)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(corDoTextoDaFaixa)
-                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -591,7 +595,6 @@ struct CartaoDeConversa: View {
             .frame(
                 maxWidth: .infinity,
                 minHeight: Self.alturaDaFaixa,
-                maxHeight: Self.alturaDaFaixa,
                 alignment: .topLeading
             )
             // A imagem entra como **fundo**, e não como irmã do texto num
@@ -617,34 +620,35 @@ struct CartaoDeConversa: View {
             Text(titulo)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(PapagaioTema.texto)
-                // Duas linhas, com reticências passando disso — não mais
-                // altura livre. Título comprido empurrava a linha divisória
-                // (e tudo abaixo dela) para baixo, cartão a cartão numa
-                // altura diferente; a `.help(titulo)` continua mostrando o
-                // título inteiro ao passar o mouse, para quem precisar ler.
-                .lineLimit(2)
+                // Sem limite de linhas: cortar com reticências obriga a
+                // abrir a conversa para saber o título inteiro. A altura
+                // mínima (não mais fixa) mantém a divisória alinhada quando
+                // o título cabe em duas linhas, e cede quando precisa de
+                // mais — a `.help(titulo)` continua disponível ao passar o
+                // mouse, para quem preferir isso a ler o título quebrado.
                 .multilineTextAlignment(.leading)
-                .frame(height: Self.alturaDoTituloCompacto, alignment: .top)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: Self.alturaDoTituloCompacto, alignment: .top)
                 .help(titulo)
 
             // A mesma descrição da faixa do modelo com capa — só que aqui, sem
             // faixa nenhuma, ela é só mais uma linha de texto, na cor
             // secundária do tema.
             //
-            // Altura fixa de duas linhas, sempre reservada quando o campo
+            // Altura mínima de duas linhas, sempre reservada quando o campo
             // está ligado — tenha a conversa descrição, uma linha só, ou
             // nenhuma. Sem essa reserva, a linha divisória logo abaixo caía
             // numa altura diferente em cada cartão, conforme o tamanho da
-            // descrição de cada um: uma bagunça na grade. Passando de duas
-            // linhas, corta com reticências — não empurra a divisória mais
-            // ainda.
+            // descrição de cada um: uma bagunça na grade. Sem limite de
+            // linhas: descrição comprida empurra a divisória para baixo em
+            // vez de cortar com reticências.
             if campos.contains(.descricao) {
                 Text(metadados.descricao)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
-                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .frame(height: Self.alturaDaDescricaoCompacta, alignment: .top)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: Self.alturaDaDescricaoCompacta, alignment: .top)
             }
         }
         // Recuo maior da esquerda: a tarja de cor mora bem na borda, e rente
@@ -755,7 +759,7 @@ struct CartaoDeConversa: View {
         HStack(spacing: PapagaioTema.Espaco.minimo) {
             Image(systemName: "arrow.right.circle.fill")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Clique para ver a ficha")
+            Text("Clique para ver a conversa")
                 .font(.system(size: 13, weight: .semibold))
         }
         .foregroundStyle(PapagaioTema.sucesso)
@@ -767,7 +771,7 @@ struct CartaoDeConversa: View {
         }
         .contentShape(Capsule())
         .highPriorityGesture(TapGesture().onEnded(aoAbrirFicha))
-        .help("Preencher a ficha da entrevista")
+        .help("Ver a conversa")
     }
 
     /// O "i" ao lado da data, na cor do cartão (a mesma da tarja) — mesma
@@ -1822,7 +1826,12 @@ struct TarjaDeProgressoDoCartao: View {
 
     private var conteudo: some View {
         GeometryReader { geometria in
-            let alturaPreenchida = max(6, geometria.size.height * fracaoExibida)
+            // 34pt de piso, não 6: com um preenchimento tão baixo quanto
+            // isso, o próprio número (mais a folga dele) não cabia dentro da
+            // área colorida e ficava colado na borda de cima dela. Um piso
+            // mais alto garante que sempre há espaço de sobra ali dentro,
+            // mesmo com o processamento só começando.
+            let alturaPreenchida = max(34, geometria.size.height * fracaoExibida)
 
             ZStack(alignment: .bottom) {
                 // Fundo opaco antes da trilha translúcida: sem ele, a
@@ -1863,10 +1872,11 @@ struct TarjaDeProgressoDoCartao: View {
                 .rotationEffect(.degrees(-90))
                 .position(
                     x: geometria.size.width / 2,
-                    // 12pt abaixo do topo do preenchimento: perto da
-                    // ponta de cima, sem sair da área colorida em quase
-                    // nenhum estágio do andamento.
-                    y: max(12, geometria.size.height - alturaPreenchida + 12)
+                    // 20pt abaixo do topo do preenchimento, não 12: colado
+                    // bem na borda o número parecia estar vazando da área
+                    // colorida em vez de estar dentro dela. Com o piso de
+                    // 34pt acima, essa folga sempre cabe.
+                    y: max(20, geometria.size.height - alturaPreenchida + 20)
                 )
         }
         .animation(.easeOut(duration: 0.3), value: fracaoExibida)

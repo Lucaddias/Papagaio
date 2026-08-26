@@ -50,7 +50,7 @@ struct PapagaioApp: App {
                             NSApp.activate(ignoringOtherApps: true)
                         }
                     } else {
-                        painelFlutuante.esconder()
+                        painelFlutuante.esconder(origem: gravador.origemDoPainelNaTela)
                     }
                 }
         }

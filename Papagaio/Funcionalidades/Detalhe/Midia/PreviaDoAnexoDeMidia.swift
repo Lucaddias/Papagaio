@@ -81,14 +81,31 @@ struct PreviaDoAnexoDeMidia: View {
 }
 
 struct PreviaDeAudio: View {
+    private static let larguraDaBarra: CGFloat = 4
+
     var body: some View {
-        HStack(alignment: .center, spacing: PapagaioTema.Espaco.minimo) {
-            ForEach(0..<28, id: \.self) { indice in
-                Capsule()
-                    .fill(PapagaioTema.destaque)
-                    .frame(width: 4, height: altura(para: indice))
-                    .opacity(indice.isMultiple(of: 3) ? 0.9 : 0.55)
+        GeometryReader { geometria in
+            // Número de barras fixo (28) e sem `GeometryReader`, a fileira
+            // tinha largura própria (28 × 4pt + os respiros entre elas) que
+            // não ligava para o quanto o cartão media de verdade — num
+            // cartão estreito (janela pequena, uma coluna só na grade) as
+            // barras das pontas ficavam cortadas pela borda arredondada do
+            // cartão, à esquerda e à direita. Calculando quantas barras
+            // cabem na largura medida (`geometria.size.width`), a fileira
+            // nunca é mais larga que a própria prévia — encolhe ou cresce
+            // junto com o cartão, e nunca corta nada.
+            let espaco = PapagaioTema.Espaco.minimo
+            let quantidade = max(6, Int((geometria.size.width + espaco) / (Self.larguraDaBarra + espaco)))
+
+            HStack(alignment: .center, spacing: espaco) {
+                ForEach(0..<quantidade, id: \.self) { indice in
+                    Capsule()
+                        .fill(PapagaioTema.destaque)
+                        .frame(width: Self.larguraDaBarra, height: altura(para: indice))
+                        .opacity(indice.isMultiple(of: 3) ? 0.9 : 0.55)
+                }
             }
+            .frame(width: geometria.size.width, height: geometria.size.height, alignment: .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PapagaioTema.destaqueSuave.opacity(0.52), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))

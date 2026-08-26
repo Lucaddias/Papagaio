@@ -13,11 +13,4 @@ enum PrioridadeDaTarefa: String, Codable, CaseIterable {
         }
     }
 
-    var simbolo: String {
-        switch self {
-        case .alta: "!"
-        case .media: "="
-        case .baixa: "-"
-        }
-    }
 }

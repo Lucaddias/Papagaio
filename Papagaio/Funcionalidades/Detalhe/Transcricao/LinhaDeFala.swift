@@ -21,6 +21,10 @@ struct LinhaDeFala: View {
     let nomesDeVoz: [String: String]
     let aoTocarFala: () -> Void
     let aoTocarPalavra: (Palavra) -> Void
+    /// Corrige o texto desta fala. Fica ao lado direito do parágrafo,
+    /// centralizado na altura dele — nem preso só à linha do cabeçalho (fica
+    /// solto demais lá em cima), nem flutuando fora de qualquer texto.
+    let aoEditar: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
@@ -30,12 +34,19 @@ struct LinhaDeFala: View {
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                cabecalhoDaFala
+            // `.center` aqui, e não `.top`: o lápis fica ao lado do
+            // parágrafo inteiro (cabeçalho + texto), centralizado na altura
+            // dele — não colado só na linha do cabeçalho lá em cima.
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    cabecalhoDaFala
 
-                corpoDaFala
+                    corpoDaFala
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                botaoEditar
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, PapagaioTema.Espaco.medio)
         .padding(.horizontal, PapagaioTema.Espaco.largo)
@@ -92,10 +103,26 @@ struct LinhaDeFala: View {
         }
     }
 
+    private var botaoEditar: some View {
+        Button(action: aoEditar) {
+            Image(systemName: "pencil")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .frame(width: 26, height: 26)
+                .background(PapagaioTema.destaqueSuave, in: Circle())
+                .overlay {
+                    Circle().stroke(PapagaioTema.destaque.opacity(0.4), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Corrigir o texto desta fala")
+        .accessibilityLabel("Corrigir o texto desta fala")
+    }
+
     @ViewBuilder
     private var corpoDaFala: some View {
         if !fala.palavras.isEmpty {
-            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3) {
+            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3, justificado: true) {
                 ForEach(Array(fala.palavras.enumerated()), id: \.element.palavra.id) { _, item in
                     BotaoDePalavra(
                         palavra: item.palavra,

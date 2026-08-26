@@ -20,7 +20,10 @@ enum TarefasDaConversa {
                 prioridade: indice < 2 ? .alta : .media,
                 status: .naoIniciado,
                 responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
-                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa)
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa),
+                // Extraída da transcrição, não escrita pela pessoa — fica como
+                // sugestão até ela aceitar, editar ou descartar.
+                sugestaoPendente: true
             )
         }
         salvar(tarefas, para: arquivoID)

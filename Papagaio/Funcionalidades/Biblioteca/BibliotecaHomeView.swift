@@ -63,22 +63,30 @@ struct BibliotecaHomeView: View {
             // da esquerda parar de responder enquanto a da direita, mais para
             // dentro da linha, seguia funcionando. Era exatamente o sintoma.
             //
-            // Com uma instância só não existe a quem confundir. As pastilhas são
-            // pequenas e o `Spacer` cede primeiro, então a linha aguenta janela
-            // estreita sem precisar de arranjo alternativo.
-            HStack(spacing: PapagaioTema.Espaco.largo) {
-                FiltroDeConversas(
-                    selecionado: $filtroSelecionado,
-                    pastaSelecionada: $pastaSelecionada,
-                    atalhoSelecionado: $atalhoSelecionado,
-                    aoLimparAtalhoVisual: limparAtalhoVisual
-                )
+            // Com uma instância só não existe a quem confundir. As pastilhas
+            // têm `.fixedSize()` (ver `FiltroDeConversas` e
+            // `AtalhosDaBiblioteca`) — não comprimem mais o texto numa
+            // janela estreita, então precisam de outra válvula de escape.
+            //
+            // `ViewThatFits` decide entre três versões da *mesma* linha,
+            // cada uma cabendo em menos espaço que a anterior: com o texto
+            // inteiro (janela comum); só com o glifo, nome no tooltip (a
+            // pastilha "Favoritos" some de vista, mas continua ali, dando pra
+            // clicar — não fica cortada pela metade como antes, mostrando
+            // que existe algo sem dizer o quê); e por fim a versão com glifo
+            // dentro de uma `ScrollView` horizontal, para uma janela tão
+            // apertada que nem os quatro ícones cabem lado a lado. Um
+            // `Spacer` mede como do tamanho do `minLength` dele nesta
+            // comparação de `ViewThatFits` — por isso todas cabem exatamente
+            // quando deveriam, sem escolher a versão errada.
+            ViewThatFits(in: .horizontal) {
+                linhaDeFiltros()
+                linhaDeFiltros(somenteIcone: true)
 
-                Spacer(minLength: PapagaioTema.Espaco.curto)
-
-                atalhosDaBiblioteca
+                ScrollView(.horizontal, showsIndicators: false) {
+                    linhaDeFiltros(somenteIcone: true)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             // Acima do que vem depois — inclusive da grade de pastas, que é
             // irmã desta linha dentro do mesmo `if`.
             //
@@ -143,6 +151,29 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// A linha de filtro ("Todas"/"Pastas") mais os atalhos
+    /// ("Recentes"/"Favoritos"), com o `Spacer` que empurra os atalhos pro
+    /// canto direito. Extraída à parte porque `filtrosEPastas` usa a mesma
+    /// visão mais de uma vez dentro de um `ViewThatFits` — ver o comentário
+    /// lá. `somenteIcone` esconde o texto das pastilhas (fica só o glifo,
+    /// com o nome no tooltip) para a versão mais compacta.
+    private func linhaDeFiltros(somenteIcone: Bool = false) -> some View {
+        HStack(spacing: PapagaioTema.Espaco.largo) {
+            FiltroDeConversas(
+                selecionado: $filtroSelecionado,
+                pastaSelecionada: $pastaSelecionada,
+                atalhoSelecionado: $atalhoSelecionado,
+                aoLimparAtalhoVisual: limparAtalhoVisual,
+                somenteIcone: somenteIcone
+            )
+
+            Spacer(minLength: PapagaioTema.Espaco.curto)
+
+            atalhosDaBiblioteca(somenteIcone: somenteIcone)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// O que era o subtítulo da página, agora sob demanda.
     ///
     /// Texto que se lê uma vez e depois só ocupa a primeira dobra da tela
@@ -170,7 +201,7 @@ struct BibliotecaHomeView: View {
         filtroSelecionado == .pastas ? "Biblioteca de Conversas (Pastas)" : "Biblioteca de Conversas"
     }
 
-    private var atalhosDaBiblioteca: some View {
+    private func atalhosDaBiblioteca(somenteIcone: Bool = false) -> some View {
         AtalhosDaBiblioteca(
             selecionado: $atalhoVisualSelecionado,
             aoSelecionarRecentes: {
@@ -197,7 +228,8 @@ struct BibliotecaHomeView: View {
                     atalhoSelecionado = .favoritos
                     atalhoVisualSelecionado = .favoritos
                 }
-            }
+            },
+            somenteIcone: somenteIcone
         )
     }
 
@@ -214,9 +246,30 @@ struct BibliotecaHomeView: View {
                 aoFinalizar: aoAlternarGravacao,
                 aoCancelar: aoCancelarGravacao
             )
+            // A janela flutuante nasce daqui: sabendo onde este cartão está
+            // na tela, ela consegue "encolher" a partir do lugar certo em vez
+            // de simplesmente aparecer no canto.
+            .rastreandoJanela { janelaHospedeira = $0 }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { retangulo in
+                gravador.origemDoPainelNaTela = converterParaTela(retangulo)
+            }
+            // Some da tela (foco saiu da captura, ou a gravação terminou) —
+            // sem isto a próxima vez que o painel flutuante nascer usaria uma
+            // origem de uma sessão anterior, num lugar errado da tela.
+            .onDisappear { gravador.origemDoPainelNaTela = nil }
 
             PainelDeNotasDuranteGravacao(gravador: gravador)
         }
+    }
+
+    /// A janela local do cartão de gravação — só serve para converter a
+    /// geometria dele em coordenadas de tela; ver `capturaEmAndamento`.
+    @State private var janelaHospedeira: NSWindow?
+
+    private func converterParaTela(_ retangulo: CGRect) -> CGRect? {
+        guard let janela = janelaHospedeira, let vistaDeConteudo = janela.contentView else { return nil }
+        let retanguloNaJanela = vistaDeConteudo.convert(retangulo, to: nil)
+        return janela.convertToScreen(retanguloNaJanela)
     }
 
     /// Tela de captura: gravando **e** com o foco nela.
@@ -668,6 +721,31 @@ struct BibliotecaHomeView: View {
     /// tudo dentro do mesmo cartão com borda e sombra, e não solto no fundo
     /// da janela como um texto qualquer.
     private var cabecalhoDaLixeira: some View {
+        // `ViewThatFits` entre a linha normal (botões com texto) e a
+        // compacta (só o glifo, nome no tooltip) — mesma solução da
+        // biblioteca (`filtrosEPastas`). "Restaurar Tudo" e "Esvaziar
+        // Lixeira" por extenso, lado a lado com o título "Lixeira", não
+        // cabem numa janela estreita (a janela chega a 460pt — ver
+        // `ContentView.swift`); sem isto os botões ficavam espremidos ou
+        // cortados fora do cartão.
+        ViewThatFits(in: .horizontal) {
+            linhaDaLixeira()
+            linhaDaLixeira(somenteIcone: true)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            PapagaioTema.superficie,
+            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                .stroke(PapagaioTema.borda, lineWidth: 1.5)
+        }
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+    }
+
+    private func linhaDaLixeira(somenteIcone: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
             Text(tituloDaPagina)
                 .font(.title2.weight(.semibold))
@@ -699,21 +777,12 @@ struct BibliotecaHomeView: View {
                     },
                     aoEsvaziar: {
                         confirmandoEsvaziarLixeira = true
-                    }
+                    },
+                    somenteIcone: somenteIcone
                 )
             }
         }
-        .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            PapagaioTema.superficie,
-            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-                .stroke(PapagaioTema.borda, lineWidth: 1.5)
-        }
-        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
     }
 
     var body: some View {
@@ -898,15 +967,31 @@ struct BibliotecaHomeView: View {
         // `.top`, e não `.center`: centralizado, um cartão mais baixo flutuava
         // no meio da linha e nem topo nem base batiam com o vizinho.
         //
-        // Quatro colunas fixas, e não `.adaptive`: o pedido foi por uma
-        // fileira sempre com quatro cartões (três de conversa mais o de
-        // adicionar, na primeira) — cartões mais largos, mais
-        // horizontalizados, sem mexer em nada do que tem dentro deles.
-        let colunas = Array(
-            repeating: GridItem(.flexible(minimum: 220), spacing: PapagaioTema.Espaco.largo, alignment: .top),
-            count: 4
-        )
-        let colunasDaLixeira = [GridItem(.adaptive(minimum: 270, maximum: 430), spacing: PapagaioTema.Espaco.secao, alignment: .top)]
+        // `.adaptive(minimum:)` **sem** `maximum` — e não colunas medidas por
+        // `.onGeometryChange`.
+        //
+        // A primeira versão desta grade usava um `maximum` (380/430) na
+        // `.adaptive`, e isso é o que causava a faixa vazia do lado direito
+        // quando só 1-2 colunas cabiam numa janela mais larga que
+        // `N × maximum`: a coluna trava no teto e não estica até preencher.
+        // A correção não era medir a largura na mão — era simplesmente não
+        // dar teto nenhum à coluna (o padrão do `GridItem.adaptive` já é
+        // `maximum: .infinity`). Sem teto, cada coluna sempre estica para
+        // preencher a linha inteira, do jeito que `.flexible` fazia, mas
+        // resolvido pelo próprio sistema de layout — de graça, no mesmo
+        // quadro, sem o atraso de um quadro entre a janela mudar de tamanho
+        // e o estado medido reagir, que é o que fazia a grade parecer
+        // quebrada durante o arrasto contínuo da borda da janela.
+        //
+        // Monitor enorme não estica a coluna ao infinito porque a página
+        // inteira já tem teto de largura em `larguraDeConteudoPapagaio` — a
+        // grade nunca vê uma largura maior que esse teto.
+        let colunas = [
+            GridItem(.adaptive(minimum: 320), spacing: PapagaioTema.Espaco.largo, alignment: .top)
+        ]
+        let colunasDaLixeira = [
+            GridItem(.adaptive(minimum: 270), spacing: PapagaioTema.Espaco.secao, alignment: .top)
+        ]
 
         switch secaoSelecionada {
         case .todos:
