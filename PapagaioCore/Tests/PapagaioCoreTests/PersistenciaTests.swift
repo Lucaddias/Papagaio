@@ -104,6 +104,10 @@ func persistenciaPreservaFalanteAcustico() async throws {
                 Palavra(start: 1, end: 6, texto: "tudo bem", falanteAcustico: "S2"),
                 Palavra(start: 6, end: 12, texto: "sim"), // sem falante: nil precisa sobreviver também
             ]),
+            // Palavra sem diarização (legada) continua sem falante.
+            Trecho(start: 40, end: 82, texto: "resposta", speaker: Speaker.interlocutor, palavras: [
+                Palavra(start: 40, end: 82, texto: "certo"),
+            ]),
         ]
     )
 
@@ -115,6 +119,7 @@ func persistenciaPreservaFalanteAcustico() async throws {
     #expect(palavras[0].falanteAcustico == "S1")
     #expect(palavras[1].falanteAcustico == "S2")
     #expect(palavras[2].falanteAcustico == nil)
+    #expect(volta.trechos[1].palavras[0].falanteAcustico == nil)
 }
 
 @Test("Falha ao apagar a mídia preserva o registro e permite repetir")

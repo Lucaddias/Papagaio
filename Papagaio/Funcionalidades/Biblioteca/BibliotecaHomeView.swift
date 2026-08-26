@@ -9,6 +9,7 @@ struct BibliotecaHomeView: View {
     let gravador: GravadorViewModel
     let biblioteca: Biblioteca?
     let modelos: ModelosViewModel?
+    let googleCalendar: GoogleCalendarViewModel?
     @Binding var consulta: String
     @Binding var secaoSelecionada: SecaoDaBiblioteca
     @Binding var pastaSelecionada: String?
@@ -21,6 +22,9 @@ struct BibliotecaHomeView: View {
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
     let aoSoltarArquivos: ([URL]) -> Void
+    let aoPrepararGravacaoParaReuniao: (ReuniaoPendenteCalendar) -> Void
+    let aoImportarAudioDaReuniao: (ReuniaoPendenteCalendar) -> Void
+    let aoIgnorarReuniao: (ReuniaoPendenteCalendar) -> Void
     /// Enquanto a gravação roda a pessoa pode sair da tela de captura e voltar
     /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
     /// da gravação.
@@ -275,6 +279,57 @@ struct BibliotecaHomeView: View {
     /// Tela de captura: gravando **e** com o foco nela.
     private var emCaptura: Bool {
         gravador.gravando && focoNaGravacao
+    }
+
+/// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
+    /// Exibidas no topo da biblioteca com scroll horizontal.
+    private var reunioesDoCalendar: some View {
+        guard let biblioteca,
+              let googleCalendar,
+              !googleCalendar.reunioesPendentes.isEmpty,
+              secaoSelecionada == .todos,
+              !emCaptura
+        else { return AnyView(EmptyView()) }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                HStack {
+                    Label("Próximas 24h", systemImage: "calendar.badge.clock")
+                        .font(PapagaioTema.Tipo.tituloDeSecao)
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    Spacer()
+                    Text("\(googleCalendar.reunioesPendentes.count) reun\(googleCalendar.reunioesPendentes.count == 1 ? "ião" : "iões")")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PapagaioTema.Espaco.medio) {
+                        ForEach(googleCalendar.reunioesPendentes) { pendente in
+CartaoReuniaoPendente(
+                            pendente: pendente,
+                            aoGravar: { aoPrepararGravacaoParaReuniao(pendente) },
+                            aoImportar: { aoImportarAudioDaReuniao(pendente) },
+                            aoIgnorar: { aoIgnorarReuniao(pendente) }
+                        )
+                        }
+                    }
+                    .padding(.horizontal, PapagaioTema.Espaco.secao)
+                }
+                .frame(height: 160)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                PapagaioTema.superficie,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    .stroke(PapagaioTema.borda, lineWidth: 1.5)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        )
     }
 
     private var arquivosFiltrados: [Arquivo] {
@@ -636,6 +691,8 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// Preenche os metadados da gravação com os dados da reunião do Calendar
+    /// e inicia a gravação na tela de captura.
     private func limparAtalhoVisual() {
         guard atalhoVisualSelecionado != nil else { return }
         withAnimation(.snappy(duration: 0.16)) {
@@ -805,6 +862,8 @@ struct BibliotecaHomeView: View {
                             aoUsarPastaDoApp: aoUsarPastaDoApp
                         )
                     }
+
+                    reunioesDoCalendar
 
                     cabecalhoDaBiblioteca
 
@@ -1039,7 +1098,8 @@ struct BibliotecaHomeView: View {
             }
 
         case .lixeira:
-            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
+            let temPendentesIgnoradas = !(biblioteca?.reunioesPendentesNaLixeira.isEmpty ?? true)
+            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && !temPendentesIgnoradas && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
                     titulo: "A lixeira está vazia",
@@ -1047,7 +1107,7 @@ struct BibliotecaHomeView: View {
                 )
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
-            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
+            } else if arquivosFiltrados.isEmpty && !temPendentesIgnoradas && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "magnifyingglass",
                     titulo: "Nenhum arquivo encontrado",
@@ -1056,6 +1116,41 @@ struct BibliotecaHomeView: View {
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
+                VStack(spacing: PapagaioTema.Espaco.secao) {
+                // Pendentes ignoradas primeiro: são o que a pessoa acabou de
+                // descartar por engano com mais frequência — restauração a um
+                // clique de distância, sem rolar a lixeira inteira.
+                if let biblioteca, !biblioteca.reunioesPendentesNaLixeira.isEmpty {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                        Label("Reuniões pendentes ignoradas", systemImage: "calendar.badge.exclamationmark")
+                            .font(PapagaioTema.Tipo.tituloDeSecao)
+                            .foregroundStyle(PapagaioTema.aviso)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: PapagaioTema.Espaco.medio) {
+                                ForEach(biblioteca.reunioesPendentesNaLixeira) { pendente in
+                                    CartaoReuniaoPendenteLixeira(
+                                        pendente: pendente,
+                                        aoRestaurar: { biblioteca.restaurarPendenteDaLixeira(pendente) },
+                                        aoApagarDefinitivamente: { biblioteca.apagarPendenteDefinitivamente(pendente) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(PapagaioTema.Espaco.secao)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        PapagaioTema.superficie,
+                        in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                            .stroke(PapagaioTema.borda, lineWidth: 1.5)
+                    }
+                    .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+                }
+
                 LazyVGrid(columns: colunasDaLixeira, spacing: PapagaioTema.Espaco.secao) {
                     ForEach(arquivosFiltrados) { arquivo in
                         if let biblioteca {
@@ -1124,6 +1219,7 @@ struct BibliotecaHomeView: View {
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -1141,6 +1237,9 @@ struct BibliotecaHomeView: View {
             seloDeConclusaoRevelado: biblioteca.seloDeConclusaoRevelado(arquivo.id),
             aoAbrirFicha: { aoAbrirFicha(arquivo) },
             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
+            aoDiarizar: {
+                Task { await biblioteca.diarizarTranscricao(arquivo) }
+            },
             aoRenomear: { novoTitulo in
                 Task { await biblioteca.renomear(arquivo, para: novoTitulo) }
             },

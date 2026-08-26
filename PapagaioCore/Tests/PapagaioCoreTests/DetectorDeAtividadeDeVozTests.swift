@@ -27,7 +27,14 @@ private actor GuardaDeSobreposicao {
 /// A frase de fala vem de uma fixture commitada (gerada **uma vez** por
 /// Tests/PapagaioCoreTests/Fixtures/gerar_fixture.sh via `say`), para o teste
 /// rodar sempre — sem depender de `say`/voz instalada na hora do teste.
-@Suite("Detector de atividade de voz com Silero")
+///
+/// Serializado de propósito: o `DetectorDeAtividadeDeVoz` compartilha uma
+/// única instância do Silero (design de produção — modelo residente). Os
+/// testes desta suite rodarem em paralelo zeraria o contexto/estado do VAD
+/// uns dos outros no meio da inferência (a "memória" de frase vaza entre
+/// arquivos) e a decisão sobre ruído rosa passa a depender da ordem de
+/// entrelaçamento.
+@Suite("Detector de atividade de voz com Silero", .serialized)
 struct DetectorDeAtividadeDeVozTests {
     private func carregarFixture(_ nome: String) async throws -> [Float] {
         let pasta = URL(fileURLWithPath: #filePath)

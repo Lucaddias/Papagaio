@@ -12,19 +12,11 @@ struct CartaoDeConversa: View {
     let processando: Bool
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
-    /// Verdadeiro logo após terminar de transcrever e resumir, enquanto a
-    /// ficha da entrevista (título, entrevistado, participantes...) ainda não
-    /// foi aberta nem preenchida. Mostra o selo "Concluído" clicável — o
-    /// formulário não abre mais sozinho, não importa a tela em que a pessoa
-    /// esteja.
     let fichaPendente: Bool
-    /// Verdadeiro depois que a tarja já teve tempo de subir até 100% (ver
-    /// `Biblioteca.marcarFichaPendente`) — só então o selo "Concluído"
-    /// cobre o cartão. Vem de `Biblioteca`, e não de um `@State` local,
-    /// para sobreviver a recriações da view sem replayar a animação.
     let seloDeConclusaoRevelado: Bool
     let aoAbrirFicha: () -> Void
     let aoReprocessar: () -> Void
+    let aoDiarizar: () -> Void
     let aoRenomear: (String) -> Void
     let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void
     let aoDuplicar: () -> Void
@@ -48,7 +40,6 @@ struct CartaoDeConversa: View {
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
     @State private var criandoPastaParaMover = false
-    @State private var erroDeExportacao: String?
     @State private var tituloEditado = ""
     @State private var entrevistadoEditado = ""
     @State private var emailDoEntrevistadoEditado = ""
@@ -85,6 +76,7 @@ struct CartaoDeConversa: View {
         seloDeConclusaoRevelado: Bool,
         aoAbrirFicha: @escaping () -> Void,
         aoReprocessar: @escaping () -> Void,
+        aoDiarizar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
         aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
         aoDuplicar: @escaping () -> Void,
@@ -107,6 +99,7 @@ struct CartaoDeConversa: View {
         self.seloDeConclusaoRevelado = seloDeConclusaoRevelado
         self.aoAbrirFicha = aoAbrirFicha
         self.aoReprocessar = aoReprocessar
+        self.aoDiarizar = aoDiarizar
         self.aoRenomear = aoRenomear
         self.aoAtualizarMetadados = aoAtualizarMetadados
         self.aoDuplicar = aoDuplicar
@@ -127,6 +120,13 @@ struct CartaoDeConversa: View {
     }
 
     private var titulo: String { arquivo.resumo?.titulo ?? arquivo.titulo }
+
+/// Arquivos gravados antes da diarização existir têm palavras com
+    /// timestamp, mas sem falante acústico: dá para distingui-los sem
+    /// re-transcrever. Sem palavras não há o que alinhar.
+    private var podeDiarizar: Bool {
+        arquivo.trechos.contains { !$0.palavras.isEmpty }
+    }
 
     /// Altura de todo cartão da biblioteca, independente dos campos ligados.
     ///
@@ -361,20 +361,20 @@ struct CartaoDeConversa: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Conversa \(titulo). \(estado.descricao)")
-        // Altura mínima, não mais fixa.
+        // Altura fixa, e não "o que o conteúdo pedir".
         //
-        // Com os campos configuráveis, deixar a altura totalmente livre fazia
+        // Com os campos configuráveis, deixar a altura seguir o conteúdo fazia
         // a grade inteira mudar de proporção a cada interruptor: desligando
         // tudo, os cartões viravam faixas de 90pt e a primeira fileira ficava
-        // alta sozinha, presa ao cartão de nova conversa. Por isso o mínimo
-        // continua travado em 336 — mesma altura-base dos cartões da aba
-        // Mídia, para as duas grades manterem o mesmo módulo. Mas sem
-        // `maxHeight`: títulos e descrições mais longos agora esticam o
-        // cartão em vez de cortar com reticências, principalmente em colunas
-        // mais estreitas (grades maiores, mais colunas por fileira).
+        // alta sozinha, presa ao cartão de nova conversa. Fixando, a grade é a
+        // mesma sempre — o cartão perde conteúdo por dentro, não muda de forma.
+        //
+        // 318 é a mesma altura dos cartões da aba Mídia, então as duas grades
+        // do app têm o mesmo módulo.
         .frame(
             maxWidth: .infinity,
             minHeight: Self.alturaDoCartao,
+            maxHeight: Self.alturaDoCartao,
             alignment: .top
         )
         // As duas camadas vêm **depois** do `frame`, e não antes.
@@ -430,19 +430,6 @@ struct CartaoDeConversa: View {
                 .padding(.bottom, Self.alturaDaBarra)
             }
         }
-        // O véu de "Concluído": mesma linguagem visual do véu de
-        // processamento logo acima (esmaece o cartão, selo + botão no
-        // centro) — só que verde, e sem cancelar nada: aqui o processamento
-        // já terminou, o clique é só o convite para abrir a ficha.
-        //
-        // Antes disso o formulário abria sozinho, por cima de qualquer tela.
-        // Agora ele só abre quando a pessoa decide, clicando neste botão.
-        //
-        // Vem **antes** da tarja no encadeamento (e não depois), pelo mesmo
-        // motivo do véu de processamento logo acima: a tarja precisa
-        // continuar visível por cima do véu, não esmaecida atrás dele — é
-        // ela quem mostra a barra subindo até 100% no instante em que este
-        // véu aparece.
         .overlay {
             if fichaPendente, seloDeConclusaoRevelado {
                 ZStack {
@@ -526,14 +513,6 @@ struct CartaoDeConversa: View {
         } message: {
             Text("Crie uma pasta nova e esta conversa será movida para ela.")
         }
-        .alert("Não foi possível exportar", isPresented: Binding(
-            get: { erroDeExportacao != nil },
-            set: { if !$0 { erroDeExportacao = nil } }
-        )) {
-            Button("OK", role: .cancel) { erroDeExportacao = nil }
-        } message: {
-            Text(erroDeExportacao ?? "")
-        }
         .overlay {
             if emOperacaoDeLixeira {
                 ProgressView("Movendo para a lixeira…")
@@ -560,19 +539,14 @@ struct CartaoDeConversa: View {
             // ancorado embaixo, e não centralizado.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 // Sem reticências: em vez de cortar o nome da conversa, o
-                // título quebra em quantas linhas precisar. Título truncado
-                // obriga a abrir a conversa para saber qual é — exatamente o
-                // que a grade existe para evitar.
+                // título quebra em duas linhas e encolhe até caber. Título
+                // truncado obriga a abrir a conversa para saber qual é —
+                // exatamente o que a grade existe para evitar.
                 Text(titulo)
                     .font(.system(size: 20, weight: .regular))
                     .foregroundStyle(corDoTextoDaFaixa)
-                    // Sem limite de linhas: títulos gerados por IA não têm
-                    // tamanho garantido, e com colunas mais estreitas (grades
-                    // maiores) duas linhas encolhidas a 0.6 ainda cortavam
-                    // com reticências. Agora o título quebra em quantas
-                    // linhas precisar — a faixa e o cartão crescem para
-                    // acompanhar (ver `.frame` logo abaixo, sem `maxHeight`).
-                    .minimumScaleFactor(0.85)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.6)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(titulo)
@@ -587,6 +561,7 @@ struct CartaoDeConversa: View {
                     Text(metadados.descricao)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(corDoTextoDaFaixa)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -595,6 +570,7 @@ struct CartaoDeConversa: View {
             .frame(
                 maxWidth: .infinity,
                 minHeight: Self.alturaDaFaixa,
+                maxHeight: Self.alturaDaFaixa,
                 alignment: .topLeading
             )
             // A imagem entra como **fundo**, e não como irmã do texto num
@@ -620,35 +596,34 @@ struct CartaoDeConversa: View {
             Text(titulo)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(PapagaioTema.texto)
-                // Sem limite de linhas: cortar com reticências obriga a
-                // abrir a conversa para saber o título inteiro. A altura
-                // mínima (não mais fixa) mantém a divisória alinhada quando
-                // o título cabe em duas linhas, e cede quando precisa de
-                // mais — a `.help(titulo)` continua disponível ao passar o
-                // mouse, para quem preferir isso a ler o título quebrado.
+                // Duas linhas, com reticências passando disso — não mais
+                // altura livre. Título comprido empurrava a linha divisória
+                // (e tudo abaixo dela) para baixo, cartão a cartão numa
+                // altura diferente; a `.help(titulo)` continua mostrando o
+                // título inteiro ao passar o mouse, para quem precisar ler.
+                .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(minHeight: Self.alturaDoTituloCompacto, alignment: .top)
+                .frame(height: Self.alturaDoTituloCompacto, alignment: .top)
                 .help(titulo)
 
             // A mesma descrição da faixa do modelo com capa — só que aqui, sem
             // faixa nenhuma, ela é só mais uma linha de texto, na cor
             // secundária do tema.
             //
-            // Altura mínima de duas linhas, sempre reservada quando o campo
+            // Altura fixa de duas linhas, sempre reservada quando o campo
             // está ligado — tenha a conversa descrição, uma linha só, ou
             // nenhuma. Sem essa reserva, a linha divisória logo abaixo caía
             // numa altura diferente em cada cartão, conforme o tamanho da
-            // descrição de cada um: uma bagunça na grade. Sem limite de
-            // linhas: descrição comprida empurra a divisória para baixo em
-            // vez de cortar com reticências.
+            // descrição de cada um: uma bagunça na grade. Passando de duas
+            // linhas, corta com reticências — não empurra a divisória mais
+            // ainda.
             if campos.contains(.descricao) {
                 Text(metadados.descricao)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(PapagaioTema.textoSecundario)
+                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(minHeight: Self.alturaDaDescricaoCompacta, alignment: .top)
+                    .frame(height: Self.alturaDaDescricaoCompacta, alignment: .top)
             }
         }
         // Recuo maior da esquerda: a tarja de cor mora bem na borda, e rente
@@ -677,33 +652,12 @@ struct CartaoDeConversa: View {
                 inicio: progresso.inicio,
                 estimativa: progresso.estimativa
             )
-        } else if fichaPendente, !seloDeConclusaoRevelado {
-            // Acabou de terminar, mas o selo "Concluído" ainda não foi
-            // revelado (ver `Biblioteca.arquivosComSeloRevelado`) — força a
-            // barra a subir até 100% agora, em vez de cortar seca no meio
-            // do caminho só porque o processamento real terminou antes da
-            // estimativa. Passado esse momento, `seloDeConclusaoRevelado`
-            // vira `true` e este cartão nunca mais entra por aqui — mesmo
-            // que a view seja recriada por causa do processamento de outro
-            // arquivo qualquer, porque a resposta não mora num `@State`
-            // local, mora no `Biblioteca`.
-            TarjaDeProgressoDoCartao(
-                cor: corDaTarjaLateral,
-                inicio: .now,
-                estimativa: 1,
-                concluido: true
-            )
         } else if naFila {
             // Ainda não começou: a tarja fica visível, mas apagada — a cor
             // plena é reservada para quem já está em andamento ou pronto.
-            // Fundo opaco atrás da cor translúcida pelo mesmo motivo do
-            // `conteudo` de `TarjaDeProgressoDoCartao`: sem ele, o que está
-            // atrás (a borda do rodapé de atalhos) aparecia como resíduo.
-            ZStack {
-                PapagaioTema.superficie
-                corDaTarjaLateral.opacity(0.35)
-            }
-            .frame(width: 4)
+            Rectangle()
+                .fill(corDaTarjaLateral.opacity(0.35))
+                .frame(width: 4)
         } else {
             Rectangle()
                 .fill(corDaTarjaLateral)
@@ -743,35 +697,6 @@ struct CartaoDeConversa: View {
         .contentShape(Capsule())
         .highPriorityGesture(TapGesture().onEnded(aoMoverParaLixeira))
         .help("Cancelar o processamento e mover para a lixeira")
-    }
-
-    /// Botão que substitui o formulário automático de fim de processamento.
-    /// Antes, terminar de transcrever e resumir abria a ficha da entrevista
-    /// sozinha, por cima de qualquer tela — mesmo que a pessoa estivesse em
-    /// outra conversa, em tarefas, em configurações. Agora só aparece este
-    /// botão no centro do cartão (mesmo lugar e estilo do "Cancelar" durante
-    /// o processamento), e é a pessoa quem clica para abrir a ficha quando
-    /// quiser.
-    ///
-    /// `highPriorityGesture`, mesmo motivo do `botaoCancelarProcessamento`:
-    /// este botão mora dentro do `NavigationLink` do cartão.
-    private var botaoAbrirFicha: some View {
-        HStack(spacing: PapagaioTema.Espaco.minimo) {
-            Image(systemName: "arrow.right.circle.fill")
-                .font(.system(size: 13, weight: .semibold))
-            Text("Clique para ver a conversa")
-                .font(.system(size: 13, weight: .semibold))
-        }
-        .foregroundStyle(PapagaioTema.sucesso)
-        .padding(.horizontal, PapagaioTema.Espaco.medio)
-        .padding(.vertical, PapagaioTema.Espaco.curto)
-        .background(PapagaioTema.superficie, in: Capsule())
-        .overlay {
-            Capsule().stroke(PapagaioTema.sucesso.opacity(0.4), lineWidth: 1)
-        }
-        .contentShape(Capsule())
-        .highPriorityGesture(TapGesture().onEnded(aoAbrirFicha))
-        .help("Ver a conversa")
     }
 
     /// O "i" ao lado da data, na cor do cartão (a mesma da tarja) — mesma
@@ -847,6 +772,25 @@ struct CartaoDeConversa: View {
                 .lineLimit(1)
         }
         .foregroundStyle(PapagaioTema.textoSecundario)
+    }
+
+    private var botaoAbrirFicha: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Clique para ver a conversa")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(PapagaioTema.sucesso)
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.vertical, PapagaioTema.Espaco.curto)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule().stroke(PapagaioTema.sucesso.opacity(0.4), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+        .highPriorityGesture(TapGesture().onEnded(aoAbrirFicha))
+        .help("Ver a conversa")
     }
 
     /// Os participantes, e o clique que abre a ficha com os nomes.
@@ -1256,12 +1200,15 @@ struct CartaoDeConversa: View {
                 bloqueioDeEdicao: processando || naFila || emOperacaoDeLixeira,
                 bloqueioDeLixeira: emOperacaoDeLixeira,
                 cancelavel: estado.ocupado,
-                aoEditarAparencia: executarMenu { editandoAparencia = true },
+                podeDiarizar: podeDiarizar,
+                aoDiarizar: executarMenu(aoDiarizar),
+                aoReprocessar: executarMenu(aoReprocessar),
                 aoRenomear: executarMenu(abrirEditorDeInformacoes),
                 aoBaixar: executarMenu(baixar),
                 aoCompartilhar: executarMenu(compartilhar),
-                aoDuplicar: executarMenu { aoDuplicar() },
-                aoMoverParaLixeira: executarMenu { aoMoverParaLixeira() }
+                aoDuplicar: executarMenu(aoDuplicar),
+                aoEditarAparencia: executarMenu { editandoAparencia = true },
+                aoMoverParaLixeira: executarMenu(aoMoverParaLixeira)
             )
         }
     }
@@ -1278,17 +1225,14 @@ struct CartaoDeConversa: View {
         )
     }
 
-    private func executarMenu(_ acao: @escaping @MainActor () -> Void) -> () -> Void {
+    private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
         {
             aoFecharMenu()
             // Um salto de runloop antes de agir: apresentar uma folha ou um
             // painel no mesmo ciclo em que o popover se fecha faz o AppKit
             // descartar uma das duas apresentações, e a folha simplesmente não
             // abre. O atraso é invisível.
-            Task { @MainActor in
-                await Task.yield()
-                acao()
-            }
+            DispatchQueue.main.async(execute: acao)
         }
     }
 
@@ -1472,71 +1416,53 @@ struct CartaoDeConversa: View {
     /// cópia, e o menu da pasta já oferecia as duas.
     private func baixar() {
         #if os(macOS)
-        Task { @MainActor in
-            do {
-                let arquivoParaExportar = arquivo
-                let audioParaExportar = urlDeAudio
-                let pacote = try await Task.detached {
-                    try DossieDaConversa.pacoteComAudio(
-                        arquivo: arquivoParaExportar, audioPrincipal: audioParaExportar
-                    )
-                }.value
-                defer { DossieDaConversa.descartarArquivoTemporario(pacote) }
+        guard let pacote = try? DossieDaConversa.pacoteComAudio(
+            arquivo: arquivo,
+            audioPrincipal: urlDeAudio
+        ) else { return }
 
-                let painel = NSOpenPanel()
-                painel.title = "Escolha onde salvar \(titulo)"
-                painel.prompt = "Salvar aqui"
-                painel.canChooseFiles = false
-                painel.canChooseDirectories = true
-                painel.canCreateDirectories = true
-                guard painel.runModal() == .OK, let destino = painel.url else { return }
+        let painel = NSOpenPanel()
+        painel.title = "Escolha onde salvar \(titulo)"
+        painel.prompt = "Salvar aqui"
+        painel.canChooseFiles = false
+        painel.canChooseDirectories = true
+        painel.canCreateDirectories = true
 
-                try await Task.detached {
-                    let acesso = destino.startAccessingSecurityScopedResource()
-                    defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
-                    let alvo = destino.appendingPathComponent(pacote.lastPathComponent)
-                    if FileManager.default.fileExists(atPath: alvo.path) {
-                        try FileManager.default.removeItem(at: alvo)
-                    }
-                    try FileManager.default.copyItem(at: pacote, to: alvo)
-                }.value
-            } catch {
-                erroDeExportacao = error.localizedDescription
-            }
-        }
+        guard painel.runModal() == .OK,
+              let destino = painel.url,
+              destino.startAccessingSecurityScopedResource()
+        else { return }
+        defer { destino.stopAccessingSecurityScopedResource() }
+
+        let alvo = destino.appendingPathComponent(pacote.lastPathComponent)
+        try? FileManager.default.removeItem(at: alvo)
+        try? FileManager.default.copyItem(at: pacote, to: alvo)
         #endif
     }
 
     private func compartilhar() {
         #if os(macOS)
-        Task { @MainActor in
-            // Uma ação só: documento e áudio juntos, e no mesmo painel a opção
-            // de salvar em pasta. A preparação do zip não bloqueia a janela.
-            let itens: [Any]
-            do {
-                let arquivoParaExportar = arquivo
-                let audioParaExportar = urlDeAudio
-                itens = [try await Task.detached {
-                    try DossieDaConversa.pacoteComAudio(
-                        arquivo: arquivoParaExportar, audioPrincipal: audioParaExportar
-                    )
-                }.value]
-            } catch {
-                if let destino = try? DossieDaConversa.markdownTemporario(arquivo: arquivo) {
-                    itens = [destino]
-                } else {
-                    itens = [DossieDaConversa.gerar(arquivo: arquivo)]
-                }
+        // Uma ação só: documento e áudio juntos, e no mesmo painel a opção de
+        // salvar em pasta. O áudio cru sozinho não dizia nada a quem recebe.
+        let itens: [Any]
+        do {
+            itens = [try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: urlDeAudio)]
+        } catch {
+            let destino = FileManager.default.temporaryDirectory
+                .appendingPathComponent(DossieDaConversa.nomeDeArquivo(para: arquivo))
+            if (try? DossieDaConversa.gerar(arquivo: arquivo)
+                .write(to: destino, atomically: true, encoding: .utf8)) != nil {
+                itens = [destino]
+            } else {
+                itens = [DossieDaConversa.gerar(arquivo: arquivo)]
             }
+        }
 
-            let picker = NSSharingServicePicker(items: itens)
-            let opcoes = OpcoesDeCompartilhamento(arquivos: itens.compactMap { $0 as? URL })
-            delegadoDeCompartilhamento = opcoes
-            picker.delegate = opcoes
-            guard let view = NSApp.keyWindow?.contentView else {
-                itens.compactMap { $0 as? URL }.forEach(DossieDaConversa.descartarArquivoTemporario)
-                return
-            }
+        let picker = NSSharingServicePicker(items: itens)
+        let opcoes = OpcoesDeCompartilhamento(arquivos: itens.compactMap { $0 as? URL })
+        delegadoDeCompartilhamento = opcoes
+        picker.delegate = opcoes
+        if let view = NSApp.keyWindow?.contentView {
             picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
         }
         #endif
@@ -1771,13 +1697,6 @@ struct TarjaDeProgressoDoCartao: View {
     let cor: Color
     let inicio: Date
     let estimativa: TimeInterval
-    /// Verdadeiro só na transição final, quando o processamento de fato
-    /// terminou mas a fração por tempo (`fracao`, abaixo) ainda não tinha
-    /// chegado a 100% — ela satura de propósito e quase nunca bate com o
-    /// fim real. Nesse caso a tarja ignora o relógio e sobe direto para
-    /// 100%, uma vez só, em vez de seguir tentando estimar algo que já
-    /// aconteceu.
-    var concluido: Bool = false
 
     /// O que a tarja mostra agora — separado da fração real (`fracao`,
     /// calculada a cada tique do relógio) para a barra poder nascer do zero
@@ -1792,94 +1711,66 @@ struct TarjaDeProgressoDoCartao: View {
     @State private var fracaoExibida: Double = 0
 
     var body: some View {
-        if concluido {
-            conteudo
-                .onAppear {
-                    withAnimation(.easeOut(duration: 0.35)) {
-                        fracaoExibida = 1
-                    }
+        TimelineView(.periodic(from: inicio, by: 1)) { contexto in
+            let fracao = BarraDeProgressoDoProcessamento.fracao(
+                decorrido: contexto.date.timeIntervalSince(inicio),
+                estimativa: estimativa
+            )
+
+            GeometryReader { geometria in
+                let alturaPreenchida = max(6, geometria.size.height * fracaoExibida)
+
+                ZStack(alignment: .bottom) {
+                    Rectangle().fill(cor.opacity(0.22))
+
+                    Rectangle()
+                        .fill(cor)
+                        .frame(height: alturaPreenchida)
                 }
-        } else {
-            TimelineView(.periodic(from: inicio, by: 1)) { contexto in
-                let fracao = BarraDeProgressoDoProcessamento.fracao(
-                    decorrido: contexto.date.timeIntervalSince(inicio),
-                    estimativa: estimativa
-                )
 
-                conteudo
-                    .onChange(of: fracao) { _, novaFracao in
-                        fracaoExibida = novaFracao
-                    }
-                    .onAppear {
-                        guard fracao > 0 else { return }
-                        // A entrada é mais lenta que o tique normal (0.3s):
-                        // 0% até a fração real é um salto maior que "mais
-                        // um segundo se passou", e merece se notar como uma
-                        // subida, não um pulo.
-                        withAnimation(.easeOut(duration: 0.7)) {
-                            fracaoExibida = fracao
-                        }
-                    }
+                // O número sobe junto com o preenchimento, e não fica
+                // parado no meio da tarja — é ele quem "anda" com a barra,
+                // não um rótulo estático do lado. `.position`, e não
+                // alinhamento + offset: os dois combinados ficam difíceis de
+                // acertar o sinal certo; posição absoluta é direta.
+                Text("\(Int((fracaoExibida * 100).rounded()))%")
+                    .font(.system(size: 10, weight: .bold))
+                    .monospacedDigit()
+                    // Branco fixo, com uma sombra escura por baixo — e não
+                    // `cor.textoLegivel`. O número não fica só sobre o
+                    // preenchimento sólido: perto do início do
+                    // processamento ele cai sobre a trilha translúcida
+                    // (22% de opacidade), que é um fundo bem mais escuro e
+                    // dessaturado que a cor cheia — contraste calculado para
+                    // uma coisa aparecia errado sobre a outra, e o número
+                    // sumia quase na própria cor da tarja. A sombra garante
+                    // leitura nos dois fundos, sólido ou translúcido.
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.55), radius: 1.5)
+                    .fixedSize()
+                    .rotationEffect(.degrees(-90))
+                    .position(
+                        x: geometria.size.width / 2,
+                        // 12pt abaixo do topo do preenchimento: perto da
+                        // ponta de cima, sem sair da área colorida em quase
+                        // nenhum estágio do andamento.
+                        y: max(12, geometria.size.height - alturaPreenchida + 12)
+                    )
+            }
+            .animation(.easeOut(duration: 0.3), value: fracaoExibida)
+            .onChange(of: fracao) { _, novaFracao in
+                fracaoExibida = novaFracao
+            }
+            .onAppear {
+                guard fracao > 0 else { return }
+                // A entrada é mais lenta que o tique normal (0.3s): 0% até a
+                // fração real é um salto maior que "mais um segundo se
+                // passou", e merece se notar como uma subida, não um pulo.
+                withAnimation(.easeOut(duration: 0.7)) {
+                    fracaoExibida = fracao
+                }
             }
         }
-    }
-
-    private var conteudo: some View {
-        GeometryReader { geometria in
-            // 34pt de piso, não 6: com um preenchimento tão baixo quanto
-            // isso, o próprio número (mais a folga dele) não cabia dentro da
-            // área colorida e ficava colado na borda de cima dela. Um piso
-            // mais alto garante que sempre há espaço de sobra ali dentro,
-            // mesmo com o processamento só começando.
-            let alturaPreenchida = max(34, geometria.size.height * fracaoExibida)
-
-            ZStack(alignment: .bottom) {
-                // Fundo opaco antes da trilha translúcida: sem ele, a
-                // opacidade de 22% deixava aparecer o que está por trás da
-                // tarja (a borda do rodapé de atalhos, na ponta de baixo do
-                // cartão) como um resíduo de linha por cima da própria
-                // barra — a trilha precisa parecer apagada, não ser de
-                // fato transparente.
-                Rectangle().fill(PapagaioTema.superficie)
-
-                Rectangle().fill(cor.opacity(0.22))
-
-                Rectangle()
-                    .fill(cor)
-                    .frame(height: alturaPreenchida)
-            }
-
-            // O número sobe junto com o preenchimento, e não fica
-            // parado no meio da tarja — é ele quem "anda" com a barra,
-            // não um rótulo estático do lado. `.position`, e não
-            // alinhamento + offset: os dois combinados ficam difíceis de
-            // acertar o sinal certo; posição absoluta é direta.
-            Text("\(Int((fracaoExibida * 100).rounded()))%")
-                .font(.system(size: 10, weight: .bold))
-                .monospacedDigit()
-                // Branco fixo, com uma sombra escura por baixo — e não
-                // `cor.textoLegivel`. O número não fica só sobre o
-                // preenchimento sólido: perto do início do
-                // processamento ele cai sobre a trilha translúcida
-                // (22% de opacidade), que é um fundo bem mais escuro e
-                // dessaturado que a cor cheia — contraste calculado para
-                // uma coisa aparecia errado sobre a outra, e o número
-                // sumia quase na própria cor da tarja. A sombra garante
-                // leitura nos dois fundos, sólido ou translúcido.
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.55), radius: 1.5)
-                .fixedSize()
-                .rotationEffect(.degrees(-90))
-                .position(
-                    x: geometria.size.width / 2,
-                    // 20pt abaixo do topo do preenchimento, não 12: colado
-                    // bem na borda o número parecia estar vazando da área
-                    // colorida em vez de estar dentro dela. Com o piso de
-                    // 34pt acima, essa folga sempre cabe.
-                    y: max(20, geometria.size.height - alturaPreenchida + 20)
-                )
-        }
-        .animation(.easeOut(duration: 0.3), value: fracaoExibida)
         // Mais espessa que a tarja parada (4pt): em processamento ela é o
         // único sinal de que algo está acontecendo, e precisa se notar sem
         // precisar ler a porcentagem. Ainda dentro do cartão — quem arredonda

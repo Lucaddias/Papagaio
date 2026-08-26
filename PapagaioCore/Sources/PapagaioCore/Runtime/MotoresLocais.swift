@@ -59,6 +59,46 @@ public actor MotoresLocais {
         return try await QwenEngine(contexto: contexto).summarize(trechos)
     }
 
+/// Resolve pelo contexto as falas que a diarização deixou sem falante.
+    ///
+    /// Primeiro a costura de vozes iguais (`ResolvedorDeFalantes
+    /// .costurarVozesIguais`): fala duvidosa entre dois vizinhos do MESMO
+    /// falante recebe o rótulo deles sem custo de modelo. O Qwen só entra
+    /// quando sobram casos — fala curta entre falantes DIFERENTES — e nem aí
+    /// é obrigatório: sem casos, o arquivo volta costurado e nada carrega.
+    ///
+    /// Usa o MESMO contexto do Qwen do resumo: se a fase de resumo vier logo
+    /// atrás (como no `PipelineDeArquivo`), o modelo já está residente e não há
+    /// carga dupla. Invariante de memória preservada: descarrega o Whisper
+    /// antes de carregar o Qwen, como o `resumir`.
+    public func resolverFalantes(_ arquivo: Arquivo) async throws -> Arquivo {
+        let costurado = ResolvedorDeFalantes.costurarVozesIguais(arquivo)
+        guard let falas = FalasDaConversa.agrupar(costurado.trechos) else { return costurado }
+        let casos = ResolvedorDeFalantes.casosElegiveis(falas: falas)
+        guard !casos.isEmpty else { return costurado }
+
+        await descarregarTranscricao()
+        let contexto = contextoLlama ?? ContextoLlama(modelo: pesoDoResumo)
+        contextoLlama = contexto
+        await ciclo?.registrar(contexto)
+
+        var resolucoes: [UUID: String] = [:]
+        for lote in stride(from: 0, to: casos.count, by: ResolvedorDeFalantes.maxCasosPorChamada) {
+            let casosDoLote = Array(
+                casos[lote..<min(lote + ResolvedorDeFalantes.maxCasosPorChamada, casos.count)]
+            )
+            let bruto = try await contexto.completar(
+                prompt: ResolvedorDeFalantes.prompt(para: casosDoLote),
+                gramatica: ResolvedorDeFalantes.gramatica(para: casosDoLote),
+                maxTokens: 1_024
+            )
+            resolucoes.merge(
+                ResolvedorDeFalantes.decodificar(bruto, casos: casosDoLote)
+            ) { _, novo in novo }
+        }
+        return ResolvedorDeFalantes.aplicar(resolucoes, casos: casos, em: costurado)
+    }
+
     // MARK: - Descarga
 
     public func descarregarTranscricao() async {

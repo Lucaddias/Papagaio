@@ -3,6 +3,12 @@ import PapagaioCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Caixa de referência para transportar a reunião pendente do Calendar
+/// entre a View e o handler `modelo.aoProduzirAudio` instalado uma vez.
+final class CaixaPendente: ObservableObject {
+    @Published var pendente: ReuniaoPendenteCalendar?
+}
+
 /// O formulário da ficha da entrevista num valor só. Os campos espelham os do
 /// `EditorDeInformacoesDoCard`; juntá-los aqui faz abrir, salvar e resetar o
 /// formulário virarem uma operação cada — antes eram dez estados soltos que
@@ -36,6 +42,11 @@ struct ContentView: View {
 
     @State private var biblioteca: Biblioteca?
     @State private var modelos: ModelosViewModel?
+    /// A conexão com o Granola. Nasce junto com a biblioteca (`abrir`), que é
+    /// quem também entrega o destino das importações.
+    @State private var granola: GranolaViewModel?
+    /// A conexão com o Google Calendar.
+    @State private var googleCalendar: GoogleCalendarViewModel?
     @State private var perfil = PerfilViewModel()
     @State private var notificacoes = NotificacoesViewModel()
     @State private var equipes = EquipesDoUsuario.carregar()
@@ -43,6 +54,11 @@ struct ContentView: View {
     @State private var mostrandoImportador = false
     @State private var arquivoParaConfigurar: Arquivo?
     @State private var arquivosAguardandoFicha: Set<ArquivoID> = []
+    /// Caixa de referência para a pendente em gravação: o handler
+    /// `modelo.aoProduzirAudio` é instalado uma vez e sobrevive a
+    /// reconstruções da View. Um `@State` puro seria capturado com valor
+    /// obsoleto; a caixa mantém a referência viva.
+    @StateObject private var pendenteEmGravacao = CaixaPendente()
     /// O formulário da ficha num valor só: abrir, salvar e resetar viram uma
     /// operação cada, no lugar de dez estados soltos que precisavam andar em
     /// sincronia na mão.
@@ -213,6 +229,11 @@ struct ContentView: View {
             perfil.iniciar()
             await abrir()
         }
+        // Retorno do navegador quando a autorização do Granola roda no
+        // navegador padrão do sistema.
+        .onOpenURL { url in
+            GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
+        }
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor
         }
@@ -313,18 +334,53 @@ struct ContentView: View {
     private var conteudoDaTela: some View {
         switch telaSelecionada {
         case .biblioteca:
-            BibliotecaHomeView(gravador: modelo, biblioteca: biblioteca, modelos: modelos, consulta: $consulta,
+            BibliotecaHomeView(gravador: modelo, biblioteca: biblioteca, modelos: modelos, googleCalendar: googleCalendar, consulta: $consulta,
                                secaoSelecionada: $secaoDaBiblioteca, pastaSelecionada: $pastaDaBibliotecaSelecionada,
                                mostrandoImportador: $mostrandoImportador, processamentoAutomatico: processamentoAutomatico,
                                aoAlternarGravacao: aoAlternarGravacao, aoPausarGravacao: aoPausarGravacao,
                                aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
                                aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
-                               aoSoltarArquivos: importarArrastados, focoNaGravacao: $focoNaGravacao,
+                               aoSoltarArquivos: importarArrastados,
+aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    // Marca ANTES de iniciar: se a pessoa
+                                    // finalizar rápido, o handler de áudio
+                                    // já precisa saber que é uma pendente.
+                                    pendenteEmGravacao.pendente = pendente
+                                    ficha.titulo = pendente.titulo
+                                    ficha.data = pendente.dataHora
+                                    ficha.entrevistadores = pendente.participantes.joined(separator: "\n")
+                                    arquivoParaConfigurar = nil
+                                    Task {
+                                        await aoAlternarGravacao()
+                                        withAnimation(.snappy(duration: 0.18)) { focoNaGravacao = true }
+                                    }
+                                },
+                                aoImportarAudioDaReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    guard let bib = biblioteca else { return }
+                                    let painel = NSOpenPanel()
+                                    painel.title = "Escolha o arquivo de áudio da reunião"
+                                    painel.allowedContentTypes = [.audio, .mpeg4Audio, .mp3, .wav]
+                                    painel.allowsMultipleSelection = false
+                                    guard painel.runModal() == .OK, let url = painel.url else { return }
+                                    Task {
+                                        let acesso = url.startAccessingSecurityScopedResource()
+                                        defer { if acesso { url.stopAccessingSecurityScopedResource() } }
+                                        await googleCalendar?.importarAudioParaReuniao(pendente, audioURL: url, biblioteca: bib)
+                                    }
+                                },
+                                aoIgnorarReuniao: { (pendente: ReuniaoPendenteCalendar) in
+                                    Task { @MainActor in
+                                        googleCalendar?.ignorarPendente(pendente)
+                                        biblioteca?.moverPendenteParaLixeira(pendente)
+                                    }
+                                },
+                               focoNaGravacao: $focoNaGravacao,
                                aoAbrirFicha: abrirFichaDaEntrevista)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia, consulta: consulta)
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
+                              granola: granola, googleCalendar: googleCalendar, biblioteca: biblioteca)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
@@ -357,6 +413,25 @@ struct ContentView: View {
             }
             biblioteca = nova
 
+            let conexao = GranolaViewModel()
+            conexao.aoNotificar = { titulo, mensagem, tipo in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
+            }
+            granola = conexao
+
+            let conexaoGoogle = GoogleCalendarViewModel()
+            conexaoGoogle.aoNotificar = { titulo, mensagem, tipo in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
+            }
+            googleCalendar = conexaoGoogle
+
+            // Conecta automaticamente se houver credenciais salvas
+            if CredenciaisGoogle.estaConfigurado {
+                Task {
+                    await conexaoGoogle.conectar(biblioteca: nova)
+                }
+            }
+
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos
             )
@@ -367,24 +442,41 @@ struct ContentView: View {
             // A gravação entrega o áudio; a biblioteca salva e processa. Esta
             // ligação permanece na raiz para não desaparecer ao redesenhar uma
             // subview de biblioteca.
+            // Caixa capturada por referência: `@State` não pode ser lido
+            // diretamente num handler instalado uma vez (captura obsoleta).
+            let caixaPendente = pendenteEmGravacao
+            let gcalCapturado = googleCalendar
             modelo.aoProduzirAudio = { titulo, pasta, duracao, notas, dataDeGravacao in
-                if let arquivo = await nova.registrar(
-                    titulo: titulo,
-                    pastaRelativa: pasta,
-                    duracao: duracao,
-                    notas: notas,
-                    dataDeGravacao: dataDeGravacao
-                ) {
-                    if let pastaDaBibliotecaSelecionada {
-                        PreferenciasVisuaisDoArquivo.definirPasta(
-                            pastaDaBibliotecaSelecionada,
-                            para: arquivo.id
-                        )
-                    }
-                    if nova.processamentoAutomatico {
-                        arquivosAguardandoFicha.insert(arquivo.id)
-                    } else {
-                        abrirFichaDaEntrevista(para: arquivo)
+                if let pendente = caixaPendente.pendente {
+                    // Gravação iniciada a partir de uma reunião pendente do
+                    // Calendar: o título vem do evento, não do relógio.
+                    let audioURL = nova.armazenamento.resolver(relativo: pasta)
+                        .appendingPathComponent(Armazenamento.Nome.microfone)
+                    _ = await gcalCapturado?.importarAudioParaReuniao(
+                        pendente, audioURL: audioURL, biblioteca: nova
+                    )
+                    await MainActor.run { caixaPendente.pendente = nil }
+                    await MainActor.run { focoNaGravacao = false }
+                } else {
+                    // Gravação normal
+                    if let arquivo = await nova.registrar(
+                        titulo: titulo,
+                        pastaRelativa: pasta,
+                        duracao: duracao,
+                        notas: notas,
+                        dataDeGravacao: dataDeGravacao
+                    ) {
+                        if let pastaDaBibliotecaSelecionada {
+                            PreferenciasVisuaisDoArquivo.definirPasta(
+                                pastaDaBibliotecaSelecionada,
+                                para: arquivo.id
+                            )
+                        }
+                        if nova.processamentoAutomatico {
+                            arquivosAguardandoFicha.insert(arquivo.id)
+                        } else {
+                            abrirFichaDaEntrevista(para: arquivo)
+                        }
                     }
                 }
             }
@@ -788,6 +880,9 @@ struct ContentView: View {
 
     private func aoCancelarGravacao() async {
         await modelo.cancelar()
+        // Cancelar não produz áudio: sem isto, a próxima gravação comum seria
+        // erroneamente roteada para a pendente do Calendar marcada antes.
+        pendenteEmGravacao.pendente = nil
         focoNaGravacao = false
     }
 

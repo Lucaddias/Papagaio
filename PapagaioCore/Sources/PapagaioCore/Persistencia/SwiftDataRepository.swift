@@ -46,6 +46,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         persistido.importadoEm = a.importadoEm
         persistido.duracao = a.duracao
         persistido.pastaRelativa = a.pastaRelativa
+        persistido.idExterno = a.idExterno
         persistido.engineTranscricao = a.engineTranscricao
         persistido.engineResumo = a.engineResumo
         // Uma atualização tardia do pipeline não pode ressuscitar um item que
@@ -431,13 +432,16 @@ public actor SwiftDataRepository: ArquivoRepository {
                     // `falanteAcustico` vem junto: sem ele a atribuição da
                     // diarização sumia em todo reload do banco:
                     palavras: (try? JSONDecoder().decode([Palavra].self, from: pTrecho.palavrasJSON ?? Data()))?
-                        .map { p in
+                        .map {
                             Palavra(
-                                id: p.id,
-                                start: p.start,
-                                end: p.end,
-                                texto: curarTextoDePalavraLegada(p.texto),
-                                falanteAcustico: p.falanteAcustico
+                                id: $0.id,
+                                start: $0.start,
+                                end: $0.end,
+                                texto: curarTextoDePalavraLegada($0.texto),
+                                // A diarização sobrevive ao round-trip: sem isto
+                                // os falantes somiam ao reabrir o app (o init com
+                                // default apagava o campo).
+                                falanteAcustico: $0.falanteAcustico
                             )
                         }
                         .filter { !$0.texto.isEmpty } ?? []
@@ -487,6 +491,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             engineTranscricao: p.engineTranscricao,
             engineResumo: p.engineResumo,
             apagadoEm: p.apagadoEm,
+            idExterno: p.idExterno,
             importadoEm: p.importadoEm
         )
     }
