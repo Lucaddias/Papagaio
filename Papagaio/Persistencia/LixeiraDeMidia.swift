@@ -6,6 +6,7 @@ enum LixeiraDeMidia {
     enum Erro: LocalizedError {
         case caminhoForaDasGravacoes
         case falhaAoEsvaziar(Int)
+        case falhaAoReverterMovimento
 
         var errorDescription: String? {
             switch self {
@@ -15,6 +16,8 @@ enum LixeiraDeMidia {
                 quantidade == 1
                     ? "Um anexo não pôde ser apagado e continua na lixeira."
                     : "\(quantidade) anexos não puderam ser apagados e continuam na lixeira."
+            case .falhaAoReverterMovimento:
+                "O anexo foi movido para a lixeira, mas a lista da conversa não pôde ser atualizada. Ele continua na lixeira para não ser perdido."
             }
         }
     }
@@ -36,7 +39,8 @@ enum LixeiraDeMidia {
         arquivoID: ArquivoID,
         conversaTitulo: String,
         pastaDaConversa: URL,
-        em defaults: UserDefaults = .standard
+        em defaults: UserDefaults = .standard,
+        aposMover: () throws -> Void = {}
     ) throws {
         let pasta = pastaDaConversa.appendingPathComponent(
             "\(NomeDeArquivoSeguro.gerar(de: conversaTitulo)) (excluídos)",
@@ -50,21 +54,38 @@ enum LixeiraDeMidia {
         let destino = pasta.appendingPathComponent("\(identificador.uuidString)-\(nome)")
         try FileManager.default.moveItem(at: url, to: destino)
 
-        var atuais = itens(em: defaults)
-        atuais.append(
-            MidiaNaLixeira(
-                id: identificador,
-                arquivoID: arquivoID,
-                conversaTitulo: conversaTitulo,
-                nome: nome,
-                tamanho: tamanho,
-                tipo: tipo,
-                daGravacao: daGravacao,
-                caminhoOriginal: url.path,
-                caminhoNaLixeira: destino.path
-            )
+        let item = MidiaNaLixeira(
+            id: identificador,
+            arquivoID: arquivoID,
+            conversaTitulo: conversaTitulo,
+            nome: nome,
+            tamanho: tamanho,
+            tipo: tipo,
+            daGravacao: daGravacao,
+            caminhoOriginal: url.path,
+            caminhoNaLixeira: destino.path
         )
+        var atuais = itens(em: defaults)
+        atuais.append(item)
         salvar(atuais, em: defaults)
+
+        do {
+            try aposMover()
+        } catch {
+            // A conversa ainda guarda o bookmark para o caminho de origem.
+            // Se a persistência dessa lista falhar, devolver o arquivo evita
+            // que ela fique apontando para um caminho que não existe.
+            do {
+                try FileManager.default.moveItem(at: destino, to: url)
+                descartarRegistro(item, em: defaults)
+            } catch {
+                // A reversão também pode falhar (por exemplo, se outro
+                // processo ocupou o nome original). Nesse caso o registro na
+                // lixeira permanece como caminho recuperável.
+                throw Erro.falhaAoReverterMovimento
+            }
+            throw error
+        }
     }
 
     /// Devolve o arquivo ao lugar e ao **nome** de origem.

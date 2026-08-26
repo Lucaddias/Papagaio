@@ -51,6 +51,42 @@ func apagarAnexoDaLixeiraMantemDiscoERegistroEmSincronia() throws {
 }
 
 @MainActor
+@Test("Falha ao atualizar a conversa desfaz o movimento para a lixeira")
+func moverParaLixeiraDesfazQuandoPersistenciaDaConversaFalha() throws {
+    let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
+    defer {
+        try? FileManager.default.removeItem(at: raiz)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    let conversa = armazenamento.raiz
+        .appendingPathComponent(Armazenamento.pastaGravacoes, isDirectory: true)
+        .appendingPathComponent("Conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    let origem = conversa.appendingPathComponent("anexo.txt")
+    try Data("conteúdo".utf8).write(to: origem)
+
+    struct FalhaDePersistencia: Error {}
+    #expect(throws: FalhaDePersistencia.self) {
+        try LixeiraDeMidia.mover(
+            url: origem,
+            nome: "anexo.txt",
+            tamanho: 8,
+            tipo: "Documento",
+            daGravacao: false,
+            arquivoID: ArquivoID(),
+            conversaTitulo: "Conversa",
+            pastaDaConversa: conversa,
+            em: defaults,
+            aposMover: { throw FalhaDePersistencia() }
+        )
+    }
+
+    #expect(FileManager.default.fileExists(atPath: origem.path))
+    #expect(LixeiraDeMidia.itens(em: defaults).isEmpty)
+}
+
+@MainActor
 @Test("Restaurar anexo recria seu bookmark e o mantém visível na conversa")
 func restaurarAnexoDaLixeiraRecriaRegistroDaConversa() throws {
     let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
