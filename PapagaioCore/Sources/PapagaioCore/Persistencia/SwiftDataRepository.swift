@@ -143,9 +143,14 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
-        let bucketA = try modelContext.fetch(porTitulo).filter {
-            $0.apagadoEm == nil && $0.espaco?.id == alvo
-        }
+        let bucketA = try modelContext.fetch(porTitulo)
+            .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
+            // O descritor usa `criadoEm` porque SwiftData não traduz a
+            // coalescência de `importadoEm ?? criadoEm` para SQL de forma
+            // portátil. A ordenação final mantém o mesmo critério usado no
+            // bucket de corpo: quando entrou na biblioteca, e não quando o
+            // áudio foi originalmente gravado.
+            .sorted { ($0.importadoEm ?? $0.criadoEm) > ($1.importadoEm ?? $1.criadoEm) }
         let idsDoTitulo = Set(bucketA.map(\.id))
 
         // Bucket B — o termo está no corpo: visão geral, trecho, insight ou nota.

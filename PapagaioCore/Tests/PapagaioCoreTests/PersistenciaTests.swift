@@ -436,6 +436,33 @@ func buscaPrioridadeDeTitulo() async throws {
     #expect(Set(resultados.map(\.id)).count == resultados.count)
 }
 
+@Test("Busca por título ordena importações pela entrada na biblioteca")
+func buscaPorTituloOrdenaPelaEntradaNaBiblioteca() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let gravacaoMaisRecente = Arquivo(
+        titulo: "Orçamento gravado recentemente",
+        criadoEm: Date(timeIntervalSinceReferenceDate: 2_000),
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: espaco
+    )
+    let importacaoMaisRecente = Arquivo(
+        titulo: "Orçamento importado agora",
+        criadoEm: Date(timeIntervalSinceReferenceDate: 1_000),
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: espaco,
+        importadoEm: Date(timeIntervalSinceReferenceDate: 3_000)
+    )
+
+    try await repo.salvar(gravacaoMaisRecente)
+    try await repo.salvar(importacaoMaisRecente)
+
+    #expect(
+        try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id)
+            == [importacaoMaisRecente.id, gravacaoMaisRecente.id]
+    )
+}
+
 @Test("Busca com e sem acento devolve o mesmo")
 func buscaIgnoraAcento() async throws {
     let repo = try repositorioDeTeste()
