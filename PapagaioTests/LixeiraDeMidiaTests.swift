@@ -51,6 +51,44 @@ func apagarAnexoDaLixeiraMantemDiscoERegistroEmSincronia() throws {
 }
 
 @MainActor
+@Test("Restaurar anexo recria seu bookmark e o mantém visível na conversa")
+func restaurarAnexoDaLixeiraRecriaRegistroDaConversa() throws {
+    let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
+    defer {
+        try? FileManager.default.removeItem(at: raiz)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    let conversa = armazenamento.raiz
+        .appendingPathComponent(Armazenamento.pastaGravacoes, isDirectory: true)
+        .appendingPathComponent("Conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    let origem = conversa.appendingPathComponent("anexo.txt")
+    try Data("conteúdo".utf8).write(to: origem)
+
+    let arquivoID = ArquivoID()
+    try LixeiraDeMidia.mover(
+        url: origem,
+        nome: "anexo.txt",
+        tamanho: 8,
+        tipo: "Documento",
+        daGravacao: false,
+        arquivoID: arquivoID,
+        conversaTitulo: "Conversa",
+        pastaDaConversa: conversa,
+        em: defaults
+    )
+    let item = try #require(LixeiraDeMidia.itens(em: defaults).first)
+
+    #expect(LixeiraDeMidia.restaurar(item, em: defaults, armazenamento: armazenamento))
+
+    #expect(FileManager.default.fileExists(atPath: origem.path))
+    #expect(LixeiraDeMidia.itens(em: defaults).isEmpty)
+    #expect(MidiasDaConversa.carregar(arquivoID).map(\.url.standardizedFileURL) == [origem.standardizedFileURL])
+    MidiasDaConversa.remover(arquivoID)
+}
+
+@MainActor
 @Test("Lixeira recusa apagar caminho externo e mantém o registro para revisão")
 func lixeiraDeMidiaRecusaCaminhoExterno() throws {
     let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()

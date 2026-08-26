@@ -681,7 +681,7 @@ struct BibliotecaHomeView: View {
                             await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
                             LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
                             if !LixeiraDeMidia.restaurarTudo() {
-                                erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados e continuam na lixeira."
+                                erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados. Revise os itens restantes na lixeira."
                             }
                             atualizarPreferenciasVisuais()
                         }

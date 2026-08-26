@@ -93,16 +93,27 @@ enum LixeiraDeMidia {
         }
 
         do {
-            try FileManager.default.createDirectory(
-                at: destino.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
             // Já existe um arquivo com o nome de destino: o que vale é o que
-            // está na conversa, então o da lixeira é descartado.
+            // está na conversa. Antes de descartar o da lixeira, porém,
+            // garantimos que a lista de anexos também aponta para ele.
             if FileManager.default.fileExists(atPath: destino.path) {
+                try registrarAnexoRestaurado(item, em: destino)
                 try FileManager.default.removeItem(at: origem)
             } else {
+                try FileManager.default.createDirectory(
+                    at: destino.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 try FileManager.default.moveItem(at: origem, to: destino)
+                do {
+                    try registrarAnexoRestaurado(item, em: destino)
+                } catch {
+                    // O arquivo voltou para a conversa, mas o bookmark não
+                    // pôde ser salvo. Reverte o move para a lixeira, que é o
+                    // único estado em que o item segue recuperável.
+                    try? FileManager.default.moveItem(at: destino, to: origem)
+                    throw error
+                }
             }
         } catch {
             return false
@@ -195,6 +206,24 @@ enum LixeiraDeMidia {
         let caminho = try validarCaminhos(do: item, armazenamento: armazenamento)
         guard fm.fileExists(atPath: caminho.path) else { return }
         try fm.removeItem(at: caminho)
+    }
+
+    /// Áudio canônico da gravação é descoberto diretamente na pasta da
+    /// conversa. Anexos, por outro lado, existem na interface apenas quando
+    /// seu bookmark está em `MidiasDaConversa`; restaurar só o arquivo os
+    /// deixaria invisíveis no próximo carregamento.
+    private static func registrarAnexoRestaurado(
+        _ item: MidiaNaLixeira,
+        em destino: URL
+    ) throws {
+        guard !item.daGravacao else { return }
+        let anexo = try MidiasDaConversa.anexo(para: destino)
+        var anexos = MidiasDaConversa.carregar(item.arquivoID)
+        guard !anexos.contains(where: {
+            $0.url.standardizedFileURL == destino.standardizedFileURL
+        }) else { return }
+        anexos.append(anexo)
+        try MidiasDaConversa.salvar(anexos, para: item.arquivoID)
     }
 
     /// Os dois caminhos vêm de UserDefaults e não podem ganhar autoridade
