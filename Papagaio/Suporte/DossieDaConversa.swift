@@ -74,19 +74,21 @@ enum DossieDaConversa {
         var erroDoCoordenador: NSError?
         var erroDaCopia: Error?
         var destino: URL?
+        var pastaDeSaida: URL?
 
         NSFileCoordinator().coordinate(
             readingItemAt: pasta,
             options: [.forUploading],
             error: &erroDoCoordenador
         ) { zipTemporario in
-            let pastaDeSaida = FileManager.default.temporaryDirectory
+            let pasta = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            let alvo = pastaDeSaida
+            pastaDeSaida = pasta
+            let alvo = pasta
                 .appendingPathComponent("\(base).zip")
             do {
                 try FileManager.default.createDirectory(
-                    at: pastaDeSaida, withIntermediateDirectories: true
+                    at: pasta, withIntermediateDirectories: true
                 )
                 try FileManager.default.copyItem(at: zipTemporario, to: alvo)
                 destino = alvo
@@ -95,8 +97,14 @@ enum DossieDaConversa {
             }
         }
 
-        if let erroDoCoordenador { throw erroDoCoordenador }
-        if let erroDaCopia { throw erroDaCopia }
+        if let erroDoCoordenador {
+            if let pastaDeSaida { try? fm.removeItem(at: pastaDeSaida) }
+            throw erroDoCoordenador
+        }
+        if let erroDaCopia {
+            if let pastaDeSaida { try? fm.removeItem(at: pastaDeSaida) }
+            throw erroDaCopia
+        }
         guard let destino else { throw CocoaError(.fileWriteUnknown) }
         return destino
     }
@@ -203,32 +211,42 @@ enum DossieDaConversa {
     ///
     /// Zip porque pasta solta não se anexa em e-mail nem em mensagem.
     static func zipar(_ pasta: URL) throws -> URL {
+        let fm = FileManager.default
+        let nomeDoArquivo = pasta.lastPathComponent
         var erroDoCoordenador: NSError?
         var erroDaCopia: Error?
         var destino: URL?
+        var pastaDeSaida: URL?
 
         NSFileCoordinator().coordinate(
             readingItemAt: pasta,
             options: [.forUploading],
             error: &erroDoCoordenador
         ) { zipTemporario in
-            let pastaDeSaida = FileManager.default.temporaryDirectory
+            let pasta = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
-            let alvo = pastaDeSaida
-                .appendingPathComponent("\(pasta.lastPathComponent).zip")
+            pastaDeSaida = pasta
+            let alvo = pasta
+                .appendingPathComponent("\(nomeDoArquivo).zip")
             do {
-                try FileManager.default.createDirectory(
-                    at: pastaDeSaida, withIntermediateDirectories: true
+                try fm.createDirectory(
+                    at: pasta, withIntermediateDirectories: true
                 )
-                try FileManager.default.copyItem(at: zipTemporario, to: alvo)
+                try fm.copyItem(at: zipTemporario, to: alvo)
                 destino = alvo
             } catch {
                 erroDaCopia = error
             }
         }
 
-        if let erroDoCoordenador { throw erroDoCoordenador }
-        if let erroDaCopia { throw erroDaCopia }
+        if let erroDoCoordenador {
+            if let pastaDeSaida { try? fm.removeItem(at: pastaDeSaida) }
+            throw erroDoCoordenador
+        }
+        if let erroDaCopia {
+            if let pastaDeSaida { try? fm.removeItem(at: pastaDeSaida) }
+            throw erroDaCopia
+        }
         guard let destino else { throw CocoaError(.fileWriteUnknown) }
         return destino
     }

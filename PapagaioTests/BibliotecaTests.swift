@@ -552,3 +552,22 @@ func pacoteDaConversaNaoAcumulaPastaIntermediaria() throws {
     DossieDaConversa.descartarArquivoTemporario(pacote)
     #expect(!fm.fileExists(atPath: raizDoPacote.path))
 }
+
+@Test("Compactar pasta mantém o nome do pacote e permite limpar o temporário")
+func zipDaPastaMantemNomeELimpeza() throws {
+    let fm = FileManager.default
+    let pasta = fm.temporaryDirectory
+        .appendingPathComponent("Projeto-\(UUID().uuidString)", isDirectory: true)
+    try fm.createDirectory(at: pasta, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: pasta) }
+    try Data("conteúdo".utf8).write(to: pasta.appendingPathComponent("nota.txt"))
+
+    let zip = try DossieDaConversa.zipar(pasta)
+
+    #expect(zip.lastPathComponent == "\(pasta.lastPathComponent).zip")
+    #expect(fm.fileExists(atPath: zip.path))
+
+    let raizDoZip = zip.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(zip)
+    #expect(!fm.fileExists(atPath: raizDoZip.path))
+}
