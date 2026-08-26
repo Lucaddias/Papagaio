@@ -483,7 +483,6 @@ func pacoteDaConversaNaoAcumulaPastaIntermediaria() throws {
     let base = DossieDaConversa.nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
 
     let pacote = try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: audio)
-    defer { try? fm.removeItem(at: pacote.deletingLastPathComponent()) }
 
     let intermediarias = try fm.contentsOfDirectory(
         at: fm.temporaryDirectory,
@@ -494,4 +493,8 @@ func pacoteDaConversaNaoAcumulaPastaIntermediaria() throws {
     }
     #expect(intermediarias.isEmpty)
     #expect(fm.fileExists(atPath: pacote.path))
+
+    let raizDoPacote = pacote.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(pacote)
+    #expect(!fm.fileExists(atPath: raizDoPacote.path))
 }

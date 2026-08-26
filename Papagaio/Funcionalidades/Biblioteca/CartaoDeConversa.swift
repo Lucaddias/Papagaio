@@ -1477,6 +1477,7 @@ struct CartaoDeConversa: View {
                         arquivo: arquivoParaExportar, audioPrincipal: audioParaExportar
                     )
                 }.value
+                defer { DossieDaConversa.descartarArquivoTemporario(pacote) }
 
                 let painel = NSOpenPanel()
                 painel.title = "Escolha onde salvar \(titulo)"

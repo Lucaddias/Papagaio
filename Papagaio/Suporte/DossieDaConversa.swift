@@ -184,6 +184,21 @@ enum DossieDaConversa {
         try? fm.removeItem(at: raizDoPacote)
     }
 
+    /// Descarta o zip temporário produzido para uma exportação direta. O
+    /// arquivo só é seguro de remover depois que a cópia para o destino da
+    /// pessoa terminou; compartilhamentos continuam responsáveis por mantê-lo
+    /// enquanto o serviço do macOS o consome.
+    static func descartarArquivoTemporario(_ arquivo: URL) {
+        let fm = FileManager.default
+        let temporario = fm.temporaryDirectory.standardizedFileURL
+        let raizDoPacote = arquivo.deletingLastPathComponent().standardizedFileURL
+        let componentesTemporarios = temporario.pathComponents
+        guard raizDoPacote.pathComponents.starts(with: componentesTemporarios),
+              raizDoPacote.pathComponents.count == componentesTemporarios.count + 1
+        else { return }
+        try? fm.removeItem(at: raizDoPacote)
+    }
+
     /// Compacta uma pasta, do mesmo jeito que o "Comprimir" do Finder.
     ///
     /// Zip porque pasta solta não se anexa em e-mail nem em mensagem.
