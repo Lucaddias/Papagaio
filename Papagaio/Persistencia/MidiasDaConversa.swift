@@ -5,11 +5,14 @@ import PapagaioCore
 enum MidiasDaConversa {
     enum Erro: LocalizedError {
         case arquivoForaDaConversa
+        case falhaAoReverterCopia
 
         var errorDescription: String? {
             switch self {
             case .arquivoForaDaConversa:
                 "O arquivo não pertence à pasta desta conversa e não foi apagado."
+            case .falhaAoReverterCopia:
+                "A cópia do anexo não pôde ser registrada e ficou na pasta da conversa para não ser apagada incorretamente."
             }
         }
     }
@@ -71,6 +74,33 @@ enum MidiasDaConversa {
         let destino = pastaDeMidia.appendingPathComponent(nomeUnico)
         try FileManager.default.copyItem(at: origem, to: destino)
         return destino
+    }
+
+    /// Copia e só mantém o arquivo se o estado que vai referenciá-lo também
+    /// for gravado. A cópia mora dentro do container do app, portanto uma
+    /// falha posterior não pode deixá-la invisível e ocupando disco.
+    @discardableResult
+    static func copiar(
+        _ origem: URL,
+        para pastaDaConversa: URL,
+        tituloDaConversa: String,
+        aposCopiar: (URL) throws -> Void
+    ) throws -> URL {
+        let destino = try copiar(origem, para: pastaDaConversa, tituloDaConversa: tituloDaConversa)
+        do {
+            try aposCopiar(destino)
+            return destino
+        } catch {
+            do {
+                try FileManager.default.removeItem(at: destino)
+            } catch {
+                // Se até a limpeza falhar, a cópia continua fisicamente
+                // presente. Não escondemos esse estado como se a importação
+                // tivesse sido totalmente revertida.
+                throw Erro.falhaAoReverterCopia
+            }
+            throw error
+        }
     }
 
     static func apagarArquivoSalvo(_ anexo: AnexoDeMidiaDaConversa, pastaDaConversa: URL) throws {

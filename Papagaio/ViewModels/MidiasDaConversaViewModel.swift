@@ -92,16 +92,19 @@ final class MidiasDaConversaViewModel {
         }
 
         do {
-            let destino = try MidiasDaConversa.copiar(
+            var atualizados: [AnexoDeMidiaDaConversa] = []
+            try MidiasDaConversa.copiar(
                 url,
                 para: pastaDaConversa,
-                tituloDaConversa: tituloDaConversa
+                tituloDaConversa: tituloDaConversa,
+                aposCopiar: { destino in
+                    let anexo = try MidiasDaConversa.anexo(para: destino)
+                    atualizados = anexos.filter { $0.url != anexo.url }
+                    atualizados.append(anexo)
+                    atualizados.sort { $0.data > $1.data }
+                    try MidiasDaConversa.salvar(atualizados, para: arquivoID)
+                }
             )
-            let anexo = try MidiasDaConversa.anexo(para: destino)
-            var atualizados = anexos.filter { $0.url != anexo.url }
-            atualizados.append(anexo)
-            atualizados.sort { $0.data > $1.data }
-            try MidiasDaConversa.salvar(atualizados, para: arquivoID)
             anexos = atualizados
         } catch {
             erro = Self.mensagemAmigavel(error)
