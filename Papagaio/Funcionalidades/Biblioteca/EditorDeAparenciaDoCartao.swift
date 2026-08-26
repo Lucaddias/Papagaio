@@ -17,6 +17,10 @@ struct EditorDeAparenciaDoCartao: View {
     @Binding var semCor: Bool
     @Binding var banner: URL?
     @Binding var ajuste: AjusteDeImagem
+    /// O modelo compacto não tem faixa — só a tarja de cor lateral — então
+    /// não existe onde a imagem apareceria. Mostrar "Escolher imagem…"
+    /// nesse modelo prometia um efeito que a pessoa nunca veria acontecer.
+    var mostrarImagem = true
 
     @State private var hexDigitado = ""
     @FocusState private var editandoHex: Bool
@@ -77,39 +81,41 @@ struct EditorDeAparenciaDoCartao: View {
 
             }
 
-            SeparadorPapagaio()
+            if mostrarImagem {
+                SeparadorPapagaio()
 
-            secao("Imagem")
+                secao("Imagem")
 
-            HStack(spacing: PapagaioTema.Espaco.curto) {
-                Button(banner == nil ? "Escolher imagem…" : "Trocar imagem…", action: escolherImagem)
-                    .buttonStyle(BotaoDeContornoPapagaio())
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Button(banner == nil ? "Escolher imagem…" : "Trocar imagem…", action: escolherImagem)
+                        .buttonStyle(BotaoDeContornoPapagaio())
+
+                    if banner != nil {
+                        Button("Remover", systemImage: "trash") {
+                            AparenciaDoCartao.removerBanner(arquivoID)
+                            banner = nil
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.perigo)
+                    }
+                }
 
                 if banner != nil {
-                    Button("Remover", systemImage: "trash") {
-                        AparenciaDoCartao.removerBanner(arquivoID)
-                        banner = nil
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.perigo)
+                    SeletorDeAjusteDeImagem(ajuste: Binding(
+                        get: { ajuste },
+                        set: {
+                            ajuste = $0
+                            AparenciaDoCartao.definirAjuste($0, para: arquivoID)
+                        }
+                    ))
                 }
-            }
 
-            if banner != nil {
-                SeletorDeAjusteDeImagem(ajuste: Binding(
-                    get: { ajuste },
-                    set: {
-                        ajuste = $0
-                        AparenciaDoCartao.definirAjuste($0, para: arquivoID)
-                    }
-                ))
+                Text("A imagem cobre a cor. O texto do cartão ganha um véu escuro por cima dela para continuar legível.")
+                    .font(.caption)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text("A imagem cobre a cor. O texto do cartão ganha um véu escuro por cima dela para continuar legível.")
-                .font(.caption)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(PapagaioTema.Espaco.largo)
         .frame(width: 280)

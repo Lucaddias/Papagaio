@@ -94,12 +94,6 @@ struct LinhaDeFala: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
-
-            if let speaker = fala.speaker {
-                Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
-                    .font(.caption)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-            }
         }
     }
 

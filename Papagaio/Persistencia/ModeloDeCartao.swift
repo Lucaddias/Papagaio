@@ -6,15 +6,23 @@ import Foundation
 /// a mesma lógica da aparência clara/escura: cada um é uma amostra clicável,
 /// com o exemplo mudando na hora.
 enum ModeloDeCartao: Int, CaseIterable {
-    /// O cartão de sempre: faixa colorida (ou imagem de capa) no topo, no
-    /// estilo Classroom.
-    case comCapa
     /// Sem faixa: uma tarja de cor fina na lateral esquerda, título e dados
     /// direto no corpo — mais compacto, mais perto de uma lista densa.
-    case compacto
+    ///
+    /// Declarado primeiro (mas com `rawValue` 1, não 0): é o que `allCases`
+    /// usa para ordenar as duas amostras em Configurações, e o pedido foi
+    /// "Compacto" à esquerda. O `rawValue` explícito mantém compatível quem
+    /// já tinha `comCapa` (0) salvo em `@AppStorage` antes desta troca — só
+    /// a ordem de exibição muda, o valor persistido de cada caso não.
+    case compacto = 1
+    /// O cartão de sempre: faixa colorida (ou imagem de capa) no topo, no
+    /// estilo Classroom.
+    case comCapa = 0
 
     static let chave = "modeloDeCartao"
-    static let padrao: ModeloDeCartao = .comCapa
+    /// Compacto é o padrão agora: quem abre o app pela primeira vez começa
+    /// com ele selecionado, não mais "Com capa".
+    static let padrao: ModeloDeCartao = .compacto
 
     var titulo: String {
         switch self {

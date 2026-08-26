@@ -84,7 +84,16 @@ struct MidiaDaConversaView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, PapagaioTema.Espaco.largo)
                 }
-                .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318)
+                // Só `minHeight`, sem `maxHeight`: `CartaoDeAnexoDeMidia`
+                // (o vizinho na grade) cresce além de 318pt quando o nome do
+                // anexo ou os selos precisam de mais espaço. Com este cartão
+                // travado em 318, ele sobrava mais baixo que o vizinho na
+                // mesma fileira — o "+" e o texto pareciam fora do lugar,
+                // centralizados numa caixa mais curta que a real altura da
+                // fileira. `maxHeight: .infinity` deixa este cartão esticar
+                // e acompanhar; o conteúdo continua centralizado (alinhamento
+                // padrão do `.frame`) dentro da altura que sobrar.
+                .frame(maxWidth: .infinity, minHeight: 318, maxHeight: .infinity)
                 .background(
                     recebendoArraste ? PapagaioTema.destaque.opacity(0.12) : PapagaioTema.superficie.opacity(0.28),
                     in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
