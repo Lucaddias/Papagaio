@@ -35,32 +35,21 @@ struct LinhaDeTranscricao: View {
             // dele — não colado só na linha do cabeçalho lá em cima.
             HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    // Sempre tem cabeçalho agora, mesmo sem falante — é onde
-                    // os chips de identificação moram.
-                    if let speaker = trecho.speaker {
-                        HStack(spacing: PapagaioTema.Espaco.minimo) {
-                            Text(speaker == Speaker.eu ? "Eu" : "Interlocutor")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(PapagaioTema.textoSecundario)
-
-                            // Falante acústico (diarização): aparece só quando
-                            // o canal carrega mais de uma voz — canal de uma
-                            // voz só não precisa do chip. O rótulo do canal
-                            // nunca muda (ver a regra dos dois rótulos em
-                            // SegmentoDeFalante).
-                            if trecho.temVozesDistintas,
-                               let acustico = trecho.falanteAcusticoDominante {
-                                Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
-                                    .font(.caption)
-                                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-                                    .padding(.horizontal, PapagaioTema.Espaco.minimo)
-                                    .padding(.vertical, 1)
-                                    .background(
-                                        PapagaioTema.destaqueSuave,
-                                        in: Capsule()
-                                    )
-                            }
-                        }
+                    // Falante acústico (diarização): aparece só quando o
+                    // canal carrega mais de uma voz — canal de uma voz só não
+                    // precisa do chip. O rótulo "Eu"/"Interlocutor" que vinha
+                    // ao lado saiu — a voz acústica já identifica quem fala.
+                    if trecho.temVozesDistintas,
+                       let acustico = trecho.falanteAcusticoDominante {
+                        Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.destaqueEscuro)
+                            .padding(.horizontal, PapagaioTema.Espaco.minimo)
+                            .padding(.vertical, 1)
+                            .background(
+                                PapagaioTema.destaqueSuave,
+                                in: Capsule()
+                            )
                     }
 
                     corpoDaTranscricao

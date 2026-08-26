@@ -110,11 +110,15 @@ struct CartaoNovaConversa: View {
         // como este cartão é o mais alto por conteúdo próprio, deixá-lo esticar
         // fazia a primeira fileira ficar mais alta que as de baixo sempre que
         // os cartões vizinhos encolhiam.
+        //
+        // `.center`, e não `.top`: o conteúdo (ícone, título, botões) é bem
+        // mais baixo que os 336pt do cartão, e ancorado no topo sobrava uma
+        // faixa vazia enorme embaixo — pedido para centralizar.
         .frame(
             maxWidth: .infinity,
             minHeight: CartaoDeConversa.alturaDoCartao,
             maxHeight: CartaoDeConversa.alturaDoCartao,
-            alignment: .top
+            alignment: .center
         )
         .background(
             recebendoArraste

@@ -5,16 +5,42 @@ struct LinhaDeTarefaDaConversa: View {
     let aoAlternarConclusao: () -> Void
     let aoEditar: () -> Void
 
+    /// Largura medida da própria linha — e não mais `ViewThatFits` decidindo
+    /// sozinho entre `conteudoHorizontal` e `conteudoCompacto`.
+    ///
+    /// `tituloDaTarefa` tem `maxWidth: .infinity` (precisa, para esticar
+    /// quando sobra espaço) — e é exatamente isso que confundia o
+    /// `ViewThatFits`: pedido para testar se `conteudoHorizontal` cabe, ele
+    /// media o texto do título sem quebrar linha, não no mínimo de 160pt que
+    /// a `.frame` permite. Um título comprido ("Configurar o fluxo de
+    /// compilação...") fazia essa largura "ideal" estourar qualquer janela,
+    /// e a linha caía pro layout empilhado mesmo numa tela bem larga — com
+    /// as duas linhas vizinhas (títulos mais curtos) continuando na
+    /// horizontal ao lado dela. Resultado: uma linha bem mais alta que as
+    /// outras, sem motivo real de espaço.
+    @State private var larguraDaLinha: CGFloat?
+
     private var concluida: Bool { tarefa.status == .concluida }
     private var dataDoPrazo: String {
         tarefa.prazo?.formatted(.dateTime.day().month().year()) ?? "Sem deadline"
     }
 
+    /// Soma dos mínimos de `conteudoHorizontal`: botão (22) + título (160) +
+    /// 4 separadores (1pt cada) + 4 colunas de metadado (96+130+96+104) +
+    /// botão de editar (34) + os espaços `Espaco.medio` entre os 10 pares de
+    /// itens vizinhos. Abaixo disso, `conteudoHorizontal` de verdade não
+    /// cabe — não é só o título encolhendo, é tudo espremido.
+    private static let larguraMinimaHorizontal: CGFloat = 800
+
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            conteudoHorizontal
-            conteudoCompacto
+        Group {
+            if let larguraDaLinha, larguraDaLinha < Self.larguraMinimaHorizontal {
+                conteudoCompacto
+            } else {
+                conteudoHorizontal
+            }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { larguraDaLinha = $0 }
         .padding(.horizontal, PapagaioTema.Espaco.largo)
         .padding(.vertical, PapagaioTema.Espaco.medio)
         .frame(minHeight: 86)

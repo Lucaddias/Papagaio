@@ -539,6 +539,14 @@ struct AparenciaDaPastaPopover: View {
 
     private let colunas = [GridItem(.adaptive(minimum: 30), spacing: PapagaioTema.Espaco.curto)]
 
+    /// Mesma leitura de `GradeDePastas`/`CartaoDePasta`: o modelo compacto
+    /// não tem faixa (só a tarja lateral), então a seção "Imagem" não tem
+    /// onde o resultado apareceria.
+    @AppStorage(ModeloDeCartao.chave) private var modeloBruto = ModeloDeCartao.padrao.rawValue
+    private var modelo: ModeloDeCartao {
+        ModeloDeCartao(rawValue: modeloBruto) ?? .padrao
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             Text("Nome")
@@ -616,36 +624,38 @@ struct AparenciaDaPastaPopover: View {
                     }
             }
 
-            SeparadorPapagaio()
+            if modelo == .comCapa {
+                SeparadorPapagaio()
 
-            Text("Imagem")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .textCase(.uppercase)
+                Text("Imagem")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .textCase(.uppercase)
 
-            HStack(spacing: PapagaioTema.Espaco.curto) {
-                Button(capa == nil ? "Escolher imagem…" : "Trocar imagem…", action: escolherImagem)
-                    .buttonStyle(BotaoDeContornoPapagaio())
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Button(capa == nil ? "Escolher imagem…" : "Trocar imagem…", action: escolherImagem)
+                        .buttonStyle(BotaoDeContornoPapagaio())
+
+                    if capa != nil {
+                        Button("Remover", systemImage: "trash") {
+                            AparenciaDasPastas.removerCapa(de: pasta)
+                            capa = nil
+                        }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.perigo)
+                    }
+                }
 
                 if capa != nil {
-                    Button("Remover", systemImage: "trash") {
-                        AparenciaDasPastas.removerCapa(de: pasta)
-                        capa = nil
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.perigo)
+                    SeletorDeAjusteDeImagem(ajuste: Binding(
+                        get: { ajuste },
+                        set: {
+                            ajuste = $0
+                            AparenciaDasPastas.definirAjuste($0, para: pasta)
+                        }
+                    ))
                 }
-            }
-
-            if capa != nil {
-                SeletorDeAjusteDeImagem(ajuste: Binding(
-                    get: { ajuste },
-                    set: {
-                        ajuste = $0
-                        AparenciaDasPastas.definirAjuste($0, para: pasta)
-                    }
-                ))
             }
         }
         .padding(PapagaioTema.Espaco.largo)

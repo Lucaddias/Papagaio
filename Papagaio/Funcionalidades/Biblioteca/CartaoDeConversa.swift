@@ -1192,7 +1192,8 @@ struct CartaoDeConversa: View {
                 cor: $corDaFaixaEscolhida,
                 semCor: $faixaSemCor,
                 banner: $bannerURL,
-                ajuste: $ajusteDaImagem
+                ajuste: $ajusteDaImagem,
+                mostrarImagem: modelo == .comCapa
             )
         }
         .popover(isPresented: menuVisivel, arrowEdge: .bottom) {
