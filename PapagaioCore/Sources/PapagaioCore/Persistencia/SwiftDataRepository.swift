@@ -115,7 +115,7 @@ public actor SwiftDataRepository: ArquivoRepository {
             modelContext.insert(persistida)
         }
 
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Busca com **prioridade de título**.
@@ -234,7 +234,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm == nil else { return }
         persistido.apagadoEm = Date()
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Devolve o mesmo registro — incluindo trechos, resumo e pasta de áudio —
@@ -243,7 +243,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         guard let persistido = try buscarPersistido(id: id) else { return }
         guard persistido.apagadoEm != nil else { return }
         persistido.apagadoEm = nil
-        try modelContext.save()
+        try salvarContexto()
     }
 
     /// Apaga o registro **e os arquivos em disco** de maneira definitiva.
@@ -276,12 +276,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         }
 
         modelContext.delete(persistido)
-        do {
-            try modelContext.save()
-        } catch {
-            modelContext.rollback()
-            throw error
-        }
+        try salvarContexto()
     }
 
     /// Exclui todos os registros de um espaço, ativos e na lixeira. É usado
@@ -302,18 +297,23 @@ public actor SwiftDataRepository: ArquivoRepository {
         for espacoPersistido in try modelContext.fetch(descritorDoEspaco) {
             modelContext.delete(espacoPersistido)
         }
+        try salvarContexto()
+    }
+
+    // MARK: - Apoio
+
+    /// Todo caminho que muta o SwiftData passa por aqui. Sem rollback, uma
+    /// falha de disco deixa os objetos em memória marcados para inserção,
+    /// edição ou exclusão e uma operação posterior pode persistir esse estado
+    /// parcial por acidente.
+    private func salvarContexto() throws {
         do {
             try modelContext.save()
         } catch {
-            // A exclusão da conta é uma única transação no banco. Se o save
-            // falhar, manter o contexto com objetos já marcados para remoção
-            // faria uma tentativa posterior partir de um estado ambíguo.
             modelContext.rollback()
             throw error
         }
     }
-
-    // MARK: - Apoio
 
     private func buscarPersistido(id: ArquivoID) throws -> ArquivoPersistido? {
         let alvo = id.rawValue
