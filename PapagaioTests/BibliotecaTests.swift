@@ -318,6 +318,60 @@ func exclusaoDaContaLimpaStoresLocais() throws {
 }
 
 @MainActor
+@Test("Excluir a conta não apaga a mídia de outro espaço")
+func exclusaoDaContaPreservaMidiaDeOutroEspaco() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let armazenamento = Armazenamento(raiz: raiz)
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
+    )
+    let espacoAtual = EspacoID()
+    let outroEspaco = EspacoID()
+    let bibliotecaAtual = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: espacoAtual
+    )
+    let bibliotecaDoOutroEspaco = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: outroEspaco
+    )
+    bibliotecaAtual.processamentoAutomatico = false
+    bibliotecaDoOutroEspaco.processamentoAutomatico = false
+
+    let pastaAtual = Armazenamento.caminhoRelativo(id: UUID())
+    let pastaDoOutroEspaco = Armazenamento.caminhoRelativo(id: UUID())
+    let arquivoAtual = try #require(
+        await bibliotecaAtual.registrar(titulo: "Minha conversa", pastaRelativa: pastaAtual, duracao: 30)
+    )
+    let arquivoDoOutroEspaco = try #require(
+        await bibliotecaDoOutroEspaco.registrar(
+            titulo: "Conversa da outra conta", pastaRelativa: pastaDoOutroEspaco, duracao: 30
+        )
+    )
+    try FileManager.default.createDirectory(
+        at: armazenamento.resolver(relativo: arquivoAtual.pastaRelativa),
+        withIntermediateDirectories: true
+    )
+    let audioDoOutroEspaco = armazenamento
+        .resolver(relativo: arquivoDoOutroEspaco.pastaRelativa)
+        .appendingPathComponent(Armazenamento.Nome.microfone)
+    try FileManager.default.createDirectory(
+        at: audioDoOutroEspaco.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("preservar".utf8).write(to: audioDoOutroEspaco)
+
+    try await bibliotecaAtual.excluirDadosDaConta()
+
+    #expect(bibliotecaAtual.arquivos.isEmpty)
+    #expect(FileManager.default.fileExists(atPath: audioDoOutroEspaco.path))
+    #expect(try await repositorio.listar(espaco: outroEspaco).map(\.id) == [arquivoDoOutroEspaco.id])
+}
+
+@MainActor
 @Test("Excluir uma conversa limpa só os dados auxiliares daquele arquivo")
 func exclusaoDeArquivoLimpaSomenteSeuEstado() throws {
     let suite = "LimpezaDeArquivoTests.\(UUID().uuidString)"

@@ -343,7 +343,19 @@ final class Biblioteca {
 
         if let tarefa { await tarefa.value }
 
-        try armazenamento.removerTodasAsGravacoes()
+        // O repositório separa os registros por espaço. Apagar a pasta
+        // `Gravacoes` inteira aqui apagava o áudio de outros espaços que
+        // ainda continuavam no banco, deixando conversas sem mídia. Só as
+        // pastas referenciadas pela conta atual participam desta exclusão.
+        let arquivosAtivos = try await repositorio.listar(espaco: espaco)
+        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espaco)
+        let arquivosDaConta = arquivosAtivos + arquivosArquivados
+        let pastasDaConta = Set(
+            arquivosDaConta.map(\.pastaRelativa).filter { !$0.isEmpty }
+        )
+        for pastaRelativa in pastasDaConta {
+            try armazenamento.removerGravacao(relativa: pastaRelativa)
+        }
         try await repositorio.apagarTodosOsDados(espaco: espaco)
 
         arquivos.removeAll()
