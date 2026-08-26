@@ -61,7 +61,7 @@ public protocol DiarizationEngine: Sendable {
 /// FTS5 sem mudar — ver Passo 9.
 public protocol ArquivoRepository: Sendable {
     func salvar(_ a: Arquivo) async throws
-    func buscar(termo: String) async throws -> [Arquivo]
+    func buscar(termo: String, espaco: EspacoID) async throws -> [Arquivo]
     func listar(espaco: EspacoID) async throws -> [Arquivo]
     func apagar(_ id: ArquivoID) async throws
 }

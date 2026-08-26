@@ -130,9 +130,10 @@ public actor SwiftDataRepository: ArquivoRepository {
     ///
     /// A assinatura precisa sobreviver a uma eventual migração para FTS5 sem
     /// mudar — por isso o retorno é `[Arquivo]` puro, sem tipo de score.
-    public func buscar(termo: String) async throws -> [Arquivo] {
+    public func buscar(termo: String, espaco: EspacoID) async throws -> [Arquivo] {
         let limpo = termo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !limpo.isEmpty else { return [] }
+        let alvo = espaco.rawValue
 
         let ordem = [SortDescriptor(\ArquivoPersistido.criadoEm, order: .reverse)]
 
@@ -142,7 +143,9 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porTitulo.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
-        let bucketA = try modelContext.fetch(porTitulo).filter { $0.apagadoEm == nil }
+        let bucketA = try modelContext.fetch(porTitulo).filter {
+            $0.apagadoEm == nil && $0.espaco?.id == alvo
+        }
         let idsDoTitulo = Set(bucketA.map(\.id))
 
         // Bucket B — o termo está no corpo: visão geral, trecho, insight ou nota.
@@ -166,7 +169,9 @@ public actor SwiftDataRepository: ArquivoRepository {
             sortBy: ordem
         )
         porVisaoGeral.relationshipKeyPathsForPrefetching = [\.trechos, \.insights, \.notas]
-        acrescentar(try modelContext.fetch(porVisaoGeral).filter { $0.apagadoEm == nil })
+        acrescentar(try modelContext.fetch(porVisaoGeral).filter {
+            $0.apagadoEm == nil && $0.espaco?.id == alvo
+        })
 
         let porTrecho = FetchDescriptor<TrechoPersistido>(
             predicate: #Predicate { $0.texto.localizedStandardContains(limpo) }
@@ -174,7 +179,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porTrecho)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         let porInsight = FetchDescriptor<InsightPersistido>(
@@ -183,7 +188,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porInsight)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         let porNota = FetchDescriptor<NotaPersistida>(
@@ -192,7 +197,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         acrescentar(
             try modelContext.fetch(porNota)
                 .compactMap(\.arquivo)
-                .filter { $0.apagadoEm == nil }
+                .filter { $0.apagadoEm == nil && $0.espaco?.id == alvo }
         )
 
         // `importadoEm ?? criadoEm`, e não só `criadoEm`: numa importação

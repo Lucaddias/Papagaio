@@ -362,13 +362,31 @@ func buscaIgnoraArquivosNaLixeira() async throws {
     let arquivo = arquivoDeExemplo(titulo: "Reunião de orçamento", espaco: espaco)
     try await repo.salvar(arquivo)
 
-    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id) == [arquivo.id])
 
     try await repo.moverParaLixeira(arquivo.id)
-    #expect(try await repo.buscar(termo: "orçamento").isEmpty)
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).isEmpty)
 
     try await repo.restaurar(arquivo.id)
-    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id) == [arquivo.id])
+}
+
+@Test("Busca não mistura resultados de espaços diferentes")
+func buscaRespeitaEspaco() async throws {
+    let repo = try repositorioDeTeste()
+    let espacoAtual = EspacoID()
+    let outroEspaco = EspacoID()
+    let atual = arquivoDeExemplo(titulo: "Planejamento confidencial", espaco: espacoAtual)
+    let deOutroEspaco = arquivoDeExemplo(
+        titulo: "Planejamento confidencial", espaco: outroEspaco,
+        trechos: [Trecho(start: 0, end: 1, texto: "informação privada", speaker: nil)]
+    )
+    try await repo.salvar(atual)
+    try await repo.salvar(deOutroEspaco)
+
+    #expect(try await repo.buscar(termo: "confidencial", espaco: espacoAtual).map(\.id) == [atual.id])
+    #expect(try await repo.buscar(termo: "privada", espaco: espacoAtual).isEmpty)
+    #expect(try await repo.buscar(termo: "privada", espaco: outroEspaco).map(\.id) == [deOutroEspaco.id])
 }
 
 @Test("Salvar uma atualização tardia não restaura arquivo da lixeira")
@@ -410,7 +428,7 @@ func buscaPrioridadeDeTitulo() async throws {
         ))
     }
 
-    let resultados = try await repo.buscar(termo: "orçamento")
+    let resultados = try await repo.buscar(termo: "orçamento", espaco: espaco)
 
     #expect(resultados.count == 4)
     #expect(resultados.first?.titulo == "Revisão de orçamento")
@@ -424,9 +442,9 @@ func buscaIgnoraAcento() async throws {
     let espaco = EspacoID()
     try await repo.salvar(arquivoDeExemplo(titulo: "Revisão de Orçamento", espaco: espaco))
 
-    let comAcento = try await repo.buscar(termo: "orçamento")
-    let semAcento = try await repo.buscar(termo: "orcamento")
-    let caixaAlta = try await repo.buscar(termo: "ORCAMENTO")
+    let comAcento = try await repo.buscar(termo: "orçamento", espaco: espaco)
+    let semAcento = try await repo.buscar(termo: "orcamento", espaco: espaco)
+    let caixaAlta = try await repo.buscar(termo: "ORCAMENTO", espaco: espaco)
 
     #expect(comAcento.count == 1)
     #expect(semAcento.map(\.id) == comAcento.map(\.id))
@@ -447,8 +465,8 @@ func buscaNoResumoEInsight() async throws {
         )
     ))
 
-    #expect(try await repo.buscar(termo: "armazenamento").count == 1)
-    #expect(try await repo.buscar(termo: "brightworks").count == 1)
+    #expect(try await repo.buscar(termo: "armazenamento", espaco: espaco).count == 1)
+    #expect(try await repo.buscar(termo: "brightworks", espaco: espaco).count == 1)
 }
 
 @Test("Busca acha texto de nota temporizada")
@@ -462,7 +480,7 @@ func buscaNasNotas() async throws {
     )
     try await repo.salvar(arquivo)
 
-    #expect(try await repo.buscar(termo: "confidencialidade").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "confidencialidade", espaco: espaco).map(\.id) == [arquivo.id])
 }
 
 @Test("Termo vazio ou sem correspondência devolve lista vazia")
@@ -471,7 +489,7 @@ func buscaVazia() async throws {
     let espaco = EspacoID()
     try await repo.salvar(arquivoDeExemplo(titulo: "alguma coisa", espaco: espaco))
 
-    #expect(try await repo.buscar(termo: "").isEmpty)
-    #expect(try await repo.buscar(termo: "   ").isEmpty)
-    #expect(try await repo.buscar(termo: "termo-que-nao-existe").isEmpty)
+    #expect(try await repo.buscar(termo: "", espaco: espaco).isEmpty)
+    #expect(try await repo.buscar(termo: "   ", espaco: espaco).isEmpty)
+    #expect(try await repo.buscar(termo: "termo-que-nao-existe", espaco: espaco).isEmpty)
 }
