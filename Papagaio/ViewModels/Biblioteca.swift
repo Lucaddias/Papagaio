@@ -467,7 +467,8 @@ final class Biblioteca {
         let destino = armazenamento.resolver(relativo: pastaNovaRelativa)
 
         do {
-            if FileManager.default.fileExists(atPath: origem.path) {
+            let origemExiste = FileManager.default.fileExists(atPath: origem.path)
+            if origemExiste {
                 try FileManager.default.copyItem(at: origem, to: destino)
             } else {
                 try FileManager.default.createDirectory(at: destino, withIntermediateDirectories: true)
@@ -500,12 +501,30 @@ final class Biblioteca {
                 )
             }
 
+            if origemExiste {
+                let anexosCopiados = try MidiasDaConversa.anexosCopiados(
+                    de: arquivo.id,
+                    da: origem,
+                    para: destino
+                )
+                if !anexosCopiados.isEmpty {
+                    try MidiasDaConversa.salvar(anexosCopiados, para: novoID)
+                }
+            }
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
             return copia
         } catch {
-            try? FileManager.default.removeItem(at: destino)
-            erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            // O id novo ainda não é visível em lugar nenhum. Se a cópia de
+            // disco, seus bookmarks ou o registro falharem, eliminar os dois
+            // resíduos impede que uma tentativa posterior herde mídia órfã.
+            MidiasDaConversa.remover(novoID)
+            do {
+                try armazenamento.removerGravacao(relativa: pastaNovaRelativa)
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            } catch {
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription). A cópia incompleta permaneceu no armazenamento para não apagar dados de forma insegura."
+            }
             return nil
         }
     }

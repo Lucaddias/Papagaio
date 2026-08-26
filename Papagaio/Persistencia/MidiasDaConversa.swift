@@ -60,6 +60,33 @@ enum MidiasDaConversa {
         )
     }
 
+    /// Constrói novos bookmarks para os anexos que já foram copiados junto
+    /// com a pasta da conversa. Bookmarks são ligados ao caminho original;
+    /// reutilizá-los faria a cópia apontar para os arquivos da conversa mãe.
+    static func anexosCopiados(
+        de arquivoID: ArquivoID,
+        da pastaOriginal: URL,
+        para pastaDaCopia: URL
+    ) throws -> [AnexoDeMidiaDaConversa] {
+        let origem = pastaOriginal.standardizedFileURL.resolvingSymlinksInPath()
+        let componentesDaOrigem = origem.pathComponents
+
+        return try carregar(arquivoID).map { anexo in
+            let urlOriginal = anexo.url.standardizedFileURL.resolvingSymlinksInPath()
+            let componentesDoAnexo = urlOriginal.pathComponents
+            guard componentesDoAnexo.count > componentesDaOrigem.count,
+                  Array(componentesDoAnexo.prefix(componentesDaOrigem.count)) == componentesDaOrigem
+            else { throw Erro.arquivoForaDaConversa }
+
+            let destino = componentesDoAnexo
+                .dropFirst(componentesDaOrigem.count)
+                .reduce(pastaDaCopia) { parcial, componente in
+                    parcial.appendingPathComponent(componente)
+                }
+            return try Self.anexo(para: destino)
+        }
+    }
+
     /// Copia o anexo para dentro de uma subpasta nomeada com o título da
     /// conversa — não "Midia" genérico — para que quem abrir "Mostrar no
     /// Finder" reconheça a pasta de cara, sem cair num UUID sem sentido.

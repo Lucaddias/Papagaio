@@ -94,6 +94,41 @@ func naoDuplicaNaFila() async throws {
 }
 
 @MainActor
+@Test("Duplicar recria os bookmarks dos anexos na pasta copiada")
+func duplicacaoMantemAnexosVisiveisNaCopia() async throws {
+    let (biblioteca, raiz) = try bibliotecaDeTeste()
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    biblioteca.processamentoAutomatico = false
+    let pastaOriginal = Armazenamento.caminhoRelativo(id: UUID())
+    let original = try #require(
+        await biblioteca.registrar(titulo: "Com anexo", pastaRelativa: pastaOriginal, duracao: 30)
+    )
+    defer { MidiasDaConversa.remover(original.id) }
+
+    let raizOriginal = raiz.appendingPathComponent(pastaOriginal, isDirectory: true)
+    let pastaDeAnexos = raizOriginal.appendingPathComponent("documentos", isDirectory: true)
+    try FileManager.default.createDirectory(at: pastaDeAnexos, withIntermediateDirectories: true)
+    let anexoOriginal = pastaDeAnexos.appendingPathComponent("roteiro.pdf")
+    try Data("conteúdo".utf8).write(to: anexoOriginal)
+    try MidiasDaConversa.salvar(
+        [try MidiasDaConversa.anexo(para: anexoOriginal)],
+        para: original.id
+    )
+
+    let copia = try #require(await biblioteca.duplicar(original))
+    defer { MidiasDaConversa.remover(copia.id) }
+
+    let anexosDaCopia = MidiasDaConversa.carregar(copia.id)
+    let esperado = raiz
+        .appendingPathComponent(copia.pastaRelativa, isDirectory: true)
+        .appendingPathComponent("documentos/roteiro.pdf")
+        .standardizedFileURL
+    #expect(anexosDaCopia.map(\.url.standardizedFileURL) == [esperado])
+    #expect(FileManager.default.fileExists(atPath: esperado.path))
+}
+
+@MainActor
 @Test("Processamento automático desligado não enfileira ao registrar")
 func automaticoDesligadoNaoEnfileira() async throws {
     let (biblioteca, raiz) = try bibliotecaDeTeste()
