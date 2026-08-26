@@ -24,16 +24,24 @@ enum PastasDaBiblioteca {
     /// quer o projeto fora da vista, e encontraria as mesmas conversas
     /// espalhadas na grade um segundo depois. Na lixeira nada se perde, e a
     /// pasta ali dentro permite trazer de volta o conjunto ou um arquivo só.
-    static func apagar(_ nome: String, biblioteca: Biblioteca) async {
+    @discardableResult
+    static func apagar(_ nome: String, biblioteca: Biblioteca) async -> Bool {
         let conversas = biblioteca.arquivos.filter {
             PreferenciasVisuaisDoArquivo.pasta($0.id) == nome
         }
         for arquivo in conversas {
-            await biblioteca.moverParaLixeira(arquivo)
+            guard await biblioteca.moverParaLixeira(arquivo) else {
+                // A pasta e os rótulos continuam intactos. Conversas que já
+                // foram movidas ainda apontam para esta pasta, portanto uma
+                // nova tentativa completa o conjunto sem deixar rótulo órfão
+                // nem retrato parcial na lixeira de pastas.
+                return false
+            }
         }
         // Depois de mover: `apagarPasta` lê quem ainda tem o rótulo para
         // montar o retrato, e o rótulo sobrevive à ida para a lixeira.
         PreferenciasVisuaisDoArquivo.apagarPasta(nome)
+        return true
     }
 
     /// As conversas de uma pasta apagada, na ordem da lixeira — a mesma ordem

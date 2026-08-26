@@ -204,9 +204,10 @@ final class Biblioteca {
     /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,
     /// a execução atual é cancelada antes do soft delete para a UI não ficar
     /// presa esperando o pipeline terminar.
-    func moverParaLixeira(_ arquivo: Arquivo) async {
+    @discardableResult
+    func moverParaLixeira(_ arquivo: Arquivo) async -> Bool {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
-        else { return }
+        else { return false }
 
         await cancelarProcessamentoDoArquivo(arquivo.id)
 
@@ -231,6 +232,7 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            return true
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
@@ -244,6 +246,7 @@ final class Biblioteca {
                 iniciarProximoProcessamentoSeNecessario()
             }
             erroDaLixeira = "Não foi possível mover o arquivo para a lixeira: \(error.localizedDescription)"
+            return false
         }
     }
 

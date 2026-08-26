@@ -47,7 +47,7 @@ func pastaApagaERestauraCicloCompleto() async throws {
     PreferenciasVisuaisDoArquivo.definirPasta(nome, para: arquivo.id)
 
     // Apagar: a conversa sai de cena junto, e o retrato fica na lixeira.
-    await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
 
     #expect(biblioteca.arquivos.isEmpty)
     #expect(biblioteca.arquivosNaLixeira.map(\.id) == [arquivo.id])
@@ -83,7 +83,7 @@ func restaurarConversaSoltaSemRotulo() async throws {
         )
     )
     PreferenciasVisuaisDoArquivo.definirPasta(nome, para: arquivo.id)
-    await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
 
     await PastasDaBiblioteca.restaurarConversa(arquivo, biblioteca: biblioteca)
 
@@ -122,7 +122,7 @@ func restaurarTudoMantemOsVinculosDasPastas() async throws {
         )
     )
     PreferenciasVisuaisDoArquivo.definirPasta(nome, para: naPasta.id)
-    await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
     await biblioteca.moverParaLixeira(avulsa)
 
     await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
