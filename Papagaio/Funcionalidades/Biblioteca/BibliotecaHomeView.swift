@@ -684,7 +684,10 @@ struct BibliotecaHomeView: View {
                     aoRestaurarTudo: {
                         Task { @MainActor in
                             await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
-                            LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                            // Uma conversa que não conseguiu sair da lixeira não pode
+                            // recuperar suas tarefas antes dela. Assim o item continua
+                            // visível e recuperável numa nova tentativa.
+                            LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos)
                             if !LixeiraDeMidia.restaurarTudo() {
                                 erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados. Revise os itens restantes na lixeira."
                             }
