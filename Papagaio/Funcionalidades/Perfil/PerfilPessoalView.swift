@@ -3,6 +3,11 @@ import SwiftUI
 
 struct PerfilPessoalView: View {
     @Bindable var perfil: PerfilViewModel
+    let equipeAtiva: EquipeDisponivel?
+    let equipes: [EquipeDisponivel]
+    let aoSelecionarEquipe: (EquipeDisponivel) -> Void
+    let aoAdicionarEquipe: (String) -> Void
+    let aoEntrarComCodigo: (String) -> Void
     let aoSair: () -> Void
     let aoExcluirConta: () async throws -> Void
     @State private var nome: String = ""
@@ -26,12 +31,41 @@ struct PerfilPessoalView: View {
                     aoEditarAvatar: escolherAvatar
                 )
 
-                InformacoesPessoaisDoPerfil(
-                    nome: $nome,
-                    email: $email,
-                    aoSalvar: salvarDados
-                )
-                .frame(maxWidth: 690)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.secao) {
+                        InformacoesPessoaisDoPerfil(
+                            nome: $nome,
+                            email: $email,
+                            aoSalvar: salvarDados
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        EquipesDoPerfil(
+                            equipeAtiva: equipeAtiva,
+                            equipes: equipes,
+                            aoSelecionar: aoSelecionarEquipe,
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
+                        )
+                        .frame(width: 330)
+                    }
+
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+                        InformacoesPessoaisDoPerfil(
+                            nome: $nome,
+                            email: $email,
+                            aoSalvar: salvarDados
+                        )
+
+                        EquipesDoPerfil(
+                            equipeAtiva: equipeAtiva,
+                            equipes: equipes,
+                            aoSelecionar: aoSelecionarEquipe,
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
+                        )
+                    }
+                }
 
                 SegurancaDoPerfil(
                     aoAlterarSenha: { mostrandoAvisoDeSenha = true },
@@ -66,7 +100,7 @@ struct PerfilPessoalView: View {
                 Task { await excluirConta() }
             }
         } message: {
-            Text("Esta ação não pode ser desfeita. Seu perfil, conversas, áudios, transcrições, notas e tarefas deste Mac serão removidos.")
+            Text("Esta ação não pode ser desfeita. Seu perfil, conversas, áudios, transcrições, notas, tarefas e equipes deste Mac serão removidos.")
         }
         .alert("Não foi possível excluir a conta", isPresented: Binding(
             get: { erroDeExclusao != nil },
