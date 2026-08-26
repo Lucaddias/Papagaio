@@ -76,6 +76,39 @@ func migracaoDeRemocaoDeEquipesLimpaSomenteEstadoLegado() throws {
     #expect(defaults.data(forKey: "membrosDaEquipe.posterior") == Data([4]))
 }
 
+@Test("Migração de equipes reúne ativos e lixeira no espaço pessoal")
+func migracaoDeEquipesPreservaBibliotecaCompleta() async throws {
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
+    )
+    let pessoal = EspacoID()
+    let equipe = EspacoID()
+    let outroEspacoLegado = EspacoID()
+    let ativoDaEquipe = Arquivo(
+        titulo: "Reunião da equipe",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: equipe
+    )
+    let naLixeira = Arquivo(
+        titulo: "Conversa arquivada",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: outroEspacoLegado
+    )
+
+    try await repositorio.salvar(ativoDaEquipe)
+    try await repositorio.salvar(naLixeira)
+    try await repositorio.moverParaLixeira(naLixeira.id)
+
+    try await repositorio.migrarTodosOsEspacos(para: pessoal)
+
+    #expect(try await repositorio.listar(espaco: pessoal).map(\.id) == [ativoDaEquipe.id])
+    #expect(try await repositorio.listarNaLixeira(espaco: pessoal).map(\.id) == [naLixeira.id])
+    #expect(try await repositorio.listar(espaco: equipe).isEmpty)
+    #expect(try await repositorio.listarNaLixeira(espaco: outroEspacoLegado).isEmpty)
+}
+
 // MARK: - Fila serial
 
 @MainActor

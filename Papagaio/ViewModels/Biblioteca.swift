@@ -146,9 +146,29 @@ final class Biblioteca {
     // MARK: - Ciclo de vida
 
     func preparar() async {
+        guard await migrarDadosDeEquipesRemovidas() else { return }
         await ciclo.iniciarMonitoramento()
         await ciclo.encerrarNaSaidaDoApp()
         await carregar()
+    }
+
+    /// A remoção das telas de equipe não pode transformar os registros desses
+    /// espaços em dados invisíveis. A marca só é gravada após `SwiftData`
+    /// salvar, para que uma falha temporária seja tentada novamente na próxima
+    /// abertura sem descartar nenhuma conversa.
+    private func migrarDadosDeEquipesRemovidas() async -> Bool {
+        guard MigracaoDeRemocaoDeEquipes.bibliotecaPrecisaSerMigrada() else {
+            return true
+        }
+
+        do {
+            try await repositorio.migrarTodosOsEspacos(para: espaco)
+            MigracaoDeRemocaoDeEquipes.concluirMigracaoDaBiblioteca()
+            return true
+        } catch {
+            erroDeCarregamento = "Não foi possível migrar a biblioteca existente: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func carregar() async {

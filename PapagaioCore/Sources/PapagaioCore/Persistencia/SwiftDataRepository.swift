@@ -310,6 +310,31 @@ public actor SwiftDataRepository: ArquivoRepository {
         try salvarContexto()
     }
 
+    /// A versão local-first não oferece mais seleção de equipes. Para não
+    /// esconder conversas criadas nos espaços antigos, reúne todos os registros
+    /// (ativos, na lixeira e também os legados sem relação de espaço) no espaço
+    /// pessoal antes de a interface começar a listá-los.
+    ///
+    /// Esta operação é idempotente: depois da primeira execução, todos os
+    /// arquivos já apontam para `destino` e nenhum espaço antigo resta para
+    /// remover.
+    public func migrarTodosOsEspacos(para destino: EspacoID) throws {
+        let idDoDestino = destino.rawValue
+        let espacoDestino = try espacoPersistido(destino)
+        let arquivos = try modelContext.fetch(FetchDescriptor<ArquivoPersistido>())
+
+        for arquivo in arquivos where arquivo.espaco?.id != idDoDestino {
+            arquivo.espaco = espacoDestino
+        }
+
+        let espacos = try modelContext.fetch(FetchDescriptor<EspacoPersistido>())
+        for espaco in espacos where espaco.id != idDoDestino {
+            modelContext.delete(espaco)
+        }
+
+        try salvarContexto()
+    }
+
     // MARK: - Apoio
 
     /// Todo caminho que muta o SwiftData passa por aqui. Sem rollback, uma

@@ -5,6 +5,11 @@ import Foundation
 /// apagar apenas `equipesDoUsuario` deixava nomes e e-mails órfãos no disco.
 enum MigracaoDeRemocaoDeEquipes {
     private static let chaveDeControle = "migracaoDeRemocaoDeEquipes.v1"
+    /// `v1` já pode ter apagado a lista de equipes antes de esta correção ser
+    /// instalada. Por isso a migração do banco tem uma chave própria: ela
+    /// precisa rodar também nessas instalações, e só termina depois de o
+    /// SwiftData confirmar que todos os registros foram para o espaço pessoal.
+    private static let chaveDaBiblioteca = "migracaoDeRemocaoDeEquipes.biblioteca.v2"
     private static let prefixoDeMembros = "membrosDaEquipe."
 
     static func executarUmaVez(_ defaults: UserDefaults = .standard) {
@@ -20,5 +25,13 @@ enum MigracaoDeRemocaoDeEquipes {
         defaults.removeObject(forKey: "contextoDaConta")
         defaults.removeObject(forKey: "limpezaDeDadosFabricados.v1")
         defaults.set(true, forKey: chaveDeControle)
+    }
+
+    static func bibliotecaPrecisaSerMigrada(_ defaults: UserDefaults = .standard) -> Bool {
+        !defaults.bool(forKey: chaveDaBiblioteca)
+    }
+
+    static func concluirMigracaoDaBiblioteca(_ defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: chaveDaBiblioteca)
     }
 }
