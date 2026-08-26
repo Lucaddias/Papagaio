@@ -672,6 +672,9 @@ final class Biblioteca {
             },
             diarizar: { [diarizacao] url in
                 try await diarizacao.diarizar(url)
+            },
+            resolverFalantes: { [motores] arquivo in
+                try await motores.resolverFalantes(arquivo)
             }
         )
 
