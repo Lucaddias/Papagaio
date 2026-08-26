@@ -129,6 +129,50 @@ func duplicacaoMantemAnexosVisiveisNaCopia() async throws {
 }
 
 @MainActor
+@Test("Duplicar preserva o estado das tarefas com novos ids")
+func duplicacaoMantemTarefasIndependentes() async throws {
+    let (biblioteca, raiz) = try bibliotecaDeTeste()
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    biblioteca.processamentoAutomatico = false
+    let original = try #require(
+        await biblioteca.registrar(
+            titulo: "Com tarefas",
+            pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+            duracao: 30
+        )
+    )
+    defer { TarefasGeraisStore.remover(original.id) }
+
+    let prazo = Date(timeIntervalSinceReferenceDate: 12_345)
+    let tarefaOriginal = TarefaDaConversa(
+        titulo: "Enviar ata",
+        origem: original.titulo,
+        prioridade: .alta,
+        status: .emAndamento,
+        responsavel: "Ana",
+        prazo: prazo,
+        descricao: "Incluir os encaminhamentos."
+    )
+    TarefasGeraisStore.salvar([tarefaOriginal], para: original.id)
+
+    let copia = try #require(await biblioteca.duplicar(original))
+    defer { TarefasGeraisStore.remover(copia.id) }
+
+    let tarefasDaCopia = TarefasGeraisStore.carregar(copia)
+    #expect(tarefasDaCopia.count == 1)
+    let tarefaDaCopia = try #require(tarefasDaCopia.first)
+    #expect(tarefaDaCopia.id != tarefaOriginal.id)
+    #expect(tarefaDaCopia.titulo == tarefaOriginal.titulo)
+    #expect(tarefaDaCopia.origem == copia.titulo)
+    #expect(tarefaDaCopia.prioridade == tarefaOriginal.prioridade)
+    #expect(tarefaDaCopia.status == tarefaOriginal.status)
+    #expect(tarefaDaCopia.responsavel == tarefaOriginal.responsavel)
+    #expect(tarefaDaCopia.prazo == prazo)
+    #expect(tarefaDaCopia.descricao == tarefaOriginal.descricao)
+}
+
+@MainActor
 @Test("Processamento automático desligado não enfileira ao registrar")
 func automaticoDesligadoNaoEnfileira() async throws {
     let (biblioteca, raiz) = try bibliotecaDeTeste()

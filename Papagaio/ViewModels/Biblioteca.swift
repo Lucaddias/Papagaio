@@ -511,6 +511,7 @@ final class Biblioteca {
                     try MidiasDaConversa.salvar(anexosCopiados, para: novoID)
                 }
             }
+            TarefasGeraisStore.duplicar(arquivo, para: copia)
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
             return copia
@@ -519,6 +520,7 @@ final class Biblioteca {
             // disco, seus bookmarks ou o registro falharem, eliminar os dois
             // resíduos impede que uma tentativa posterior herde mídia órfã.
             MidiasDaConversa.remover(novoID)
+            TarefasGeraisStore.remover(novoID)
             do {
                 try armazenamento.removerGravacao(relativa: pastaNovaRelativa)
                 erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
