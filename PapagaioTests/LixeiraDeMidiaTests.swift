@@ -185,6 +185,53 @@ func lixeiraDeMidiaRecusaCaminhoExterno() throws {
 }
 
 @MainActor
+@Test("Restauração recusa registro que aponta a origem para a própria lixeira")
+func lixeiraDeMidiaNaoApagaArquivoQuandoOrigemCorrompidaApontaParaLixeira() throws {
+    let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
+    defer {
+        try? FileManager.default.removeItem(at: raiz)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    let conversa = armazenamento.raiz
+        .appendingPathComponent(Armazenamento.pastaGravacoes, isDirectory: true)
+        .appendingPathComponent("Conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    let origem = conversa.appendingPathComponent("anexo.txt")
+    try Data("preservar".utf8).write(to: origem)
+
+    try LixeiraDeMidia.mover(
+        url: origem,
+        nome: "anexo.txt",
+        tamanho: 9,
+        tipo: "Documento",
+        daGravacao: false,
+        arquivoID: ArquivoID(),
+        conversaTitulo: "Conversa",
+        pastaDaConversa: conversa,
+        em: defaults
+    )
+    let valido = try #require(LixeiraDeMidia.itens(em: defaults).first)
+    let corrompido = MidiaNaLixeira(
+        id: valido.id,
+        arquivoID: valido.arquivoID,
+        conversaTitulo: valido.conversaTitulo,
+        nome: valido.nome,
+        tamanho: valido.tamanho,
+        tipo: valido.tipo,
+        daGravacao: valido.daGravacao,
+        caminhoOriginal: valido.caminhoNaLixeira,
+        caminhoNaLixeira: valido.caminhoNaLixeira,
+        apagadoEm: valido.apagadoEm
+    )
+    defaults.set(try JSONEncoder().encode([corrompido]), forKey: "midiaNaLixeira")
+
+    #expect(!LixeiraDeMidia.restaurar(corrompido, em: defaults, armazenamento: armazenamento))
+    #expect(FileManager.default.fileExists(atPath: valido.caminhoNaLixeira))
+    #expect(LixeiraDeMidia.itens(em: defaults).map(\.id) == [corrompido.id])
+}
+
+@MainActor
 @Test("Esvaziar preserva apenas anexos que não puderam ser removidos")
 func esvaziarLixeiraDeMidiaPreservaFalhas() throws {
     let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()

@@ -279,9 +279,11 @@ enum LixeiraDeMidia {
         let original = URL(fileURLWithPath: item.caminhoOriginal)
             .standardizedFileURL.resolvingSymlinksInPath()
         let pastaDaConversa = lixeira.deletingLastPathComponent().deletingLastPathComponent()
+        let pastaDaLixeira = lixeira.deletingLastPathComponent()
 
         let componentesDasGravacoes = gravacoes.pathComponents
         let componentesDaConversa = pastaDaConversa.pathComponents
+        let componentesDaPastaDaLixeira = pastaDaLixeira.pathComponents
         let componentesDaLixeira = lixeira.pathComponents
         let componentesDoOriginal = original.pathComponents
         guard componentesDaConversa.count == componentesDasGravacoes.count + 1,
@@ -289,7 +291,13 @@ enum LixeiraDeMidia {
               componentesDaLixeira.count > componentesDaConversa.count,
               Array(componentesDaLixeira.prefix(componentesDaConversa.count)) == componentesDaConversa,
               componentesDoOriginal.count > componentesDaConversa.count,
-              Array(componentesDoOriginal.prefix(componentesDaConversa.count)) == componentesDaConversa
+              Array(componentesDoOriginal.prefix(componentesDaConversa.count)) == componentesDaConversa,
+              // O destino restaurado pode viver em qualquer lugar legítimo da
+              // conversa, mas nunca dentro da própria pasta de lixeira. Sem
+              // esta condição, um registro corrompido poderia apontar a
+              // origem para o mesmo arquivo que está sendo restaurado: o
+              // ramo de colisão o apagaria e depois removeria o registro.
+              !componentesDoOriginal.starts(with: componentesDaPastaDaLixeira)
         else { throw Erro.caminhoForaDasGravacoes }
 
         return lixeira
