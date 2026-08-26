@@ -29,6 +29,24 @@ enum DossieDaConversa {
         ExportacaoMarkdown.nomeDeArquivo(para: arquivo)
     }
 
+    /// Escreve o fallback Markdown numa raiz temporária exclusiva, para que o
+    /// mesmo ciclo de vida dos ZIPs consiga descartá-lo depois do
+    /// compartilhamento.
+    static func markdownTemporario(arquivo: Arquivo) throws -> URL {
+        let fm = FileManager.default
+        let raiz = fm.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let destino = raiz.appendingPathComponent(nomeDeArquivo(para: arquivo))
+        do {
+            try fm.createDirectory(at: raiz, withIntermediateDirectories: true)
+            try gerar(arquivo: arquivo).write(to: destino, atomically: true, encoding: .utf8)
+            return destino
+        } catch {
+            try? fm.removeItem(at: raiz)
+            throw error
+        }
+    }
+
     /// Monta um `.zip` com o documento e o áudio da conversa.
     ///
     /// Zip, e não pasta: pasta solta não se anexa em e-mail nem em mensagem.

@@ -1518,10 +1518,7 @@ struct CartaoDeConversa: View {
                     )
                 }.value]
             } catch {
-                let destino = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(DossieDaConversa.nomeDeArquivo(para: arquivo))
-                if (try? DossieDaConversa.gerar(arquivo: arquivo)
-                    .write(to: destino, atomically: true, encoding: .utf8)) != nil {
+                if let destino = try? DossieDaConversa.markdownTemporario(arquivo: arquivo) {
                     itens = [destino]
                 } else {
                     itens = [DossieDaConversa.gerar(arquivo: arquivo)]

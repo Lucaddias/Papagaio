@@ -571,3 +571,22 @@ func zipDaPastaMantemNomeELimpeza() throws {
     DossieDaConversa.descartarArquivoTemporario(zip)
     #expect(!fm.fileExists(atPath: raizDoZip.path))
 }
+
+@Test("Fallback Markdown usa raiz temporária exclusiva e removível")
+func markdownTemporarioTemCicloDeVidaSeguro() throws {
+    let fm = FileManager.default
+    let arquivo = Arquivo(
+        titulo: "Fallback \(UUID().uuidString)",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: EspacoID()
+    )
+
+    let markdown = try DossieDaConversa.markdownTemporario(arquivo: arquivo)
+
+    #expect(markdown.lastPathComponent == DossieDaConversa.nomeDeArquivo(para: arquivo))
+    #expect(fm.fileExists(atPath: markdown.path))
+
+    let raiz = markdown.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(markdown)
+    #expect(!fm.fileExists(atPath: raiz.path))
+}
