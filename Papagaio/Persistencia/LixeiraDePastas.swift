@@ -52,9 +52,17 @@ enum LixeiraDePastas {
     /// aqui só volta o rótulo. Ver `devolverRotulo`.
     @MainActor
     static func restaurar(_ item: PastaNaLixeira) {
+        recriar(item)
+        remover(item)
+    }
+
+    /// Recria a pasta sem retirar seu retrato da lixeira. É usado durante uma
+    /// restauração parcial: se uma conversa falhar, o vínculo continua
+    /// disponível para a próxima tentativa.
+    @MainActor
+    static func recriar(_ item: PastaNaLixeira) {
         PreferenciasVisuaisDoArquivo.criarPasta(item.nome)
         AparenciaDasPastas.restaurar(item.aparencia, para: item.nome)
-        remover(item)
     }
 
     /// Recoloca o rótulo da pasta numa conversa que acabou de sair da lixeira.

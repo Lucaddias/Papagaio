@@ -144,7 +144,11 @@ final class MidiasDaConversaViewModel {
     }
 
     func apagarDeVez(_ item: MidiaNaLixeira) {
-        LixeiraDeMidia.remover(item)
+        do {
+            try LixeiraDeMidia.remover(item)
+        } catch {
+            erro = "Não foi possível apagar \(item.nome): \(error.localizedDescription)"
+        }
         recarregarLixeira()
     }
 

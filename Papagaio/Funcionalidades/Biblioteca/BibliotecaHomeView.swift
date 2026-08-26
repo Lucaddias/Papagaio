@@ -677,11 +677,14 @@ struct BibliotecaHomeView: View {
                 AcoesDaLixeira(
                     temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
                     aoRestaurarTudo: {
-                        Task { await biblioteca.restaurarTudoDaLixeira() }
-                        LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
-                        LixeiraDeMidia.restaurarTudo()
-                        LixeiraDePastas.restaurarTudo()
-                        atualizarPreferenciasVisuais()
+                        Task { @MainActor in
+                            await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
+                            LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
+                            if !LixeiraDeMidia.restaurarTudo() {
+                                erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados e continuam na lixeira."
+                            }
+                            atualizarPreferenciasVisuais()
+                        }
                     },
                     aoEsvaziar: {
                         confirmandoEsvaziarLixeira = true
@@ -806,7 +809,7 @@ struct BibliotecaHomeView: View {
         } message: {
             Text("Essa ação remove o áudio, a transcrição e o resumo do Mac e não pode ser desfeita.")
         }
-        .alert("Não foi possível restaurar", isPresented: Binding(
+        .alert("Não foi possível concluir", isPresented: Binding(
             get: { erroDaLixeiraDeMidia != nil },
             set: { if !$0 { erroDaLixeiraDeMidia = nil } }
         )) {
@@ -829,11 +832,17 @@ struct BibliotecaHomeView: View {
         ) {
             if let biblioteca {
                 Button("Esvaziar lixeira", role: .destructive) {
-                    Task { await biblioteca.esvaziarLixeira() }
-                    LixeiraDeTarefas.esvaziar()
-                    LixeiraDeMidia.esvaziar()
-                    LixeiraDePastas.esvaziar()
-                    atualizarPreferenciasVisuais()
+                    Task { @MainActor in
+                        await biblioteca.esvaziarLixeira()
+                        LixeiraDeTarefas.esvaziar()
+                        do {
+                            try LixeiraDeMidia.esvaziar()
+                        } catch {
+                            erroDaLixeiraDeMidia = error.localizedDescription
+                        }
+                        LixeiraDePastas.esvaziar()
+                        atualizarPreferenciasVisuais()
+                    }
                 }
             }
             Button("Cancelar", role: .cancel) {}
@@ -970,7 +979,11 @@ struct BibliotecaHomeView: View {
                                 atualizarPreferenciasVisuais()
                             },
                             aoApagarDefinitivamente: {
-                                LixeiraDeMidia.remover(item)
+                                do {
+                                    try LixeiraDeMidia.remover(item)
+                                } catch {
+                                    erroDaLixeiraDeMidia = "Não foi possível apagar “\(item.nome)”: \(error.localizedDescription)"
+                                }
                                 atualizarPreferenciasVisuais()
                             },
                             aoRevelarNoFinder: { LixeiraDeMidia.revelarNoFinder(item) }

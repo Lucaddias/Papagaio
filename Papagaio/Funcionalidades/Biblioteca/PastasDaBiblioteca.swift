@@ -43,12 +43,35 @@ enum PastasDaBiblioteca {
     }
 
     /// Devolve a pasta e tudo o que ainda estava dentro dela.
-    static func restaurar(_ pasta: PastaNaLixeira, biblioteca: Biblioteca) async {
-        for arquivo in conversas(da: pasta, biblioteca: biblioteca)
-        where await biblioteca.restaurarDaLixeira(arquivo) {
-            LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
+    @discardableResult
+    static func restaurar(_ pasta: PastaNaLixeira, biblioteca: Biblioteca) async -> Bool {
+        LixeiraDePastas.recriar(pasta)
+        var restaurouTudo = true
+        for arquivo in conversas(da: pasta, biblioteca: biblioteca) {
+            if await biblioteca.restaurarDaLixeira(arquivo) {
+                LixeiraDePastas.devolverRotulo(pasta.nome, para: arquivo.id)
+            } else {
+                restaurouTudo = false
+            }
         }
-        LixeiraDePastas.restaurar(pasta)
+        if restaurouTudo { LixeiraDePastas.remover(pasta) }
+        return restaurouTudo
+    }
+
+    /// Restaura primeiro as pastas, aguardando seus arquivos e devolvendo os
+    /// rótulos. Só depois trata conversas avulsas. O fluxo anterior disparava
+    /// a biblioteca em paralelo e apagava o retrato da pasta cedo demais.
+    static func restaurarTudo(biblioteca: Biblioteca) async {
+        for pasta in LixeiraDePastas.itens() {
+            _ = await restaurar(pasta, biblioteca: biblioteca)
+        }
+
+        let aindaVinculados = Set(
+            LixeiraDePastas.itens().flatMap(\.conversas).map(ArquivoID.init(rawValue:))
+        )
+        for arquivo in biblioteca.arquivosNaLixeira where !aindaVinculados.contains(arquivo.id) {
+            guard await biblioteca.restaurarDaLixeira(arquivo) else { break }
+        }
     }
 
     /// Traz uma conversa de volta sem restaurar a pasta.
