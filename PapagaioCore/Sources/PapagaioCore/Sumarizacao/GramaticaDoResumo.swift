@@ -31,15 +31,15 @@ public enum GramaticaDoResumo {
     public static let descricaoDoFormato = """
     Responda SOMENTE com um objeto JSON com exatamente estas chaves:
     - "titulo": nome claro do encontro em formato de ata (ex: "Ata: Revisão de Escopo do MVP")
-    - "visaoGeral": visão completa e detalhada da reunião. Comece identificando data (se mencionada), \
-    participantes e objetivo central. Depois, escreva um resumo abrangente de TODOS os pontos \
-    discutidos, com pelo menos 4 a 6 frases. Seja direto e realista, sem termos corporativos \
-    vazios como "sinergia" ou "disrupção". Não comprima: uma reunião de 1 hora merece um \
-    resumo proporcional ao conteúdo discutido.
+    - "visaoGeral": resumo completo e detalhado da reunião em 4 a 6 frases. \
+    Vá direto ao conteúdo discutido, sem mencionar data, hora nem listar participantes. \
+    Seja direto e realista, sem termos corporativos vazios como "sinergia" ou "disrupção". \
+    Não comprima: uma reunião de 1 hora merece um resumo proporcional ao conteúdo discutido.
     - "temas": lista de {"titulo", "detalhe"} com os assuntos discutidos. Para cada tema:
         - "titulo": assunto objetivo e curto
-        - "detalhe": máximo 1 a 2 frases curtas. Apenas a conclusão ou decisão principal. \
-    Sem repetir o que já está na visão geral. Seja breve e direto.
+        - "detalhe": MÁXIMO 30 palavras. Uma frase curta com a conclusão ou decisão principal. \
+    Sem repetir o que já está na visão geral. \
+    NÃO use caracteres especiais como bullet points ou marcadores. Texto corrido simples.
     - "citacoes": no máximo 3 falas MARCANTES, copiadas LITERALMENTE da transcrição — \
     {"texto", "speaker", "start"}, com "start" em segundos. \
     Marcante é a fala que carrega ideia, conselho, decisão, conclusão, aprendizado ou \
