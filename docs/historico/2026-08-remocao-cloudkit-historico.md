@@ -1,4 +1,9 @@
-# Relatório de auditoria — remoção de CloudKit
+# Histórico — auditoria de remoção de CloudKit
+
+> **Documento histórico.** Ele registra a análise da versão local-first que
+> removeu CloudKit em agosto de 2026. CloudKit e equipes foram restaurados
+> posteriormente; este arquivo é mantido apenas para rastreabilidade e não
+> descreve o escopo atual do Papagaio.
 
 ## Diagnóstico
 
