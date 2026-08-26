@@ -324,7 +324,7 @@ struct ContentView: View {
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia)
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia, consulta: consulta)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
                                aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,

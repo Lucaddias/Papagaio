@@ -108,7 +108,9 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
+    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
     private var espaco: EspacoID
+    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -145,30 +147,26 @@ final class Biblioteca {
 
     // MARK: - Ciclo de vida
 
+    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
+        let mudouDeEspaco = espaco != novoEspaco
+        self.equipeCloudKit = equipeCloudKit
+        if mudouDeEspaco {
+            filaDeProcessamento.removeAll()
+            espaco = novoEspaco
+            arquivos.removeAll()
+            arquivosNaLixeira.removeAll()
+            fases.removeAll()
+            erros.removeAll()
+            erroDaLixeira = nil
+        }
+        await carregar()
+        await baixarAtualizacoesDaEquipe()
+    }
+
     func preparar() async {
-        guard await migrarDadosDeEquipesRemovidas() else { return }
         await ciclo.iniciarMonitoramento()
         await ciclo.encerrarNaSaidaDoApp()
         await carregar()
-    }
-
-    /// A remoção das telas de equipe não pode transformar os registros desses
-    /// espaços em dados invisíveis. A marca só é gravada após `SwiftData`
-    /// salvar, para que uma falha temporária seja tentada novamente na próxima
-    /// abertura sem descartar nenhuma conversa.
-    private func migrarDadosDeEquipesRemovidas() async -> Bool {
-        guard MigracaoDeRemocaoDeEquipes.bibliotecaPrecisaSerMigrada() else {
-            return true
-        }
-
-        do {
-            try await repositorio.migrarTodosOsEspacos(para: espaco)
-            MigracaoDeRemocaoDeEquipes.concluirMigracaoDaBiblioteca()
-            return true
-        } catch {
-            erroDeCarregamento = "Não foi possível migrar a biblioteca existente: \(error.localizedDescription)"
-            return false
-        }
     }
 
     func carregar() async {
@@ -213,6 +211,7 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
+        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
@@ -255,6 +254,7 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            await sincronizar(movido)
             return true
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
@@ -293,6 +293,7 @@ final class Biblioteca {
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
             arquivos.sort { $0.criadoEm > $1.criadoEm }
+            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -318,6 +319,7 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
+            if let equipeCloudKit { try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit) }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
@@ -781,6 +783,25 @@ final class Biblioteca {
         } else {
             arquivos.insert(arquivo, at: 0)
         }
+    }
+
+    private func sincronizar(_ arquivo: Arquivo) async {
+        guard let equipeCloudKit else { return }
+        do {
+            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+        } catch {
+            aoNotificar?("Conversa salva só neste Mac", "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.", .aviso)
+        }
+    }
+
+    private func baixarAtualizacoesDaEquipe() async {
+        guard let equipeCloudKit else { return }
+        do {
+            for arquivo in try await sincronizadorCloudKit.baixar(da: equipeCloudKit) {
+                try await repositorio.salvar(arquivo)
+            }
+            await carregar()
+        } catch { }
     }
 
     // MARK: - Consulta pela view

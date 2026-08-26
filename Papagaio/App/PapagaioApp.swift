@@ -24,11 +24,6 @@ struct PapagaioApp: App {
             exit(0)
         }
 
-        // Instalações que testaram equipes não carregam mais esse estado: a
-        // versão distribuída é exclusivamente local. A migração também remove
-        // as fichas de membros, que viviam em uma chave por equipe.
-        MigracaoDeRemocaoDeEquipes.executarUmaVez()
-
         // Também antes das views: campos de cartão criados nesta versão nascem
         // ligados para quem já tinha personalizado a grade.
         CamposDoCartao.ligarCamposNovos()

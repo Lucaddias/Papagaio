@@ -5,4 +5,5 @@ enum TelaPrincipal {
     case tarefas
     case configuracoes
     case perfil
+    case equipe
 }
