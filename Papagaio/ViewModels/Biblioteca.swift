@@ -24,6 +24,11 @@ final class Biblioteca {
     private(set) var iniciadoEm: [UUID: Date] = [:]
     private(set) var erros: [UUID: String] = [:]
 
+    /// Falha ao abrir a lista do banco. Observável por conta própria —
+    /// dentro do dicionário `erros` (chaveado por arquivo) ela não tinha
+    /// dono e a interface nunca a via.
+    private(set) var erroDeCarregamento: String?
+
     /// Whisper e Qwen continuam pesados. A fila mantém os
     /// pedidos em ordem de chegada e permite que somente um deles carregue os
     /// modelos por vez.
@@ -52,9 +57,61 @@ final class Biblioteca {
     var aoNotificar: (@MainActor (_ titulo: String, _ mensagem: String, _ tipo: NotificacaoDoApp.Tipo) -> Void)?
     var aoConcluirProcessamento: (@MainActor (_ arquivo: Arquivo) -> Void)?
 
+    /// Arquivos que acabaram de ser transcritos e resumidos e ainda esperam a
+    /// ficha da entrevista (título, entrevistado, participantes...) ser
+    /// preenchida. Diferente do fluxo antigo, que abria o formulário sozinho
+    /// assim que o processamento terminava — não importa em que tela a pessoa
+    /// estivesse —, agora o cartão só mostra um selo "Concluído" e é a pessoa
+    /// quem decide clicar para abrir a ficha.
+    private(set) var arquivosComFichaPendente: Set<ArquivoID> = []
+
+    /// Arquivos cujo selo "Concluído" já terminou de subir e está revelado.
+    ///
+    /// Mora aqui, e não num `@State` do cartão, de propósito: `Biblioteca` é
+    /// `@Observable`, e QUALQUER mudança nela (o processamento de um arquivo
+    /// diferente terminando, por exemplo) força o SwiftUI a recalcular o
+    /// `body` de todos os cartões da grade. Se "já revelei o selo deste
+    /// arquivo" vivesse só num `@State` local do cartão, uma recriação da
+    /// view (por perda de identidade nesse recálculo) reiniciava o `@State`
+    /// e replayava a animação de subida até 100% num cartão que já estava
+    /// pronto havia tempos — exatamente o bug relatado ("os outros cards
+    /// pulam pra 100% de novo"). Guardando aqui, a resposta a "já revelei
+    /// esse selo?" sobrevive a qualquer recriação de view.
+    private(set) var arquivosComSeloRevelado: Set<ArquivoID> = []
+
+    func marcarFichaPendente(_ id: ArquivoID) {
+        arquivosComFichaPendente.insert(id)
+        arquivosComSeloRevelado.remove(id)
+        // Meio segundo de atraso antes de revelar o selo "Concluído": tempo
+        // para a tarja lateral subir até 100% primeiro (ver
+        // `CartaoDeConversa.tarjaLateral`), em vez de o selo cobri-la no
+        // meio do caminho — a fração por tempo estimado quase nunca bate
+        // exatamente com o fim real do processamento.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard let self, arquivosComFichaPendente.contains(id) else { return }
+            arquivosComSeloRevelado.insert(id)
+        }
+    }
+
+    func fichaPendente(_ id: ArquivoID) -> Bool {
+        arquivosComFichaPendente.contains(id)
+    }
+
+    func seloDeConclusaoRevelado(_ id: ArquivoID) -> Bool {
+        arquivosComSeloRevelado.contains(id)
+    }
+
+    func limparFichaPendente(_ id: ArquivoID) {
+        arquivosComFichaPendente.remove(id)
+        arquivosComSeloRevelado.remove(id)
+    }
+
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
-    private let espaco: EspacoID
+    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
+    private var espaco: EspacoID
+    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -63,12 +120,22 @@ final class Biblioteca {
         self.repositorio = SwiftDataRepository(
             modelContainer: try SwiftDataRepository.containerLocal()
         )
-        self.espaco = Self.espacoIndividual()
+        self.espaco = Self.espacoPessoal()
+    }
+
+    /// Injeção para testes: container em memória, armazenamento temporário e
+    /// espaço isolado — sem tocar o banco nem o container reais do usuário.
+    /// O caminho de produção continua sendo o `init()` acima.
+    init(armazenamento: Armazenamento, repositorio: SwiftDataRepository, espaco: EspacoID) {
+        self.armazenamento = armazenamento
+        self.pastaDeModelos = armazenamento.pastaDeModelos
+        self.repositorio = repositorio
+        self.espaco = espaco
     }
 
     /// O espaço individual é um só e precisa sobreviver a relançamentos: sem
     /// isto, cada abertura criaria um espaço novo e a lista voltaria vazia.
-    private static func espacoIndividual() -> EspacoID {
+    static func espacoPessoal() -> EspacoID {
         let chave = "espacoIndividual"
         if let guardado = UserDefaults.standard.string(forKey: chave),
            let id = UUID(uuidString: guardado) {
@@ -81,6 +148,22 @@ final class Biblioteca {
 
     // MARK: - Ciclo de vida
 
+    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
+        let mudouDeEspaco = espaco != novoEspaco
+        self.equipeCloudKit = equipeCloudKit
+        if mudouDeEspaco {
+            filaDeProcessamento.removeAll()
+            espaco = novoEspaco
+            arquivos.removeAll()
+            arquivosNaLixeira.removeAll()
+            fases.removeAll()
+            erros.removeAll()
+            erroDaLixeira = nil
+        }
+        await carregar()
+        await baixarAtualizacoesDaEquipe()
+    }
+
     func preparar() async {
         await ciclo.iniciarMonitoramento()
         await ciclo.encerrarNaSaidaDoApp()
@@ -91,8 +174,10 @@ final class Biblioteca {
         do {
             arquivos = try await repositorio.listar(espaco: espaco)
             arquivosNaLixeira = try await repositorio.listarNaLixeira(espaco: espaco)
+            // Uma carga bem-sucedida limpa o lixo de execuções anteriores.
+            erroDeCarregamento = nil
         } catch {
-            erros[UUID()] = "Não foi possível abrir a biblioteca: \(error)"
+            erroDeCarregamento = "Não foi possível abrir a biblioteca: \(error)"
         }
     }
 
@@ -103,12 +188,6 @@ final class Biblioteca {
     /// pessoa iniciar pela aba Transcrição. As notas são criadas antes da fila,
     /// para que os saves do pipeline apenas as preservem junto de transcrição
     /// e resumo.
-    /// - Parameter dataDeGravacao: `nil` numa gravação normal — o arquivo
-    ///   nasce agora, e `criadoEm` já é a data certa. Numa importação, é a
-    ///   data real lida do arquivo original (ver `ImportadorAudio`): o
-    ///   arquivo passa a ser datado de quando foi **gravado**, não de
-    ///   quando entrou no app — e `importadoEm` guarda este segundo
-    ///   instante à parte, para a interface poder mostrar os dois.
     @discardableResult
     func registrar(
         titulo: String,
@@ -133,6 +212,7 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
+        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
@@ -200,31 +280,18 @@ final class Biblioteca {
     /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,
     /// a execução atual é cancelada antes do soft delete para a UI não ficar
     /// presa esperando o pipeline terminar.
-    func moverParaLixeira(_ arquivo: Arquivo) async {
+    @discardableResult
+    func moverParaLixeira(_ arquivo: Arquivo) async -> Bool {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
-        else { return }
+        else { return false }
 
-        // Marcado **antes** de cancelar, e não depois.
-        //
-        // `cancelarProcessamentoDoArquivo` espera o `Task` em curso parar de
-        // verdade — e whisper/Qwen não são interrompíveis no meio de uma
-        // chamada, então essa espera pode levar um tempo real. Se a marca só
-        // viesse depois, existia uma janela em que `fases[chave]` já tinha
-        // sido limpo (lá dentro de `cancelarProcessamentoDoArquivo`) mas
-        // `operacoesDeLixeiraEmAndamento` ainda não continha o arquivo: o
-        // cartão, sem fase e sem saber que está sendo cancelado, caía no
-        // estado padrão "pronto para transcrever" — que nem mostra o botão
-        // de cancelar (só aparece com `estado.ocupado`) — em vez do
-        // indicador de "Movendo para a lixeira…". Marcando primeiro, o
-        // cartão já entra esmaecido com o spinner assim que o botão é
-        // clicado, sem passar por esse estado intermediário confuso.
-        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
-        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
-
-        await cancelarProcessamentoDoArquivo(arquivo.id)
-
+        // `cancelarProcessamentoDoArquivo` também remove o id da fila. A
+        // posição precisa ser capturada antes: se o save do soft delete
+        // falhar, a conversa continua ativa e deve voltar ao processamento
+        // que a própria pessoa já tinha pedido.
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
-        if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
+        let estavaEmProcessamento = arquivoEmProcessamento == arquivo.id
+        await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let chave = arquivo.id.rawValue
         let faseAnterior = fases[chave]
@@ -233,6 +300,8 @@ final class Biblioteca {
         iniciadoEm[chave] = nil
         erros[chave] = nil
         erroDaLixeira = nil
+        operacoesDeLixeiraEmAndamento.insert(arquivo.id)
+        defer { operacoesDeLixeiraEmAndamento.remove(arquivo.id) }
 
         do {
             try await repositorio.moverParaLixeira(arquivo.id)
@@ -242,19 +311,22 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            await sincronizar(movido)
+            return true
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
             fases[chave] = faseAnterior
             erros[chave] = erroAnterior
-            if let indiceNaFila {
+            if estavaEmProcessamento || indiceNaFila != nil {
                 filaDeProcessamento.insert(
                     arquivo.id,
-                    at: min(indiceNaFila, filaDeProcessamento.count)
+                    at: min(indiceNaFila ?? filaDeProcessamento.count, filaDeProcessamento.count)
                 )
                 iniciarProximoProcessamentoSeNecessario()
             }
             erroDaLixeira = "Não foi possível mover o arquivo para a lixeira: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -277,7 +349,8 @@ final class Biblioteca {
             restaurado.apagadoEm = nil
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
-            arquivos.sort { $0.entradaNaBiblioteca > $1.entradaNaBiblioteca }
+            arquivos.sort { $0.criadoEm > $1.criadoEm }
+            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -303,10 +376,14 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
+            if let equipeCloudKit { try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit) }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
+            // O registro e a pasta já saíram; agora nenhum store auxiliar
+            // pode continuar apontando para esta conversa inexistente.
+            LimpezaDeArquivo.executar(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
@@ -345,7 +422,19 @@ final class Biblioteca {
 
         if let tarefa { await tarefa.value }
 
-        try armazenamento.removerTodasAsGravacoes()
+        // O repositório separa os registros por espaço. Apagar a pasta
+        // `Gravacoes` inteira aqui apagava o áudio de outros espaços que
+        // ainda continuavam no banco, deixando conversas sem mídia. Só as
+        // pastas referenciadas pela conta atual participam desta exclusão.
+        let arquivosAtivos = try await repositorio.listar(espaco: espaco)
+        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espaco)
+        let arquivosDaConta = arquivosAtivos + arquivosArquivados
+        let pastasDaConta = Set(
+            arquivosDaConta.map(\.pastaRelativa).filter { !$0.isEmpty }
+        )
+        for pastaRelativa in pastasDaConta {
+            try armazenamento.removerGravacao(relativa: pastaRelativa)
+        }
         try await repositorio.apagarTodosOsDados(espaco: espaco)
 
         arquivos.removeAll()
@@ -367,18 +456,6 @@ final class Biblioteca {
 
     // MARK: - Edição de arquivos
 
-    /// Move a pasta da gravação no disco para acompanhar o título, assim que
-    /// ele existe — "Mostrar no Finder" deve abrir num lugar reconhecível,
-    /// não num UUID. Falha em mover a pasta não pode derrubar quem chamou:
-    /// o título continua salvo mesmo que a pasta fique com o nome antigo.
-    private func renomearPastaSeNecessario(_ arquivo: inout Arquivo) {
-        let novaRelativa = armazenamento.renomearParaTitulo(
-            relativoAtual: arquivo.pastaRelativa,
-            titulo: arquivo.resumo?.titulo ?? arquivo.titulo
-        )
-        arquivo.pastaRelativa = novaRelativa
-    }
-
     func renomear(_ arquivo: Arquivo, para novoTitulo: String) async {
         let tituloLimpo = novoTitulo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty,
@@ -396,11 +473,11 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
-        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -430,11 +507,11 @@ final class Biblioteca {
                 proximosPassos: resumo.proximosPassos
             )
         }
-        renomearPastaSeNecessario(&editado)
 
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -449,6 +526,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -468,6 +546,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -483,7 +562,8 @@ final class Biblioteca {
         let destino = armazenamento.resolver(relativo: pastaNovaRelativa)
 
         do {
-            if FileManager.default.fileExists(atPath: origem.path) {
+            let origemExiste = FileManager.default.fileExists(atPath: origem.path)
+            if origemExiste {
                 try FileManager.default.copyItem(at: origem, to: destino)
             } else {
                 try FileManager.default.createDirectory(at: destino, withIntermediateDirectories: true)
@@ -516,12 +596,33 @@ final class Biblioteca {
                 )
             }
 
+            if origemExiste {
+                let anexosCopiados = try MidiasDaConversa.anexosCopiados(
+                    de: arquivo.id,
+                    da: origem,
+                    para: destino
+                )
+                if !anexosCopiados.isEmpty {
+                    try MidiasDaConversa.salvar(anexosCopiados, para: novoID)
+                }
+            }
+            TarefasGeraisStore.duplicar(arquivo, para: copia)
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            await sincronizar(copia)
             return copia
         } catch {
-            try? FileManager.default.removeItem(at: destino)
-            erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            // O id novo ainda não é visível em lugar nenhum. Se a cópia de
+            // disco, seus bookmarks ou o registro falharem, eliminar os dois
+            // resíduos impede que uma tentativa posterior herde mídia órfã.
+            MidiasDaConversa.remover(novoID)
+            TarefasGeraisStore.remover(novoID)
+            do {
+                try armazenamento.removerGravacao(relativa: pastaNovaRelativa)
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            } catch {
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription). A cópia incompleta permaneceu no armazenamento para não apagar dados de forma insegura."
+            }
             return nil
         }
     }
@@ -679,7 +780,7 @@ final class Biblioteca {
         )
 
         do {
-            var final = try await pipeline.processar(arquivo) { fase in
+            let final = try await pipeline.processar(arquivo) { fase in
                 Task { @MainActor [weak self] in
                     guard self?.identificadorDaExecucao == execucao else { return }
                     self?.fases[chave] = fase
@@ -688,12 +789,8 @@ final class Biblioteca {
             guard identificadorDaExecucao == execucao,
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
-            // O resumo acabou de chegar com um título de verdade — é agora
-            // que a pasta, até aqui nomeada pelo UUID, ganha o nome da
-            // conversa.
-            renomearPastaSeNecessario(&final)
-            try? await repositorio.salvar(final)
             substituir(final)
+            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
@@ -817,6 +914,25 @@ final class Biblioteca {
         } else {
             arquivos.insert(arquivo, at: 0)
         }
+    }
+
+    private func sincronizar(_ arquivo: Arquivo) async {
+        guard let equipeCloudKit else { return }
+        do {
+            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+        } catch {
+            aoNotificar?("Conversa salva só neste Mac", "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.", .aviso)
+        }
+    }
+
+    private func baixarAtualizacoesDaEquipe() async {
+        guard let equipeCloudKit else { return }
+        do {
+            for arquivo in try await sincronizadorCloudKit.baixar(da: equipeCloudKit) {
+                try await repositorio.salvar(arquivo)
+            }
+            await carregar()
+        } catch { }
     }
 
     // MARK: - Consulta pela view

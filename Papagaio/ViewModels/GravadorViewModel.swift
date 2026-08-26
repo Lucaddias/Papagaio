@@ -48,6 +48,15 @@ final class GravadorViewModel {
     var rascunhoDaNota = ""
     var proximaNotaSeraCritica = false
 
+    /// Posição e tamanho, em coordenadas de tela, do cartão de gravação
+    /// dentro da janela principal — atualizado a cada mudança de layout
+    /// enquanto ele está visível.
+    ///
+    /// Vive aqui, e não como `@State` da view, para que o painel flutuante
+    /// (que nasce fora da hierarquia da `ContentView`) saiba de onde "nascer"
+    /// e encolher até o canto, em vez de simplesmente aparecer lá.
+    var origemDoPainelNaTela: CGRect?
+
     private var sessao: SessaoGravacao?
     private var tarefaNivel: Task<Void, Never>?
     private var tarefaDeSumicoDosAvisos: Task<Void, Never>?
@@ -120,12 +129,12 @@ final class GravadorViewModel {
         tarefaDeSumicoDosAvisos = nil
         guard !avisos.isEmpty else { return }
 
-        tarefaDeSumicoDosAvisos = Task { [duracaoDosAvisos] in
+        // `[weak self]`: a tarefa dorme 30 s; reter o view model inteiro por
+        // causa de um sumiço de aviso seguraria a gravação toda junto.
+        tarefaDeSumicoDosAvisos = Task { [weak self, duracaoDosAvisos] in
             try? await Task.sleep(for: duracaoDosAvisos)
             guard !Task.isCancelled else { return }
-            await MainActor.run {
-                self.avisos = []
-            }
+            self?.avisos = []
         }
     }
 
@@ -521,7 +530,7 @@ final class DitadoDeNota {
         let nova = CapturaDeDitado(arquivoDeAudio: destino)
 
         do {
-            try nova.iniciar(reconhecedor: reconhecedor) { texto in
+            try nova.iniciar(reconhecedor: reconhecedor) { [weak self] texto in
                 Task { @MainActor [weak self] in
                     self?.textoParcial = texto
                 }

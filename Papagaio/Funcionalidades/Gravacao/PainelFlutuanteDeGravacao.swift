@@ -29,6 +29,11 @@ import SwiftUI
 struct PainelFlutuanteDeGravacao: View {
     @Bindable var gravador: GravadorViewModel
     let aoAbrirNoApp: () -> Void
+    /// Encolhe o painel até o tamanho mínimo, ou devolve pro tamanho de
+    /// antes — o mesmo botão faz as duas coisas, dependendo do tamanho atual
+    /// (ver `botaoDeTamanho`). Só a própria pessoa aciona isso, pelo botão;
+    /// nada acontece sozinho por causa de arrasto.
+    let aoAlternarTamanho: () -> Void
 
     @State private var largura: CGFloat = 0
     @FocusState private var focoNaNota: Bool
@@ -102,11 +107,21 @@ struct PainelFlutuanteDeGravacao: View {
                 Task { await gravador.cancelar() }
             }
 
-            // No mínimo, o painel perde o campo de nota — então precisa de uma
-            // porta de volta para o app, onde a nota é possível.
-            if !exibindoNota {
+            if exibindoNota {
+                // Só aparece com espaço de sobra: no mínimo, mais um botão
+                // aqui voltava a apertar tudo perto do cronômetro.
                 BotaoDoSelo(simbolo: "arrow.up.left.square", ajuda: "Abrir no app") {
                     aoAbrirNoApp()
+                }
+                BotaoDoSelo(simbolo: "pip.enter", ajuda: "Minimizar") {
+                    aoAlternarTamanho()
+                }
+            } else {
+                // No mínimo, um botão só faz o trabalho dos dois de cima:
+                // volta pro tamanho de antes, de onde dá pra abrir a nota e
+                // (se precisar) voltar ao app pelo mesmo caminho de sempre.
+                BotaoDoSelo(simbolo: "arrow.up.left.and.arrow.down.right", ajuda: "Restaurar tamanho") {
+                    aoAlternarTamanho()
                 }
             }
         }

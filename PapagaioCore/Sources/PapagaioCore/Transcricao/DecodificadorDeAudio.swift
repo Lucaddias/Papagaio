@@ -19,11 +19,48 @@ public enum DecodificadorDeAudio {
     /// é só reinterpretar os bytes.
     public static let extensaoCrua = "pcm"
 
+    /// Um trecho já normalizado para PCM Float32 mono a 16 kHz.
+    ///
+    /// A leitura em blocos é o caminho usado pela transcrição. Manter uma
+    /// reunião inteira em `[Float]` fazia uma hora de áudio ocupar centenas de
+    /// MiB antes mesmo de o Whisper começar a trabalhar.
+    public struct Bloco: Sendable {
+        public let inicio: TimeInterval
+        public let amostras: [Float]
+
+        public init(inicio: TimeInterval, amostras: [Float]) {
+            self.inicio = inicio
+            self.amostras = amostras
+        }
+    }
+
     public static func amostras(de url: URL) async throws -> [Float] {
         if url.pathExtension.lowercased() == extensaoCrua {
             return try amostrasCruas(de: url)
         }
         return try await amostrasDecodificadas(de: url)
+    }
+
+    /// Decodifica e entrega PCM canônico em blocos, sem acumular o arquivo
+    /// inteiro. O callback é serial: quem consome um bloco pode concluir VAD e
+    /// Whisper antes de o próximo ocupar memória.
+    public static func processarEmBlocos(
+        de url: URL,
+        amostrasPorBloco: Int = Int(FormatoAudio.taxaCanonica * 60),
+        acao: (Bloco) async throws -> Void
+    ) async throws {
+        guard amostrasPorBloco > 0 else {
+            throw ErroCaptura.arquivoInvalido("o bloco de decodificação precisa ter amostras")
+        }
+        if url.pathExtension.lowercased() == extensaoCrua {
+            try await processarPCMCru(
+                de: url, amostrasPorBloco: amostrasPorBloco, acao: acao
+            )
+            return
+        }
+        try await processarAudioDecodificado(
+            de: url, amostrasPorBloco: amostrasPorBloco, acao: acao
+        )
     }
 
     private static func amostrasCruas(de url: URL) throws -> [Float] {
@@ -35,6 +72,44 @@ public enum DecodificadorDeAudio {
     }
 
     private static func amostrasDecodificadas(de url: URL) async throws -> [Float] {
+        var resultado: [Float] = []
+        try await processarAudioDecodificado(de: url, amostrasPorBloco: 16_000 * 60) { bloco in
+            resultado.append(contentsOf: bloco.amostras)
+        }
+        guard !resultado.isEmpty else {
+            throw ErroCaptura.arquivoInvalido("\(url.lastPathComponent) está vazio")
+        }
+        return resultado
+    }
+
+    private static func processarPCMCru(
+        de url: URL,
+        amostrasPorBloco: Int,
+        acao: (Bloco) async throws -> Void
+    ) async throws {
+        let arquivo = try FileHandle(forReadingFrom: url)
+        defer { try? arquivo.close() }
+
+        var amostrasEntregues = 0
+        let bytesPorBloco = amostrasPorBloco * MemoryLayout<Float>.size
+        while let dados = try arquivo.read(upToCount: bytesPorBloco), !dados.isEmpty {
+            guard dados.count.isMultiple(of: MemoryLayout<Float>.size) else {
+                throw ErroCaptura.arquivoInvalido("\(url.lastPathComponent) tem PCM truncado")
+            }
+            let amostras = dados.withUnsafeBytes { bruto in
+                Array(bruto.bindMemory(to: Float.self))
+            }
+            let inicio = TimeInterval(amostrasEntregues) / FormatoAudio.taxaCanonica
+            try await acao(Bloco(inicio: inicio, amostras: amostras))
+            amostrasEntregues += amostras.count
+        }
+    }
+
+    private static func processarAudioDecodificado(
+        de url: URL,
+        amostrasPorBloco: Int,
+        acao: (Bloco) async throws -> Void
+    ) async throws {
         let asset = AVURLAsset(url: url)
 
         let trilhas: [AVAssetTrack]
@@ -78,7 +153,9 @@ public enum DecodificadorDeAudio {
             )
         }
 
-        var amostras: [Float] = []
+        var pendentes: [Float] = []
+        pendentes.reserveCapacity(amostrasPorBloco)
+        var amostrasEntregues = 0
         while let buffer = saidaTrilha.copyNextSampleBuffer() {
             defer { CMSampleBufferInvalidate(buffer) }
             guard let bloco = CMSampleBufferGetDataBuffer(buffer) else { continue }
@@ -95,7 +172,19 @@ public enum DecodificadorDeAudio {
             guard status == noErr else {
                 throw ErroCaptura.arquivoInvalido("CMBlockBufferCopyDataBytes: OSStatus \(status)")
             }
-            amostras.append(contentsOf: pedaco)
+            var inicioDoPedaco = 0
+            while inicioDoPedaco < pedaco.count {
+                let vagas = amostrasPorBloco - pendentes.count
+                let quantidadeParaCopiar = min(vagas, pedaco.count - inicioDoPedaco)
+                pendentes.append(contentsOf: pedaco[inicioDoPedaco..<(inicioDoPedaco + quantidadeParaCopiar)])
+                inicioDoPedaco += quantidadeParaCopiar
+
+                guard pendentes.count == amostrasPorBloco else { continue }
+                let inicio = TimeInterval(amostrasEntregues) / FormatoAudio.taxaCanonica
+                try await acao(Bloco(inicio: inicio, amostras: pendentes))
+                amostrasEntregues += pendentes.count
+                pendentes.removeAll(keepingCapacity: true)
+            }
         }
 
         if leitor.status == .failed {
@@ -104,10 +193,10 @@ public enum DecodificadorDeAudio {
             )
         }
 
-        guard !amostras.isEmpty else {
-            throw ErroCaptura.arquivoInvalido("\(url.lastPathComponent) está vazio")
+        if !pendentes.isEmpty {
+            let inicio = TimeInterval(amostrasEntregues) / FormatoAudio.taxaCanonica
+            try await acao(Bloco(inicio: inicio, amostras: pendentes))
         }
-        return amostras
     }
 
     /// Duração em segundos de um vetor de amostras no formato canônico.

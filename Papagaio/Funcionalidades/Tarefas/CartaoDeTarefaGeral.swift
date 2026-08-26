@@ -49,34 +49,38 @@ struct CartaoDeTarefaGeral: View {
                 .help("Ações da tarefa")
             }
 
+            // Sem `.lineLimit`: um título ou nome de conversa comprido
+            // quebrava em "..." bem no meio de uma palavra em colunas
+            // estreitas — cortar o texto escondia justamente o que a pessoa
+            // precisa ler para saber do que se trata a tarefa. Deixando
+            // quebrar livremente o cartão cresce em altura quando precisa,
+            // em vez de mentir sobre o conteúdo.
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                 Text(tarefa.tarefa.titulo)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(concluida ? PapagaioTema.textoSecundario : PapagaioTema.texto)
                     .strikethrough(concluida, color: PapagaioTema.textoSecundario)
-                    .lineLimit(2)
 
                 Text(tarefa.conversa.titulo)
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
-                    .lineLimit(1)
             }
 
             Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(corDoPrazo)
-                .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         // Recuo extra à esquerda: a tarja de cor mora encostada na borda do
         // cartão, e sem este respiro o texto ficaria colado nela.
         .padding(.leading, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.curto)
         .padding([.top, .trailing, .bottom], PapagaioTema.Espaco.largo)
-        // A grade fica muito mais fácil de varrer quando cada tarefa ocupa o
-        // mesmo retângulo; título longo é truncado nas duas linhas acima.
-        // Mais baixo que antes: sem o selo de status e sem a linha do
-        // responsável, o retângulo antigo sobrava embaixo, vazio.
-        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .topLeading)
+        // Só `minHeight`, sem `maxHeight`: a maioria dos cartões continua no
+        // mesmo retângulo baixo de antes, mas um título ou nome de conversa
+        // que precisa de mais linhas (ver o comentário acima, sem
+        // `.lineLimit`) agora estica o cartão em vez de ser cortado por uma
+        // altura fixa que o texto não cabia.
+        .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
         // Mesmo raio de todo cartão do app — o de "controle" (8pt, botão e
         // campo) fazia este cartão parecer um componente pequeno, não a
         // mesma superfície do cartão de conversa ao lado dele na Biblioteca.

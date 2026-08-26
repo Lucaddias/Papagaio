@@ -112,12 +112,15 @@ public struct QwenEngine: SummarizationEngine {
     }
 
     private func particionar(_ trechos: [Trecho]) async throws -> [[Trecho]] {
+        // Contagem em lote: um salto só para o ator, no lugar de um
+        // round-trip por trecho — centenas a menos numa conversa longa.
+        let contagens = try await contexto.contarTokens(trechos.map { Self.formatar([$0]) })
+
         var chunks: [[Trecho]] = []
         var atual: [Trecho] = []
         var tokensAtuais = 0
 
-        for trecho in trechos {
-            let tokens = try await contexto.contarTokens(Self.formatar([trecho]))
+        for (trecho, tokens) in zip(trechos, contagens) {
             if tokensAtuais + tokens > Self.tokensPorChunk, !atual.isEmpty {
                 chunks.append(atual)
                 atual = []
@@ -151,9 +154,10 @@ public struct QwenEngine: SummarizationEngine {
         em português do Brasil. Regras: (1) seja fiel à transcrição, não invente \
         números, nomes nem decisões. (2) Sem termos corporativos vazios — nada de \
         "sinergia", "disrupção" ou "com base em nossos aprendizados". Seja direto \
-        e realista. (3) Identifique TODOS os tópicos discutidos, classificando cada \
-        um como Ponto Principal ou Secundário. (4) Produza uma análise completa e \
-        detalhada, proporcional à duração da reunião.<|im_end|>
+        e realista. (3) Use os nomes EXATAMENTE como aparecem na transcrição, sem \
+        alterar, corrigir nem inventar variações. Se o nome aparecer como "Dr. Nando", \
+        use "Dr. Nando" em todo o resumo, nunca "Fernando" nem "Nando". (4) Produza \
+        uma análise completa e detalhada, proporcional à duração da reunião.<|im_end|>
         <|im_start|>user
         Analise a reunião abaixo e produza uma ata profissional completa e detalhada. \
         Não comprima: cubra todos os assuntos e organize os temas com pontos e subpontos, \

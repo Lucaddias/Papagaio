@@ -190,8 +190,6 @@ public struct Armazenamento: Sendable {
         /// WAV do microfone gravado pelo `AVAudioRecorder` — 16 kHz mono,
         /// 16 bits. É o canal "eu" e o insumo da transcrição.
         public static let microfone = "microfone.wav"
-        /// WAV canônico do microfone (nome legado, idêntico ao atual).
-        public static let wavMicrofone = "microfone.wav"
         /// CAF PCM do áudio do sistema no formato nativo do tap. É o canal
         /// "interlocutor" — ver `SystemAudioTap`.
         public static let sistema = "sistema.caf"

@@ -7,6 +7,7 @@ struct PerfilPessoalView: View {
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void
+    let aoEntrarComCodigo: (String) -> Void
     let aoSair: () -> Void
     let aoExcluirConta: () async throws -> Void
     @State private var nome: String = ""
@@ -43,7 +44,8 @@ struct PerfilPessoalView: View {
                             equipeAtiva: equipeAtiva,
                             equipes: equipes,
                             aoSelecionar: aoSelecionarEquipe,
-                            aoAdicionarEquipe: aoAdicionarEquipe
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
                         )
                         .frame(width: 330)
                     }
@@ -59,7 +61,8 @@ struct PerfilPessoalView: View {
                             equipeAtiva: equipeAtiva,
                             equipes: equipes,
                             aoSelecionar: aoSelecionarEquipe,
-                            aoAdicionarEquipe: aoAdicionarEquipe
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
                         )
                     }
                 }
@@ -81,6 +84,11 @@ struct PerfilPessoalView: View {
             nome = perfil.nome
             email = perfil.email
         }
+        // O onAppear sozinho deixa os campos velhos quando o perfil muda com
+        // a tela já montada (troca de conta, fim do sign-in): os campos
+        // seguem o modelo enquanto a view existe.
+        .onChange(of: perfil.nome) { _, novo in nome = novo }
+        .onChange(of: perfil.email) { _, novo in email = novo }
         .alert("Login com Apple", isPresented: $mostrandoAvisoDeSenha) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -117,8 +125,13 @@ struct PerfilPessoalView: View {
         painel.canChooseDirectories = false
         painel.canChooseFiles = true
         painel.title = "Escolher foto do perfil"
-        if painel.runModal() == .OK, let url = painel.url {
-            perfil.escolherAvatar(url)
+        // `begin` no lugar de `runModal`: o painel deixa de travar a main
+        // enquanto a pessoa navega.
+        painel.begin { resposta in
+            guard resposta == .OK, let url = painel.url else { return }
+            Task { @MainActor in
+                perfil.escolherAvatar(url)
+            }
         }
     }
 

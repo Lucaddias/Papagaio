@@ -33,10 +33,21 @@ public enum ValidacaoDeCitacoes {
     /// Só o que é ruído puro de oralidade. Nada que carregue sentido — "tipo"
     /// entra na lista porque na fala espontânea brasileira ele é muleta, mas
     /// palavras como "olha" ou "veja" ficam, porque marcam o tom de quem fala.
+    ///
+    /// **"é" (verbo ser) não entra**: já entrou, e "isso é muito importante"
+    /// virava "isso muito importante". As hesitações fonéticas ("eh", "ehh")
+    /// cobrem o mesmo som sem tocar o verbo. "sabe"/"entende" ficam como
+    /// muletas porque na fala espontânea aparecem soltos, sem reger nada.
     static let viciosDeFala: Set<String> = [
-        "é", "éé", "ééé", "eh", "ehh", "ahn", "ahm", "ah", "hum", "hmm", "hm",
-        "putz", "tipo", "né", "ne", "tá", "ta", "então assim", "assim ó",
+        "éé", "ééé", "eh", "ehh", "ahn", "ahm", "ah", "hum", "hmm", "hm",
+        "putz", "tipo", "né", "ne", "tá", "ta",
         "sabe", "entende", "entendeu", "cara", "pô", "po", "uhum", "aham",
+    ]
+
+    /// Vícios de **duas palavras**: a remoção por token único nunca casava com
+    /// eles, e ficavam para sempre. Aqui saem como par, na ordem do texto.
+    static let viciosDeFalaCompostos: Set<[String]> = [
+        ["então", "assim"], ["assim", "ó"],
     ]
 
     /// Aplica todas as regras e devolve o que sobreviveu, em ordem de tempo.
@@ -108,19 +119,37 @@ public enum ValidacaoDeCitacoes {
 
     // MARK: - Limpeza
 
-    /// Remove vícios de fala isolados, preservando o resto palavra por palavra.
+    /// Remove vícios de fala isolados ou em par, preservando o resto palavra
+    /// por palavra.
     ///
     /// A remoção é por token inteiro, e não por busca de substring: apagar "né"
     /// como texto solto mutilaria "nenhum", e apagar "ta" quebraria "tarde".
+    /// Os pares (`viciosDeFalaCompostos`) têm precedência sobre o token único.
     static func removerVicios(de texto: String) -> String {
         let palavras = texto.split(whereSeparator: \.isWhitespace)
-        let mantidas = palavras.filter { palavra in
-            let nua = palavra
-                .trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-                .lowercased()
-            return !viciosDeFala.contains(nua)
+        var mantidas: [Substring] = []
+        var indice = 0
+        while indice < palavras.count {
+            let atual = tokenNu(palavras[indice])
+            if indice + 1 < palavras.count,
+               viciosDeFalaCompostos.contains([atual, tokenNu(palavras[indice + 1])]) {
+                indice += 2
+                continue
+            }
+            if !viciosDeFala.contains(atual) {
+                mantidas.append(palavras[indice])
+            }
+            indice += 1
         }
         return mantidas.joined(separator: " ")
+    }
+
+    /// Forma de comparação de um token: minúsculo, sem pontuação nas bordas,
+    /// **com acento** — o par "então assim" precisa casar como é falado.
+    private static func tokenNu(_ palavra: Substring) -> String {
+        palavra
+            .trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+            .lowercased()
     }
 
     private static func estaNaFaixaDeTamanho(_ texto: String) -> Bool {

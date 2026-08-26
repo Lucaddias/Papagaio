@@ -15,8 +15,16 @@ struct LinhaDeFala: View {
     let palavraAtiva: PalavraDeFala?
     /// Animação do destaque de palavra, vinda do container.
     let animacao: Animation?
+    /// Nomes escolhidos para as vozes desta conversa ("S1" → "João"...) — ver
+    /// `RotuloDeVoz`. Vazio quando ninguém ainda renomeou nada, e a fala volta
+    /// a mostrar "Voz N".
+    let nomesDeVoz: [String: String]
     let aoTocarFala: () -> Void
     let aoTocarPalavra: (Palavra) -> Void
+    /// Corrige o texto desta fala. Fica ao lado direito do parágrafo,
+    /// centralizado na altura dele — nem preso só à linha do cabeçalho (fica
+    /// solto demais lá em cima), nem flutuando fora de qualquer texto.
+    let aoEditar: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
@@ -26,12 +34,19 @@ struct LinhaDeFala: View {
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                cabecalhoDaFala
+            // `.center` aqui, e não `.top`: o lápis fica ao lado do
+            // parágrafo inteiro (cabeçalho + texto), centralizado na altura
+            // dele — não colado só na linha do cabeçalho lá em cima.
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    cabecalhoDaFala
 
-                corpoDaFala
+                    corpoDaFala
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                botaoEditar
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, PapagaioTema.Espaco.medio)
         .padding(.horizontal, PapagaioTema.Espaco.largo)
@@ -68,7 +83,7 @@ struct LinhaDeFala: View {
     private var cabecalhoDaFala: some View {
         HStack(spacing: PapagaioTema.Espaco.minimo) {
             if let acustico = fala.falanteAcustico {
-                Text(LinhaDeFala.rotuloDe(acustico))
+                Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
                     .padding(.horizontal, PapagaioTema.Espaco.minimo)
@@ -88,10 +103,26 @@ struct LinhaDeFala: View {
         }
     }
 
+    private var botaoEditar: some View {
+        Button(action: aoEditar) {
+            Image(systemName: "pencil")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PapagaioTema.destaqueEscuro)
+                .frame(width: 26, height: 26)
+                .background(PapagaioTema.destaqueSuave, in: Circle())
+                .overlay {
+                    Circle().stroke(PapagaioTema.destaque.opacity(0.4), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Corrigir o texto desta fala")
+        .accessibilityLabel("Corrigir o texto desta fala")
+    }
+
     @ViewBuilder
     private var corpoDaFala: some View {
         if !fala.palavras.isEmpty {
-            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3) {
+            LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3, justificado: true) {
                 ForEach(Array(fala.palavras.enumerated()), id: \.element.palavra.id) { _, item in
                     BotaoDePalavra(
                         palavra: item.palavra,
@@ -111,15 +142,5 @@ struct LinhaDeFala: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .multilineTextAlignment(.leading)
         }
-    }
-
-    /// Traduz o rótulo do FluidAudio ("S1") para o que um humano entende
-    /// ("Voz 1"). Rótulo acústico só serve para comparar vozes da mesma
-    /// gravação — nunca é um nome de pessoa.
-    private static func rotuloDe(_ falanteAcustico: String) -> String {
-        if falanteAcustico.hasPrefix("S"), let numero = Int(falanteAcustico.dropFirst()) {
-            return "Voz \(numero)"
-        }
-        return "Voz \(falanteAcustico)"
     }
 }

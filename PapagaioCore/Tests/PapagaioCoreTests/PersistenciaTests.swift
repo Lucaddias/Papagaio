@@ -122,8 +122,8 @@ func persistenciaPreservaFalanteAcustico() async throws {
     #expect(volta.trechos[1].palavras[0].falanteAcustico == nil)
 }
 
-@Test("Falha ao apagar a mídia não deixa registro zumbi: o registro sai antes")
-func persistenciaApagarPreservaRegistroSeMidiaFalhar() async throws {
+@Test("Falha ao apagar a mídia preserva o registro e permite repetir")
+func persistenciaApagarEhRetomavelSeMidiaFalhar() async throws {
     let repo = try repositorioDeTeste()
     let espaco = EspacoID()
     let arquivo = arquivoDeExemplo(titulo: "na lixeira", espaco: espaco)
@@ -135,12 +135,36 @@ func persistenciaApagarPreservaRegistroSeMidiaFalhar() async throws {
         try await repo.apagar(arquivo.id) { _ in throw FalhaDeMidia() }
     }
 
-    // Ordem invertida em relação à primeira versão: o registro sai do banco
-    // primeiro e a mídia por último. Se a mídia falhar, o pior caso é áudio
-    // órfão em disco — nunca um registro sem áudio que não toca mais. A
-    // deleção do registro precisa estar persistida mesmo com a falha.
+    // Sem apagar o registro, a lixeira ainda guarda o caminho da mídia e a
+    // pessoa pode repetir a operação. Apagar o banco primeiro deixava uma
+    // pasta órfã que nenhuma tentativa posterior conseguia mais localizar.
+    #expect(try await repo.listarNaLixeira(espaco: espaco).map(\.id) == [arquivo.id])
+
+    try await repo.apagar(arquivo.id) { _ in }
+
     #expect(try await repo.listarNaLixeira(espaco: espaco).isEmpty)
     #expect(try await repo.listar(espaco: espaco).isEmpty)
+}
+
+@Test("Excluir dados de um espaço preserva os demais espaços")
+func persistenciaExcluiSomenteODominioDaContaAtual() async throws {
+    let repo = try repositorioDeTeste()
+    let minhaConta = EspacoID()
+    let outraConta = EspacoID()
+    let ativo = arquivoDeExemplo(titulo: "ativo", espaco: minhaConta)
+    let naLixeira = arquivoDeExemplo(titulo: "lixeira", espaco: minhaConta)
+    let deOutraConta = arquivoDeExemplo(titulo: "outra", espaco: outraConta)
+
+    try await repo.salvar(ativo)
+    try await repo.salvar(naLixeira)
+    try await repo.moverParaLixeira(naLixeira.id)
+    try await repo.salvar(deOutraConta)
+
+    try await repo.apagarTodosOsDados(espaco: minhaConta)
+
+    #expect(try await repo.listar(espaco: minhaConta).isEmpty)
+    #expect(try await repo.listarNaLixeira(espaco: minhaConta).isEmpty)
+    #expect(try await repo.listar(espaco: outraConta).map(\.id) == [deOutraConta.id])
 }
 
 @Test("Espaço ausente em registro legado devolve sempre o mesmo id")
@@ -343,13 +367,31 @@ func buscaIgnoraArquivosNaLixeira() async throws {
     let arquivo = arquivoDeExemplo(titulo: "Reunião de orçamento", espaco: espaco)
     try await repo.salvar(arquivo)
 
-    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id) == [arquivo.id])
 
     try await repo.moverParaLixeira(arquivo.id)
-    #expect(try await repo.buscar(termo: "orçamento").isEmpty)
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).isEmpty)
 
     try await repo.restaurar(arquivo.id)
-    #expect(try await repo.buscar(termo: "orçamento").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id) == [arquivo.id])
+}
+
+@Test("Busca não mistura resultados de espaços diferentes")
+func buscaRespeitaEspaco() async throws {
+    let repo = try repositorioDeTeste()
+    let espacoAtual = EspacoID()
+    let outroEspaco = EspacoID()
+    let atual = arquivoDeExemplo(titulo: "Planejamento confidencial", espaco: espacoAtual)
+    let deOutroEspaco = arquivoDeExemplo(
+        titulo: "Planejamento confidencial", espaco: outroEspaco,
+        trechos: [Trecho(start: 0, end: 1, texto: "informação privada", speaker: nil)]
+    )
+    try await repo.salvar(atual)
+    try await repo.salvar(deOutroEspaco)
+
+    #expect(try await repo.buscar(termo: "confidencial", espaco: espacoAtual).map(\.id) == [atual.id])
+    #expect(try await repo.buscar(termo: "privada", espaco: espacoAtual).isEmpty)
+    #expect(try await repo.buscar(termo: "privada", espaco: outroEspaco).map(\.id) == [deOutroEspaco.id])
 }
 
 @Test("Salvar uma atualização tardia não restaura arquivo da lixeira")
@@ -391,12 +433,39 @@ func buscaPrioridadeDeTitulo() async throws {
         ))
     }
 
-    let resultados = try await repo.buscar(termo: "orçamento")
+    let resultados = try await repo.buscar(termo: "orçamento", espaco: espaco)
 
     #expect(resultados.count == 4)
     #expect(resultados.first?.titulo == "Revisão de orçamento")
     // Nenhum duplicado, mesmo estando nos dois buckets.
     #expect(Set(resultados.map(\.id)).count == resultados.count)
+}
+
+@Test("Busca por título ordena importações pela entrada na biblioteca")
+func buscaPorTituloOrdenaPelaEntradaNaBiblioteca() async throws {
+    let repo = try repositorioDeTeste()
+    let espaco = EspacoID()
+    let gravacaoMaisRecente = Arquivo(
+        titulo: "Orçamento gravado recentemente",
+        criadoEm: Date(timeIntervalSinceReferenceDate: 2_000),
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: espaco
+    )
+    let importacaoMaisRecente = Arquivo(
+        titulo: "Orçamento importado agora",
+        criadoEm: Date(timeIntervalSinceReferenceDate: 1_000),
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: espaco,
+        importadoEm: Date(timeIntervalSinceReferenceDate: 3_000)
+    )
+
+    try await repo.salvar(gravacaoMaisRecente)
+    try await repo.salvar(importacaoMaisRecente)
+
+    #expect(
+        try await repo.buscar(termo: "orçamento", espaco: espaco).map(\.id)
+            == [importacaoMaisRecente.id, gravacaoMaisRecente.id]
+    )
 }
 
 @Test("Busca com e sem acento devolve o mesmo")
@@ -405,9 +474,9 @@ func buscaIgnoraAcento() async throws {
     let espaco = EspacoID()
     try await repo.salvar(arquivoDeExemplo(titulo: "Revisão de Orçamento", espaco: espaco))
 
-    let comAcento = try await repo.buscar(termo: "orçamento")
-    let semAcento = try await repo.buscar(termo: "orcamento")
-    let caixaAlta = try await repo.buscar(termo: "ORCAMENTO")
+    let comAcento = try await repo.buscar(termo: "orçamento", espaco: espaco)
+    let semAcento = try await repo.buscar(termo: "orcamento", espaco: espaco)
+    let caixaAlta = try await repo.buscar(termo: "ORCAMENTO", espaco: espaco)
 
     #expect(comAcento.count == 1)
     #expect(semAcento.map(\.id) == comAcento.map(\.id))
@@ -428,8 +497,8 @@ func buscaNoResumoEInsight() async throws {
         )
     ))
 
-    #expect(try await repo.buscar(termo: "armazenamento").count == 1)
-    #expect(try await repo.buscar(termo: "brightworks").count == 1)
+    #expect(try await repo.buscar(termo: "armazenamento", espaco: espaco).count == 1)
+    #expect(try await repo.buscar(termo: "brightworks", espaco: espaco).count == 1)
 }
 
 @Test("Busca acha texto de nota temporizada")
@@ -443,7 +512,7 @@ func buscaNasNotas() async throws {
     )
     try await repo.salvar(arquivo)
 
-    #expect(try await repo.buscar(termo: "confidencialidade").map(\.id) == [arquivo.id])
+    #expect(try await repo.buscar(termo: "confidencialidade", espaco: espaco).map(\.id) == [arquivo.id])
 }
 
 @Test("Termo vazio ou sem correspondência devolve lista vazia")
@@ -452,7 +521,7 @@ func buscaVazia() async throws {
     let espaco = EspacoID()
     try await repo.salvar(arquivoDeExemplo(titulo: "alguma coisa", espaco: espaco))
 
-    #expect(try await repo.buscar(termo: "").isEmpty)
-    #expect(try await repo.buscar(termo: "   ").isEmpty)
-    #expect(try await repo.buscar(termo: "termo-que-nao-existe").isEmpty)
+    #expect(try await repo.buscar(termo: "", espaco: espaco).isEmpty)
+    #expect(try await repo.buscar(termo: "   ", espaco: espaco).isEmpty)
+    #expect(try await repo.buscar(termo: "termo-que-nao-existe", espaco: espaco).isEmpty)
 }

@@ -292,4 +292,19 @@ enum AparenciaDasPastas {
         decodificadas.setObject(imagem, forKey: chave)
         return imagem
     }
+
+    /// Remove aparência e ordenação que pertencem às pastas da conta atual.
+    @MainActor
+    static func removerTodas(em defaults: UserDefaults = .standard) {
+        let prefixos = [
+            prefixoCor, prefixoCapa, prefixoAjuste, prefixoFavorita,
+            prefixoCriacao, prefixoCorLivre, prefixoSemCor,
+        ]
+        for chave in defaults.dictionaryRepresentation().keys
+        where prefixos.contains(where: chave.hasPrefix) {
+            defaults.removeObject(forKey: chave)
+        }
+        urlsResolvidas.removeAll()
+        decodificadas.removeAllObjects()
+    }
 }

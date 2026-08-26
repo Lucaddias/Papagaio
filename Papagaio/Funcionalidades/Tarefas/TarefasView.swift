@@ -6,7 +6,7 @@ struct TarefasView: View {
     let biblioteca: Biblioteca?
     let consulta: String
     @State private var conversasSelecionadas: Set<ArquivoID> = []
-    @State private var versaoDasTarefas = 0
+    @State private var painelDeTarefas = TarefasDoPainelViewModel()
     @State private var prioridadeSelecionada: PrioridadeDaTarefa?
     @State private var ordenacao: OrdenacaoDoPainelDeTarefas = .deadline
     @State private var filtroDeDeadline: FiltroDeDeadlineTarefa = .todas
@@ -30,10 +30,10 @@ struct TarefasView: View {
     }
 
     private var tarefasPorConversa: [TarefasDaConversaGeral] {
-        _ = versaoDasTarefas
-        return conversas.compactMap { arquivo -> TarefasDaConversaGeral? in
-            let tarefas = TarefasGeraisStore.carregar(arquivo)
-                .sorted(by: ordenarPorDeadline)
+        conversas.compactMap { arquivo -> TarefasDaConversaGeral? in
+            let tarefas = painelDeTarefas.tarefas(de: arquivo)
+                .filter { !$0.pendenteDeRevisao }
+                .sorted(by: OrdenacaoDeTarefas.porDeadline)
             guard !tarefas.isEmpty else { return nil }
             return TarefasDaConversaGeral(
                 arquivo: arquivo,
@@ -97,12 +97,9 @@ struct TarefasView: View {
         return filtradas.sorted { primeira, segunda in
             switch ordenacao {
             case .deadline:
-                return ordenarPorDeadline(primeira.tarefa, segunda.tarefa)
+                return OrdenacaoDeTarefas.porDeadline(primeira.tarefa, segunda.tarefa)
             case .prioridade:
-                let prioridadeA = prioridadeOrdenacao(primeira.tarefa.prioridade)
-                let prioridadeB = prioridadeOrdenacao(segunda.tarefa.prioridade)
-                if prioridadeA != prioridadeB { return prioridadeA < prioridadeB }
-                return ordenarPorDeadline(primeira.tarefa, segunda.tarefa)
+                return OrdenacaoDeTarefas.porPrioridade(primeira.tarefa, segunda.tarefa)
             }
         }
     }
@@ -180,8 +177,14 @@ struct TarefasView: View {
             }
             .overlay(alignment: .bottom) {
                 ZonaDeRolagemDuranteArrasto(scrollView: scrollViewDoKanban, direcao: .baixo)
-            }
+        }
         .background(PapagaioTema.fundo)
+        .task {
+            painelDeTarefas.recarregar(conversas: conversas)
+        }
+        .onChange(of: biblioteca?.arquivos) { _, _ in
+            painelDeTarefas.recarregar(conversas: conversas)
+        }
         .overlay(alignment: .bottomTrailing) {
             Button(action: abrirCriacaoDeTarefa) {
                 Image(systemName: "plus")
@@ -266,7 +269,11 @@ struct TarefasView: View {
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: PapagaioTema.Espaco.medio) {
+                // `.top`, e não o padrão `.center`: os cartões não têm mais
+                // altura fixa (um título comprido agora estica em vez de
+                // truncar), e centralizados um cartão mais alto deixava os
+                // vizinhos baixos flutuando no meio da fileira.
+                HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
                     ForEach(tarefasPorConversa) { conversa in
                         CartaoFiltroDeConversaTarefa(
                             conversa: conversa,
@@ -336,11 +343,15 @@ struct TarefasView: View {
 
     private var resumoDoKanban: some View {
         HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            // Sem limite de linha, e sem truncar: o título vem do nome da
+            // conversa (ou de "N conversas selecionadas"), tamanho fora do
+            // controle da tela — cortar com "..." escondia informação que a
+            // pessoa clicou justamente para ver. `layoutPriority` continua
+            // garantindo que ele ganha espaço dos filtros antes de quebrar
+            // linha à toa.
             Label(tituloDoKanban, systemImage: "list.clipboard")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(PapagaioTema.texto)
-                .lineLimit(1)
-                .truncationMode(.tail)
                 .layoutPriority(1)
 
             Text("\(tarefasVisiveis.count) \(tarefasVisiveis.count == 1 ? "Tarefa" : "Tarefas")")
@@ -561,7 +572,6 @@ extension TarefasView {
 
         let descricao = descricaoDoEditor.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        var tarefas = TarefasGeraisStore.carregar(arquivo)
         let tarefaAtualizada = TarefaDaConversa(
             id: tarefaEmEdicao?.tarefa.id ?? UUID(),
             titulo: titulo,
@@ -570,85 +580,32 @@ extension TarefasView {
             status: statusDoEditor,
             responsavel: responsavelDoEditor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : responsavelDoEditor,
             prazo: prazoDoEditor,
-            descricao: descricao.isEmpty ? nil : descricao
+            descricao: descricao.isEmpty ? nil : descricao,
+            prioridadeDefinidaManualmente: true
         )
 
-        if let tarefaEmEdicao,
-           let indice = tarefas.firstIndex(where: { $0.id == tarefaEmEdicao.tarefa.id }) {
-            tarefas[indice] = tarefaAtualizada
-        } else {
-            tarefas.append(tarefaAtualizada)
-        }
-
-        TarefasGeraisStore.salvar(tarefas, para: conversaID)
-        versaoDasTarefas += 1
+        painelDeTarefas.salvar(tarefaAtualizada, em: arquivo, substituindo: tarefaEmEdicao != nil)
         exibindoEditor = false
     }
 
     private func alternarConclusao(_ tarefa: TarefaGeral) {
-        atualizar(tarefa) { editada in
-            editada.status = editada.status == .concluida ? .emAndamento : .concluida
-        }
+        painelDeTarefas.alternarConclusao(tarefa.tarefa.id, em: tarefa.conversa.arquivo)
     }
 
     private func moverTarefa(_ id: String, para destino: DestinoDeTarefa) {
         guard let tarefa = tarefasVisiveis.first(where: { $0.id == id }) else { return }
-        atualizar(tarefa) { editada in
-            editada.status = destino.status
+        var transacao = Transaction()
+        transacao.disablesAnimations = true
+        withTransaction(transacao) {
+            painelDeTarefas.mover(tarefa.tarefa.id, para: destino, em: tarefa.conversa.arquivo)
         }
     }
 
     private func excluirTarefa(_ tarefa: TarefaGeral) {
-        guard let arquivo = conversas.first(where: { $0.id == tarefa.conversa.id }) else { return }
-        let tarefas = TarefasGeraisStore.carregar(arquivo).filter { $0.id != tarefa.tarefa.id }
-        TarefasGeraisStore.salvar(tarefas, para: tarefa.conversa.id)
-        LixeiraDeTarefas.mover(
+        painelDeTarefas.excluir(
             tarefa.tarefa,
-            arquivoID: tarefa.conversa.id,
+            em: tarefa.conversa.arquivo,
             conversaTitulo: tarefa.conversa.titulo
         )
-        versaoDasTarefas += 1
-    }
-
-    private func atualizar(_ tarefa: TarefaGeral, alteracao: (inout TarefaDaConversa) -> Void) {
-        guard let arquivo = conversas.first(where: { $0.id == tarefa.conversa.id }) else { return }
-        var tarefas = TarefasGeraisStore.carregar(arquivo)
-        guard let indice = tarefas.firstIndex(where: { $0.id == tarefa.tarefa.id }) else { return }
-        alteracao(&tarefas[indice])
-        TarefasGeraisStore.salvar(tarefas, para: tarefa.conversa.id)
-        // O `dropDestination` entrega uma transação de arraste com animação
-        // implícita. Reaproveitá-la fazia o cartão antigo ficar ~1s visível
-        // depois de soltá-lo. A nova coluna passa a refletir o estado salvo
-        // no mesmo frame, sem essa transição pendurada.
-        var transacao = Transaction()
-        transacao.disablesAnimations = true
-        withTransaction(transacao) {
-            versaoDasTarefas += 1
-        }
-    }
-
-    private func ordenarPorDeadline(_ primeira: TarefaDaConversa, _ segunda: TarefaDaConversa) -> Bool {
-        switch (primeira.prazo, segunda.prazo) {
-        case let (a?, b?):
-            if a != b { return a < b }
-            if primeira.prioridade != segunda.prioridade {
-                return prioridadeOrdenacao(primeira.prioridade) < prioridadeOrdenacao(segunda.prioridade)
-            }
-            return primeira.titulo.localizedCaseInsensitiveCompare(segunda.titulo) == .orderedAscending
-        case (_?, nil):
-            return true
-        case (nil, _?):
-            return false
-        case (nil, nil):
-            return primeira.titulo.localizedCaseInsensitiveCompare(segunda.titulo) == .orderedAscending
-        }
-    }
-
-    private func prioridadeOrdenacao(_ prioridade: PrioridadeDaTarefa) -> Int {
-        switch prioridade {
-        case .alta: 0
-        case .media: 1
-        case .baixa: 2
-        }
     }
 }

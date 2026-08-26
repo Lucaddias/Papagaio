@@ -288,7 +288,7 @@ public struct ProximoPasso: Sendable, Codable, Equatable {
 /// para cá — ver D-1.2 em `DECISIONS.md`. Um `@Model` é classe e não é
 /// `Sendable`; se ele atravessasse o protocolo, `ArquivoRepository: Sendable`
 /// seria mentira.
-public struct Arquivo: Sendable, Identifiable, Equatable {
+public struct Arquivo: Sendable, Identifiable, Codable, Equatable {
     public let id: ArquivoID
     public var titulo: String
     public var criadoEm: Date

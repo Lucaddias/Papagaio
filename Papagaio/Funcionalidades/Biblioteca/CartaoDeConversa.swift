@@ -12,6 +12,9 @@ struct CartaoDeConversa: View {
     let processando: Bool
     let naFila: Bool
     let emOperacaoDeLixeira: Bool
+    let fichaPendente: Bool
+    let seloDeConclusaoRevelado: Bool
+    let aoAbrirFicha: () -> Void
     let aoReprocessar: () -> Void
     let aoDiarizar: () -> Void
     let aoRenomear: (String) -> Void
@@ -69,6 +72,9 @@ struct CartaoDeConversa: View {
         processando: Bool,
         naFila: Bool,
         emOperacaoDeLixeira: Bool,
+        fichaPendente: Bool,
+        seloDeConclusaoRevelado: Bool,
+        aoAbrirFicha: @escaping () -> Void,
         aoReprocessar: @escaping () -> Void,
         aoDiarizar: @escaping () -> Void,
         aoRenomear: @escaping (String) -> Void,
@@ -89,6 +95,9 @@ struct CartaoDeConversa: View {
         self.processando = processando
         self.naFila = naFila
         self.emOperacaoDeLixeira = emOperacaoDeLixeira
+        self.fichaPendente = fichaPendente
+        self.seloDeConclusaoRevelado = seloDeConclusaoRevelado
+        self.aoAbrirFicha = aoAbrirFicha
         self.aoReprocessar = aoReprocessar
         self.aoDiarizar = aoDiarizar
         self.aoRenomear = aoRenomear
@@ -421,6 +430,27 @@ struct CartaoDeConversa: View {
                 .padding(.bottom, Self.alturaDaBarra)
             }
         }
+        .overlay {
+            if fichaPendente, seloDeConclusaoRevelado {
+                ZStack {
+                    PapagaioTema.fundo.opacity(0.6)
+                        .allowsHitTesting(false)
+
+                    VStack(spacing: PapagaioTema.Espaco.medio) {
+                        SeloDeStatus(
+                            texto: "Concluído",
+                            simbolo: "checkmark.circle.fill",
+                            estilo: .sucesso
+                        )
+                        .allowsHitTesting(false)
+
+                        botaoAbrirFicha
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, Self.alturaDaBarra)
+            }
+        }
         // A tarja do modelo compacto: sem faixa de capa, é ela que carrega a
         // cor da conversa/pasta — o mesmo papel que a faixa tinha no modelo
         // com capa, só que reduzido a uma lateral. Encostada nos quatro
@@ -742,6 +772,25 @@ struct CartaoDeConversa: View {
                 .lineLimit(1)
         }
         .foregroundStyle(PapagaioTema.textoSecundario)
+    }
+
+    private var botaoAbrirFicha: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Image(systemName: "arrow.right.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Clique para ver a conversa")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .foregroundStyle(PapagaioTema.sucesso)
+        .padding(.horizontal, PapagaioTema.Espaco.medio)
+        .padding(.vertical, PapagaioTema.Espaco.curto)
+        .background(PapagaioTema.superficie, in: Capsule())
+        .overlay {
+            Capsule().stroke(PapagaioTema.sucesso.opacity(0.4), lineWidth: 1)
+        }
+        .contentShape(Capsule())
+        .highPriorityGesture(TapGesture().onEnded(aoAbrirFicha))
+        .help("Ver a conversa")
     }
 
     /// Os participantes, e o clique que abre a ficha com os nomes.

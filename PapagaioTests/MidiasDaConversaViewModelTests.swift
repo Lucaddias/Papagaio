@@ -1,0 +1,72 @@
+import Foundation
+import Testing
+@testable import Papagaio
+
+// A tradução de erro do Cocoa vivia enterrada na `ArquivoDetalheView`.
+// No `MidiasDaConversaViewModel` ela vira função pura — e ganha teste.
+
+@MainActor
+@Test("iPhone bloqueado ganha mensagem acionável, não código genérico")
+func mensagemParaIPhoneBloqueado() {
+    let erro = NSError(
+        domain: NSCocoaErrorDomain,
+        code: 257,
+        userInfo: [NSLocalizedDescriptionKey: "O arquivo não pôde ser aberto porque o iPhone está bloqueado."]
+    )
+
+    let mensagem = MidiasDaConversaViewModel.mensagemAmigavel(erro)
+
+    #expect(mensagem.contains("desbloquear"))
+}
+
+@MainActor
+@Test("Códigos de acesso do Cocoa viram orientação, não jargão")
+func mensagemParaCodigosDeAcesso() {
+    for codigo in [257, 260, 513] {
+        let erro = NSError(
+            domain: NSCocoaErrorDomain,
+            code: codigo,
+            userInfo: [NSLocalizedDescriptionKey: "sem permissão"]
+        )
+        #expect(MidiasDaConversaViewModel.mensagemAmigavel(erro).contains("acessar"))
+    }
+}
+
+@MainActor
+@Test("Erro desconhecido mantém a descrição original, sem inventar")
+func mensagemGenericaPreservaDescricao() {
+    let erro = NSError(
+        domain: NSCocoaErrorDomain,
+        code: 4,
+        userInfo: [NSLocalizedDescriptionKey: "O disco está cheio."]
+    )
+
+    let mensagem = MidiasDaConversaViewModel.mensagemAmigavel(erro)
+
+    #expect(mensagem.contains("O disco está cheio."))
+}
+
+@MainActor
+@Test("Falha ao registrar importação remove a cópia recém-criada")
+func importarMidiaDesfazCopiaQuandoPersistenciaFalha() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let origem = raiz.appendingPathComponent("origem.txt")
+    let conversa = raiz.appendingPathComponent("conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    try Data("conteúdo".utf8).write(to: origem)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    struct FalhaDePersistencia: Error {}
+    #expect(throws: FalhaDePersistencia.self) {
+        try MidiasDaConversa.copiar(
+            origem,
+            para: conversa,
+            tituloDaConversa: "Conversa",
+            aposCopiar: { _ in throw FalhaDePersistencia() }
+        )
+    }
+
+    let pastaDeMidia = conversa.appendingPathComponent(NomeDeArquivoSeguro.gerar(de: "Conversa"))
+    #expect(FileManager.default.fileExists(atPath: origem.path))
+    #expect((try FileManager.default.contentsOfDirectory(atPath: pastaDeMidia.path)).isEmpty)
+}

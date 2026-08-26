@@ -125,6 +125,18 @@ enum AparenciaDoCartao {
         decodificados.removeObject(forKey: id.rawValue.uuidString as NSString)
     }
 
+    @MainActor
+    static func remover(_ id: ArquivoID, em defaults: UserDefaults = .standard) {
+        let sufixo = id.rawValue.uuidString
+        for prefixo in [prefixoCor, prefixoBanner, prefixoAjuste, prefixoSemCor] {
+            let chave = prefixo + sufixo
+            defaults.removeObject(forKey: chave)
+            urlsResolvidas[chave] = nil
+        }
+        decodificados.removeObject(forKey: sufixo as NSString)
+        CorDominanteDeImagem.esquecer(sufixo)
+    }
+
     /// Imagem pronta para desenhar, decodificada no máximo uma vez.
     @MainActor
     static func imagem(_ id: ArquivoID) -> NSImage? {
@@ -139,6 +151,18 @@ enum AparenciaDoCartao {
         let imagem = MiniaturaDeImagem.reduzir(original)
         decodificados.setObject(imagem, forKey: chave)
         return imagem
+    }
+
+    /// Remove personalizações vinculadas às conversas da conta atual.
+    @MainActor
+    static func removerTodas(em defaults: UserDefaults = .standard) {
+        let prefixos = [prefixoCor, prefixoBanner, prefixoAjuste, prefixoSemCor]
+        for chave in defaults.dictionaryRepresentation().keys
+        where prefixos.contains(where: chave.hasPrefix) {
+            defaults.removeObject(forKey: chave)
+        }
+        urlsResolvidas.removeAll()
+        decodificados.removeAllObjects()
     }
 }
 

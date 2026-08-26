@@ -2,11 +2,18 @@ import SwiftUI
 
 struct TarefasDaConversaView: View {
     let tarefas: [TarefaDaConversa]
+    /// Sugestões da IA ainda não revisadas — não fazem parte de `tarefas`
+    /// (que já vem só com as aceitas) e ganham uma seção própria acima do
+    /// quadro, ver `secaoDeSugestoes`.
+    let sugestoes: [TarefaDaConversa]
     @Binding var filtro: FiltroDeTarefas
     let aoAdicionar: () -> Void
     let aoAlternarConclusao: (TarefaDaConversa) -> Void
     let aoEditar: (TarefaDaConversa) -> Void
     let aoMover: (UUID, DestinoDeTarefa) -> Void
+    let aoAceitarSugestao: (TarefaDaConversa) -> Void
+    let aoEditarSugestao: (TarefaDaConversa) -> Void
+    let aoRejeitarSugestao: (TarefaDaConversa) -> Void
 
     private var tarefasFiltradas: [TarefaDaConversa] {
         switch filtro {
@@ -35,6 +42,15 @@ struct TarefasDaConversaView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+            if !sugestoes.isEmpty {
+                SecaoDeSugestoesDeTarefa(
+                    sugestoes: sugestoes,
+                    aoAceitar: aoAceitarSugestao,
+                    aoEditar: aoEditarSugestao,
+                    aoRejeitar: aoRejeitarSugestao
+                )
+            }
+
             HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: PapagaioTema.Espaco.curto) {
@@ -73,13 +89,17 @@ struct TarefasDaConversaView: View {
 
                 Button(action: aoAdicionar) {
                     Image(systemName: "plus")
-                        .font(.system(size: 24, weight: .medium))
+                        // Altura.destaque (44) é a medida do sistema para ação
+                        // principal/alvo mínimo — o 48 de antes vivia fora da
+                        // escala que o próprio botão deveria exemplificar.
+                        .font(.title2.weight(.medium))
                         .foregroundStyle(PapagaioTema.textoSobrePrimario)
-                        .frame(width: 48, height: 48)
+                        .frame(width: PapagaioTema.Altura.destaque, height: PapagaioTema.Altura.destaque)
                         .background(PapagaioTema.preenchimentoPrimario, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .help("Adicionar tarefa")
+                .accessibilityLabel("Adicionar tarefa")
                 .layoutPriority(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -50,6 +50,21 @@ struct PreviaDoAnexoDeMidia: View {
     private func carregarMiniatura() async {
         guard anexo.tipoVisual != "Áudio" else { return }
 
+        // Imagem: carrega o arquivo direto, sem depender do serviço do
+        // QuickLook (`quicklookd`, um processo à parte). Antes disso, um
+        // print colado (sem vir de um arquivo do Finder, escrito na hora a
+        // partir dos bytes arrastados) só mostrava a foto de verdade se o
+        // QuickLook chegasse a **falhar** — se ele simplesmente demorasse ou
+        // devolvesse algo genérico sem lançar erro, o cartão ficava com o
+        // ícone de "Imagem" em vez da própria captura. Indo direto, a prévia
+        // de qualquer imagem é sempre o conteúdo de verdade.
+        if anexo.tipoVisual == "Imagem" {
+            if let imagem = NSImage(contentsOf: anexo.url) {
+                await MainActor.run { miniatura = imagem }
+            }
+            return
+        }
+
         let tamanho = CGSize(width: 680, height: 380)
         let escala = NSScreen.main?.backingScaleFactor ?? 2
         let requisicao = QLThumbnailGenerator.Request(
@@ -59,30 +74,38 @@ struct PreviaDoAnexoDeMidia: View {
             representationTypes: .thumbnail
         )
 
-        do {
-            let representacao = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: requisicao)
-            await MainActor.run {
-                miniatura = representacao.nsImage
-            }
-        } catch {
-            if anexo.tipoVisual == "Imagem" {
-                await MainActor.run {
-                    miniatura = NSImage(contentsOf: anexo.url)
-                }
-            }
+        if let representacao = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: requisicao) {
+            await MainActor.run { miniatura = representacao.nsImage }
         }
     }
 }
 
 struct PreviaDeAudio: View {
+    private static let larguraDaBarra: CGFloat = 4
+
     var body: some View {
-        HStack(alignment: .center, spacing: PapagaioTema.Espaco.minimo) {
-            ForEach(0..<28, id: \.self) { indice in
-                Capsule()
-                    .fill(PapagaioTema.destaque)
-                    .frame(width: 4, height: altura(para: indice))
-                    .opacity(indice.isMultiple(of: 3) ? 0.9 : 0.55)
+        GeometryReader { geometria in
+            // Número de barras fixo (28) e sem `GeometryReader`, a fileira
+            // tinha largura própria (28 × 4pt + os respiros entre elas) que
+            // não ligava para o quanto o cartão media de verdade — num
+            // cartão estreito (janela pequena, uma coluna só na grade) as
+            // barras das pontas ficavam cortadas pela borda arredondada do
+            // cartão, à esquerda e à direita. Calculando quantas barras
+            // cabem na largura medida (`geometria.size.width`), a fileira
+            // nunca é mais larga que a própria prévia — encolhe ou cresce
+            // junto com o cartão, e nunca corta nada.
+            let espaco = PapagaioTema.Espaco.minimo
+            let quantidade = max(6, Int((geometria.size.width + espaco) / (Self.larguraDaBarra + espaco)))
+
+            HStack(alignment: .center, spacing: espaco) {
+                ForEach(0..<quantidade, id: \.self) { indice in
+                    Capsule()
+                        .fill(PapagaioTema.destaque)
+                        .frame(width: Self.larguraDaBarra, height: altura(para: indice))
+                        .opacity(indice.isMultiple(of: 3) ? 0.9 : 0.55)
+                }
             }
+            .frame(width: geometria.size.width, height: geometria.size.height, alignment: .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(PapagaioTema.destaqueSuave.opacity(0.52), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))

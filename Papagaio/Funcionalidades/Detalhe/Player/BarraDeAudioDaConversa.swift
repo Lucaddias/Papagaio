@@ -42,10 +42,17 @@ struct BarraDeAudioDaConversa: View {
         }
         .padding(.horizontal, PapagaioTema.Espaco.secao)
         .padding(.vertical, compacto ? PapagaioTema.Espaco.medio : PapagaioTema.Espaco.largo)
-        // A tela estreita propõe toda a altura restante ao overlay. Com só um
-        // `minHeight`, o player aceitava essa proposta e virava uma faixa
-        // enorme. Em compacto ele tem a altura exata necessária aos controles.
-        .frame(maxWidth: .infinity, minHeight: compacto ? 208 : 88, maxHeight: compacto ? 208 : nil)
+        .frame(maxWidth: .infinity, minHeight: compacto ? nil : 88)
+        // A tela estreita propõe toda a altura restante ao overlay. Um
+        // `minHeight` sozinho aceitava essa proposta e virava uma faixa
+        // enorme — daí o `208` fixo que existia aqui antes. Só que 208 é
+        // maior do que os controles pedem quando o título cabe numa linha
+        // só (a barra sobrava vazia em volta deles, parecendo grande demais
+        // à toa). `.fixedSize(vertical:)` resolve as duas pontas de uma vez:
+        // ignora a proposta de altura do overlay (nunca mais vira uma faixa
+        // enorme) e usa exatamente o que o conteúdo pede (nunca mais sobra
+        // nem falta espaço).
+        .fixedSize(horizontal: false, vertical: compacto)
         .background(PapagaioTema.superficie)
         .overlay(alignment: .top) {
             Rectangle()

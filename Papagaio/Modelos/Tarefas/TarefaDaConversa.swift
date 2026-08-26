@@ -11,6 +11,24 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
     /// Opcional e por último de propósito: tarefas gravadas antes desta versão
     /// decodificam com `nil` aqui, sem quebrar.
     var descricao: String?
+    /// `true` só para uma sugestão recém-extraída da transcrição, ainda não
+    /// revisada pela pessoa — enquanto isso, ela não aparece em nenhum
+    /// Kanban (nem o da conversa, nem o geral), só na seção de sugestões.
+    /// Opcional pelo mesmo motivo de `descricao`: tarefas de antes desta
+    /// versão decodificam com `nil`, que `pendenteDeRevisao` trata como
+    /// "já revisada" — não seria correto ressuscitar tarefas antigas como
+    /// pendentes.
+    var sugestaoPendente: Bool?
+    /// `true` quando a pessoa escolheu a prioridade à mão (pelo formulário de
+    /// criação/edição) — a partir daí, `RegraDePrazoDaTarefa` não mexe mais
+    /// nela. Sem isto, uma tarefa vencida (prazo no passado conta como "prazo
+    /// perto") tinha a prioridade forçada de volta para Alta assim que a tela
+    /// recarregava, um instante depois de a pessoa salvar outra escolha —
+    /// parecendo que a edição simplesmente não tinha sido salva. Opcional
+    /// pelo mesmo motivo dos outros campos novos: tarefas antigas decodificam
+    /// com `nil`, tratado como "ainda não é manual" (mantendo a promoção
+    /// automática que já existia para elas).
+    var prioridadeDefinidaManualmente: Bool?
 
     init(
         id: UUID = UUID(),
@@ -20,7 +38,9 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         status: StatusDaTarefa,
         responsavel: String?,
         prazo: Date?,
-        descricao: String? = nil
+        descricao: String? = nil,
+        sugestaoPendente: Bool? = nil,
+        prioridadeDefinidaManualmente: Bool? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -30,7 +50,17 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         self.responsavel = responsavel
         self.prazo = prazo
         self.descricao = descricao
+        self.sugestaoPendente = sugestaoPendente
+        self.prioridadeDefinidaManualmente = prioridadeDefinidaManualmente
     }
+
+    /// `false` para tarefas nunca editadas por uma pessoa — só aí a régua de
+    /// prazo (`RegraDePrazoDaTarefa`) ainda pode promover a prioridade sozinha.
+    var prioridadeEhManual: Bool { prioridadeDefinidaManualmente ?? false }
+
+    /// `true` enquanto a sugestão espera a pessoa aceitar, editar ou
+    /// descartar — ver o comentário de `sugestaoPendente`.
+    var pendenteDeRevisao: Bool { sugestaoPendente ?? false }
 
     /// O nome do responsável, só quando é um nome de verdade.
     ///

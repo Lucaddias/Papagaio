@@ -12,27 +12,36 @@ struct CartaoDeAnexoDeMidia: View {
                     PreviaDoAnexoDeMidia(anexo: anexo)
                         .frame(maxWidth: .infinity)
 
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                        Text(anexo.nome)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.texto)
-                            .lineLimit(2)
-                            .frame(minHeight: 44, alignment: .topLeading)
-
-                        HStack(spacing: PapagaioTema.Espaco.minimo) {
-                            SeloDeMidia(texto: anexo.tipoVisual, simbolo: anexo.simbolo)
-                            SeloDeMidia(texto: anexo.extensaoVisual, simbolo: "doc.text")
-                            SeloDeMidia(texto: formatoDeBytes(anexo.tamanho), simbolo: "externaldrive")
-                        }
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 82, alignment: .topLeading)
+                    // Sem `.lineLimit`: o nome do arquivo é o que a
+                    // pessoa deu a ele (ou o nome original do Finder) —
+                    // sem tamanho garantido, cortar com "..." escondia
+                    // justamente o que identifica o anexo. `minHeight`
+                    // aqui é só o piso de duas linhas; o cartão em volta
+                    // não tem mais `maxHeight` (ver abaixo), então um
+                    // nome maior estica o cartão em vez de ser cortado.
+                    Text(anexo.nome)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+                        .frame(minHeight: 44, alignment: .topLeading)
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .buttonStyle(.plain)
             .help("Mostrar \(anexo.nome) no Finder")
+
+            // Fora do botão: dentro dele, passar o mouse por cima dos selos
+            // (só informativos, não abrem nada) mostrava a mesma dica
+            // "Mostrar no Finder" bem em cima deles, tampando o texto que a
+            // pessoa estava tentando ler — o selo de tamanho ("4,1 MB")
+            // sumia atrás da bolha da dica.
+            HStack(spacing: PapagaioTema.Espaco.minimo) {
+                SeloDeMidia(texto: anexo.tipoVisual, simbolo: anexo.simbolo)
+                SeloDeMidia(texto: anexo.extensaoVisual, simbolo: "doc.text")
+                SeloDeMidia(texto: formatoDeBytes(anexo.tamanho), simbolo: "externaldrive")
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .frame(maxWidth: .infinity, minHeight: 38, alignment: .topLeading)
 
             Spacer(minLength: 0)
 
@@ -50,7 +59,11 @@ struct CartaoDeAnexoDeMidia: View {
             }
         }
         .padding(PapagaioTema.Espaco.largo)
-        .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318, alignment: .topLeading)
+        // Só `minHeight`: a maioria dos cartões continua nos mesmos 318pt de
+        // sempre, mas um nome de arquivo comprido (sem `.lineLimit` agora)
+        // pode precisar de mais — sem `maxHeight`, ele estica em vez de
+        // cortar por cima do texto.
+        .frame(maxWidth: .infinity, minHeight: 318, alignment: .topLeading)
         .cartaoPapagaio()
     }
 }

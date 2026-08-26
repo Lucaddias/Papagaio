@@ -113,7 +113,8 @@ struct CartaoNovaConversa: View {
         .frame(
             maxWidth: .infinity,
             minHeight: CartaoDeConversa.alturaDoCartao,
-            maxHeight: CartaoDeConversa.alturaDoCartao
+            maxHeight: CartaoDeConversa.alturaDoCartao,
+            alignment: .top
         )
         .background(
             recebendoArraste
@@ -122,8 +123,18 @@ struct CartaoNovaConversa: View {
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
         )
         .overlay {
+            // `.strokeBorder`, e não `.stroke`: `.stroke` centraliza a linha
+            // em cima do contorno e deixa metade da espessura vazar pra fora
+            // da forma — com 2-3pt de espessura (bem mais grossa que o 1pt do
+            // `cartaoPapagaio` dos outros cartões), esse vazamento bastava
+            // pra este cartão parecer mais largo que os de baixo, mesmo os
+            // dois ocupando exatamente a mesma coluna da grade.
+            // `.strokeBorder` desenha inteira por dentro da forma, então a
+            // borda tracejada fica no mesmo contorno que o `.background`
+            // logo acima — as bordas dos dois tipos de cartão terminam no
+            // mesmo pixel.
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
-                .stroke(
+                .strokeBorder(
                     recebendoArraste ? PapagaioTema.destaque : PapagaioTema.borda,
                     style: StrokeStyle(lineWidth: recebendoArraste ? 3 : 2, dash: [7, 6])
                 )

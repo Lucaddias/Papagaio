@@ -20,7 +20,10 @@ enum TarefasDaConversa {
                 prioridade: indice < 2 ? .alta : .media,
                 status: .naoIniciado,
                 responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
-                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa)
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: dataDaConversa),
+                // Extraída da transcrição, não escrita pela pessoa — fica como
+                // sugestão até ela aceitar, editar ou descartar.
+                sugestaoPendente: true
             )
         }
         salvar(tarefas, para: arquivoID)
@@ -32,8 +35,11 @@ enum TarefasDaConversa {
         UserDefaults.standard.set(dados, forKey: chave(arquivoID))
     }
 
-    static func removerTodas() {
-        let defaults = UserDefaults.standard
+    static func remover(_ arquivoID: ArquivoID, em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave(arquivoID))
+    }
+
+    static func removerTodas(em defaults: UserDefaults = .standard) {
         for chave in defaults.dictionaryRepresentation().keys where chave.hasPrefix("tarefasDaConversa.") {
             defaults.removeObject(forKey: chave)
         }

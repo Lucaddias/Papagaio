@@ -24,7 +24,12 @@ enum TarefasGeraisStore {
                 prioridade: indice < 2 ? .alta : .media,
                 status: .naoIniciado,
                 responsavel: TarefaDaConversa.responsavelSaneado(passo.responsavel),
-                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm)
+                prazo: Calendar.current.date(byAdding: .day, value: 7 + indice, to: arquivo.criadoEm),
+                // Extraída da transcrição, não escrita pela pessoa — fica como
+                // sugestão até ela aceitar, editar ou descartar na aba
+                // Tarefas da própria conversa. Enquanto isso, não aparece
+                // aqui no quadro geral (ver `TarefasView.tarefasPorConversa`).
+                sugestaoPendente: true
             )
         }
 
@@ -38,6 +43,31 @@ enum TarefasGeraisStore {
     static func salvar(_ tarefas: [TarefaDaConversa], para arquivoID: ArquivoID) {
         guard let dados = try? JSONEncoder().encode(tarefas) else { return }
         UserDefaults.standard.set(dados, forKey: chave(arquivoID))
+    }
+
+    /// Duplica o estado atual das tarefas para uma conversa distinta. IDs e a
+    /// origem precisam ser recriados: a cópia é uma nova conversa e não pode
+    /// compartilhar a identidade nem continuar mostrando o título antigo.
+    static func duplicar(_ arquivo: Arquivo, para copia: Arquivo) {
+        let origemDaCopia = copia.resumo?.titulo ?? copia.titulo
+        let tarefasCopiadas = carregar(arquivo).map { tarefa in
+            TarefaDaConversa(
+                titulo: tarefa.titulo,
+                origem: origemDaCopia,
+                prioridade: tarefa.prioridade,
+                status: tarefa.status,
+                responsavel: tarefa.responsavel,
+                prazo: tarefa.prazo,
+                descricao: tarefa.descricao
+            )
+        }
+
+        guard !tarefasCopiadas.isEmpty else { return }
+        salvar(tarefasCopiadas, para: copia.id)
+    }
+
+    static func remover(_ arquivoID: ArquivoID, em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave(arquivoID))
     }
 
     private static func chave(_ arquivoID: ArquivoID) -> String {

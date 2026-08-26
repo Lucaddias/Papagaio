@@ -47,10 +47,11 @@ struct CartaoDeMidiaRemovida: View {
             .frame(maxWidth: .infinity)
             .frame(height: 118)
 
+            // Sem `.lineLimit` — mesmo ajuste de `CartaoDeAnexoDeMidia`: o
+            // nome do arquivo não tem tamanho garantido.
             Text(item.nome)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(PapagaioTema.textoSecundario)
-                .lineLimit(1)
                 // Riscado: diz "isto saiu" sem precisar de mais uma palavra.
                 .strikethrough(true, color: PapagaioTema.textoSecundario.opacity(0.6))
 
@@ -83,7 +84,9 @@ struct CartaoDeMidiaRemovida: View {
             }
         }
         .padding(PapagaioTema.Espaco.largo)
-        .frame(maxWidth: .infinity, minHeight: 318, maxHeight: 318, alignment: .topLeading)
+        // Só `minHeight` — mesmo ajuste de `CartaoDeAnexoDeMidia`: sem
+        // `maxHeight`, um nome comprido estica o cartão em vez de cortar.
+        .frame(maxWidth: .infinity, minHeight: 318, alignment: .topLeading)
         .background(
             PapagaioTema.superficie.opacity(0.35),
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)

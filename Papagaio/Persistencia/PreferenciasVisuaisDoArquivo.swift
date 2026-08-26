@@ -11,6 +11,12 @@ enum PreferenciasVisuaisDoArquivo {
     private static let prefixoPasta = "arquivoPasta."
     private static let prefixoCapa = "arquivoCapa."
     private static let prefixoMetadados = "arquivoMetadados."
+    private static let prefixoNomesDeVoz = "arquivoNomesDeVoz."
+
+    /// Avisa a aba de Transcrição para reler os nomes das vozes — mesmo
+    /// motivo de `metadadosDidChange`: `UserDefaults` não empurra a mudança
+    /// sozinho para quem já está na tela.
+    static let nomesDeVozDidChange = Notification.Name("PreferenciasVisuaisDoArquivo.nomesDeVozDidChange")
 
     /// Capas já resolvidas e decodificadas.
     ///
@@ -190,9 +196,41 @@ enum PreferenciasVisuaisDoArquivo {
         NotificationCenter.default.post(name: metadadosDidChange, object: id.rawValue)
     }
 
+    /// Nomes escolhidos para as vozes da diarização deste arquivo, chaveados
+    /// pelo rótulo acústico bruto ("S1", "S2"...) que vem do diarizador — não
+    /// por "Voz 1", que é só como ele aparece quando ninguém ainda deu nome.
+    ///
+    /// Fica em `UserDefaults`, e não em `Trecho.palavras[].falanteAcustico`
+    /// (SwiftData): o rótulo acústico é um dado de domínio, comparado
+    /// internamente para saber "quem é quem" dentro da gravação — sobrescrever
+    /// com o nome digitado mudaria esse contrato e reescreveria todos os
+    /// trechos do arquivo a cada renomeação. Isto aqui é só a etiqueta de
+    /// exibição, no mesmo espírito de `favorito`/`pasta`/`metadados`.
+    static func nomesDeVoz(_ id: ArquivoID) -> [String: String] {
+        guard let dados = UserDefaults.standard.data(forKey: prefixoNomesDeVoz + id.rawValue.uuidString),
+              let mapa = try? JSONDecoder().decode([String: String].self, from: dados)
+        else { return [:] }
+        return mapa
+    }
+
+    static func definirNomesDeVoz(_ mapa: [String: String], para id: ArquivoID) {
+        let chave = prefixoNomesDeVoz + id.rawValue.uuidString
+        guard let dados = try? JSONEncoder().encode(mapa) else { return }
+        UserDefaults.standard.set(dados, forKey: chave)
+        NotificationCenter.default.post(name: nomesDeVozDidChange, object: id.rawValue)
+    }
+
     static func copiar(de origem: ArquivoID, para destino: ArquivoID) {
         definirFavorito(favorito(origem), para: destino)
         definirPasta(pasta(origem), para: destino)
+
+        let chaveNomesDeVozOrigem = prefixoNomesDeVoz + origem.rawValue.uuidString
+        let chaveNomesDeVozDestino = prefixoNomesDeVoz + destino.rawValue.uuidString
+        if let dados = UserDefaults.standard.data(forKey: chaveNomesDeVozOrigem) {
+            UserDefaults.standard.set(dados, forKey: chaveNomesDeVozDestino)
+        } else {
+            UserDefaults.standard.removeObject(forKey: chaveNomesDeVozDestino)
+        }
 
         let chaveOrigem = prefixoCapa + origem.rawValue.uuidString
         let chaveDestino = prefixoCapa + destino.rawValue.uuidString
@@ -211,10 +249,22 @@ enum PreferenciasVisuaisDoArquivo {
         }
     }
 
+    /// Esquece tudo que pertence a um arquivo só: favorito, pasta, capa,
+    /// metadados e nomes das vozes.
     @MainActor
-    static func removerTodas() {
-        let defaults = UserDefaults.standard
-        let prefixos = [prefixoFavorito, prefixoPasta, prefixoCapa, prefixoMetadados]
+    static func remover(_ id: ArquivoID, em defaults: UserDefaults = .standard) {
+        let sufixo = id.rawValue.uuidString
+        defaults.removeObject(forKey: prefixoFavorito + sufixo)
+        defaults.removeObject(forKey: prefixoPasta + sufixo)
+        defaults.removeObject(forKey: prefixoCapa + sufixo)
+        defaults.removeObject(forKey: prefixoMetadados + sufixo)
+        defaults.removeObject(forKey: prefixoNomesDeVoz + sufixo)
+        capasDecodificadas.removeObject(forKey: sufixo as NSString)
+    }
+
+    @MainActor
+    static func removerTodas(em defaults: UserDefaults = .standard) {
+        let prefixos = [prefixoFavorito, prefixoPasta, prefixoCapa, prefixoMetadados, prefixoNomesDeVoz]
         for chave in defaults.dictionaryRepresentation().keys where prefixos.contains(where: chave.hasPrefix) {
             defaults.removeObject(forKey: chave)
         }
