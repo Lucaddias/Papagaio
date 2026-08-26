@@ -33,10 +33,12 @@ struct CartaoFiltroDeConversaTarefa: View {
             HStack(spacing: PapagaioTema.Espaco.medio) {
                 // O ícone leva a mesma cor da tarja — os dois dizem a mesma
                 // coisa, o status geral das tarefas desta conversa, e não
-                // fazia sentido um estar colorido e o outro cinza.
+                // fazia sentido um estar colorido e o outro cinza. Vale
+                // selecionado ou não: o acento genérico da marca não tinha
+                // relação nenhuma com a identidade da própria conversa.
                 Image(systemName: simbolo)
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : corDeIdentidade)
+                    .foregroundStyle(corDeIdentidade)
                     .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
@@ -47,7 +49,7 @@ struct CartaoFiltroDeConversaTarefa: View {
                     // mesmo tamanho) em vez de esconder o nome.
                     Text(conversa.titulo)
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(selecionado ? PapagaioTema.destaqueEscuro : PapagaioTema.texto)
+                        .foregroundStyle(selecionado ? corDeIdentidade : PapagaioTema.texto)
 
                     VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                         Label("\(conversa.tarefas.count) \(conversa.tarefas.count == 1 ? "Tarefa" : "Tarefas")", systemImage: "list.clipboard")

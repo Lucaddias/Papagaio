@@ -15,29 +15,78 @@ struct TarefasDaConversaView: View {
     let aoEditarSugestao: (TarefaDaConversa) -> Void
     let aoRejeitarSugestao: (TarefaDaConversa) -> Void
 
+    /// Botão de olho por seção, herdado do Painel de Tarefas geral.
+    @AppStorage("ocultarSecaoNaoIniciado") private var ocultarSecaoNaoIniciado = false
+    @AppStorage("ocultarSecaoEmAndamento") private var ocultarSecaoEmAndamento = false
+    @AppStorage("ocultarSecaoConcluidas") private var ocultarSecaoConcluidas = false
+    @AppStorage("ocultarSecaoAtrasada") private var ocultarSecaoAtrasada = false
+    @State private var tarefasOcultas: Set<String> = TarefasOcultasStore.carregar()
+    /// Sem isto ligado, uma tarefa oculta some do quadro por completo — não
+    /// dava pra saber que existia, nem pra desmarcá-la de volta. Mesmo par
+    /// do Painel de Tarefas geral (ver `TarefasView`).
+    @AppStorage("mostrarTarefasOcultasDaConversa") private var mostrarTarefasOcultas = false
+
     private var tarefasFiltradas: [TarefaDaConversa] {
         switch filtro {
         case .tudo:
             tarefas
         case .naoIniciado:
-            tarefas.filter { $0.status == .naoIniciado }
+            tarefas.filter { $0.status == .naoIniciado && !atrasada($0) }
         case .emAndamento:
-            tarefas.filter { $0.status == .emAndamento }
+            tarefas.filter { $0.status == .emAndamento && !atrasada($0) }
         case .concluidas:
             tarefas.filter { $0.status == .concluida }
+        case .atrasadas:
+            tarefas.filter { $0.status != .concluida && atrasada($0) }
         }
     }
 
+    private var tarefasVisiveis: [TarefaDaConversa] {
+        mostrarTarefasOcultas
+            ? tarefasFiltradas
+            : tarefasFiltradas.filter { !tarefasOcultas.contains($0.id.uuidString) }
+    }
+
+    private var tarefasOcultasNestaConversa: Int {
+        tarefas.lazy.filter { tarefasOcultas.contains($0.id.uuidString) }.count
+    }
+
     private var naoIniciadas: [TarefaDaConversa] {
-        tarefasFiltradas.filter { $0.status == .naoIniciado }
+        tarefasVisiveis.filter { $0.status == .naoIniciado && !atrasada($0) }
     }
 
     private var emAndamento: [TarefaDaConversa] {
-        tarefasFiltradas.filter { $0.status == .emAndamento }
+        tarefasVisiveis.filter { $0.status == .emAndamento && !atrasada($0) }
     }
 
     private var concluidas: [TarefaDaConversa] {
-        tarefasFiltradas.filter { $0.status == .concluida }
+        tarefasVisiveis.filter { $0.status == .concluida }
+    }
+
+    /// Recorte, não status: reúne "Não iniciado" e "Em andamento" com prazo
+    /// vencido, tirando as duas de onde estariam normalmente — mesma
+    /// lógica de `TarefasView.tarefasAtrasadas`.
+    private var atrasadas: [TarefaDaConversa] {
+        tarefasVisiveis.filter { $0.status != .concluida && atrasada($0) }
+    }
+
+    /// Dia contra dia, não hora contra hora — mesmo critério de
+    /// `CartaoDeTarefaGeral.atrasada`. Já reconhecida (a pessoa arrastou
+    /// pra uma coluna de status manualmente) nunca conta como atrasada,
+    /// mesmo com o prazo ainda vencido — ver `TarefaDaConversa.atrasoReconhecido`.
+    private func atrasada(_ tarefa: TarefaDaConversa) -> Bool {
+        guard let prazo = tarefa.prazo, tarefa.status != .concluida, !tarefa.atrasoFoiReconhecido else { return false }
+        return Calendar.current.startOfDay(for: prazo) < Calendar.current.startOfDay(for: Date())
+    }
+
+    private func alternarOcultarTarefa(_ tarefa: TarefaDaConversa) {
+        let chave = tarefa.id.uuidString
+        if tarefasOcultas.contains(chave) {
+            tarefasOcultas.remove(chave)
+        } else {
+            tarefasOcultas.insert(chave)
+        }
+        TarefasOcultasStore.salvar(tarefasOcultas)
     }
 
     var body: some View {
@@ -87,6 +136,22 @@ struct TarefasDaConversaView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(0)
 
+                if tarefasOcultasNestaConversa > 0 {
+                    Button {
+                        withAnimation(.snappy(duration: 0.18)) {
+                            mostrarTarefasOcultas.toggle()
+                        }
+                    } label: {
+                        Label(
+                            mostrarTarefasOcultas ? "\(tarefasOcultasNestaConversa) ocultas" : "Ocultas",
+                            systemImage: mostrarTarefasOcultas ? "eye" : "eye.slash"
+                        )
+                    }
+                    .buttonStyle(BotaoDeFiltroDeTarefaGeral(ativo: mostrarTarefasOcultas))
+                    .help(mostrarTarefasOcultas ? "Esconder de novo as tarefas ocultas" : "Mostrar as tarefas ocultas")
+                    .layoutPriority(1)
+                }
+
                 Button(action: aoAdicionar) {
                     Image(systemName: "plus")
                         // Altura.destaque (44) é a medida do sistema para ação
@@ -104,7 +169,7 @@ struct TarefasDaConversaView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if tarefasFiltradas.isEmpty {
+            if tarefasVisiveis.isEmpty && sugestoes.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "list.clipboard",
                     titulo: "Nenhuma tarefa aqui",
@@ -128,12 +193,16 @@ struct TarefasDaConversaView: View {
             secaoNaoIniciado(tarefas: naoIniciadas)
             secaoEmAndamento(tarefas: emAndamento)
             secaoConcluidas(tarefas: concluidas)
+            // Por último, logo abaixo de "Concluídas".
+            secaoAtrasada(tarefas: atrasadas)
         case .naoIniciado:
-            secaoNaoIniciado(tarefas: tarefasFiltradas)
+            secaoNaoIniciado(tarefas: tarefasVisiveis)
         case .emAndamento:
-            secaoEmAndamento(tarefas: tarefasFiltradas)
+            secaoEmAndamento(tarefas: tarefasVisiveis)
         case .concluidas:
-            secaoConcluidas(tarefas: tarefasFiltradas)
+            secaoConcluidas(tarefas: tarefasVisiveis)
+        case .atrasadas:
+            secaoAtrasada(tarefas: tarefasVisiveis)
         }
     }
 
@@ -145,7 +214,11 @@ struct TarefasDaConversaView: View {
             destino: .naoIniciado,
             aoAlternarConclusao: aoAlternarConclusao,
             aoEditar: aoEditar,
-            aoMover: aoMover
+            aoMover: aoMover,
+            tarefasOcultas: tarefasOcultas,
+            aoOcultarTarefa: alternarOcultarTarefa,
+            oculta: ocultarSecaoNaoIniciado,
+            aoAlternarOcultar: { withAnimation(.snappy(duration: 0.18)) { ocultarSecaoNaoIniciado.toggle() } }
         )
     }
 
@@ -157,7 +230,11 @@ struct TarefasDaConversaView: View {
             destino: .emAndamento,
             aoAlternarConclusao: aoAlternarConclusao,
             aoEditar: aoEditar,
-            aoMover: aoMover
+            aoMover: aoMover,
+            tarefasOcultas: tarefasOcultas,
+            aoOcultarTarefa: alternarOcultarTarefa,
+            oculta: ocultarSecaoEmAndamento,
+            aoAlternarOcultar: { withAnimation(.snappy(duration: 0.18)) { ocultarSecaoEmAndamento.toggle() } }
         )
     }
 
@@ -169,7 +246,31 @@ struct TarefasDaConversaView: View {
             destino: .concluida,
             aoAlternarConclusao: aoAlternarConclusao,
             aoEditar: aoEditar,
-            aoMover: aoMover
+            aoMover: aoMover,
+            tarefasOcultas: tarefasOcultas,
+            aoOcultarTarefa: alternarOcultarTarefa,
+            oculta: ocultarSecaoConcluidas,
+            aoAlternarOcultar: { withAnimation(.snappy(duration: 0.18)) { ocultarSecaoConcluidas.toggle() } }
+        )
+    }
+
+    /// Destino "Não iniciado", igual à coluna "Atrasada" do Painel de
+    /// Tarefas geral: se o prazo continuar vencido, o recorte pega a tarefa
+    /// de volta pra cá no próximo recálculo; senão ela só vira "Não
+    /// iniciado" mesmo.
+    private func secaoAtrasada(tarefas: [TarefaDaConversa]) -> some View {
+        SecaoDeTarefas(
+            titulo: "Atrasada",
+            cor: PapagaioTema.perigo,
+            tarefas: tarefas,
+            destino: .naoIniciado,
+            aoAlternarConclusao: aoAlternarConclusao,
+            aoEditar: aoEditar,
+            aoMover: aoMover,
+            tarefasOcultas: tarefasOcultas,
+            aoOcultarTarefa: alternarOcultarTarefa,
+            oculta: ocultarSecaoAtrasada,
+            aoAlternarOcultar: { withAnimation(.snappy(duration: 0.18)) { ocultarSecaoAtrasada.toggle() } }
         )
     }
 }
