@@ -45,6 +45,37 @@ private func aguardar(
     return condicao()
 }
 
+@Test("Migração de remoção de equipes apaga o estado legado uma única vez")
+func migracaoDeRemocaoDeEquipesLimpaSomenteEstadoLegado() throws {
+    let suite = "MigracaoDeRemocaoDeEquipesTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    defaults.set(Data([1]), forKey: "membrosDaEquipe.primeira")
+    defaults.set(Data([2]), forKey: "membrosDaEquipe.segunda")
+    defaults.set(Data([3]), forKey: "equipesDoUsuario")
+    defaults.set("primeira", forKey: "equipeAtiva")
+    defaults.set("equipe", forKey: "contextoDaConta")
+    defaults.set(true, forKey: "limpezaDeDadosFabricados.v1")
+    defaults.set("permanece", forKey: "preferenciaSemRelacao")
+
+    MigracaoDeRemocaoDeEquipes.executarUmaVez(defaults)
+
+    #expect(defaults.object(forKey: "membrosDaEquipe.primeira") == nil)
+    #expect(defaults.object(forKey: "membrosDaEquipe.segunda") == nil)
+    #expect(defaults.object(forKey: "equipesDoUsuario") == nil)
+    #expect(defaults.object(forKey: "equipeAtiva") == nil)
+    #expect(defaults.object(forKey: "contextoDaConta") == nil)
+    #expect(defaults.object(forKey: "limpezaDeDadosFabricados.v1") == nil)
+    #expect(defaults.string(forKey: "preferenciaSemRelacao") == "permanece")
+
+    // Depois de concluída, a migração não deve apagar preferências que uma
+    // versão futura venha a gravar com o antigo prefixo por coincidência.
+    defaults.set(Data([4]), forKey: "membrosDaEquipe.posterior")
+    MigracaoDeRemocaoDeEquipes.executarUmaVez(defaults)
+    #expect(defaults.data(forKey: "membrosDaEquipe.posterior") == Data([4]))
+}
+
 // MARK: - Fila serial
 
 @MainActor
