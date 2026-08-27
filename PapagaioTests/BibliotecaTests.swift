@@ -3,6 +3,53 @@ import PapagaioCore
 import Testing
 @testable import Papagaio
 
+@Test("Cleanup estruturado executa em sucesso, erro e cancelamento")
+func cleanupDeModelosEhGarantido() async {
+    let contador = ContadorDeCleanup()
+
+    let valor = await OperacaoComLimpeza.executar {
+        42
+    } limpar: {
+        await contador.registrar()
+    }
+    #expect(valor == 42)
+
+    do {
+        _ = try await OperacaoComLimpeza.executar {
+            throw FalhaDeCleanupTeste()
+        } limpar: {
+            await contador.registrar()
+        }
+    } catch {
+        #expect(error is FalhaDeCleanupTeste)
+    }
+
+    let cancelada = Task {
+        try await OperacaoComLimpeza.executar {
+            try await Task.sleep(for: .seconds(30))
+        } limpar: {
+            await contador.registrar()
+        }
+    }
+    cancelada.cancel()
+    do {
+        try await cancelada.value
+    } catch {
+        #expect(error is CancellationError)
+    }
+
+    #expect(await contador.valor() == 3)
+}
+
+private struct FalhaDeCleanupTeste: Error {}
+
+private actor ContadorDeCleanup {
+    private var quantidade = 0
+
+    func registrar() { quantidade += 1 }
+    func valor() -> Int { quantidade }
+}
+
 // A fila serial da `Biblioteca` é a invariante que impede o Whisper (3 GB) e o
 // Qwen (10,7 GB) de carregarem ao mesmo tempo num Mac cujo piso é 18 GB. Até
 // agora ela não tinha teste nenhum: o `.xcodeproj` tinha um único target.

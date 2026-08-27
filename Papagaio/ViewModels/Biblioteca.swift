@@ -822,12 +822,14 @@ final class Biblioteca {
         }
 
         let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
-        defer { Task { await motores.descarregarTudo() } }
-
-        return try await motores.transcrever(audio, speaker: nil, initialPrompt: nil)
-            .map(\.texto)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await OperacaoComLimpeza.executar {
+            try await motores.transcrever(audio, speaker: nil, initialPrompt: nil)
+                .map(\.texto)
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } limpar: {
+            await motores.descarregarTudo()
+        }
     }
 
     enum ErroDeDitado: LocalizedError {
@@ -891,46 +893,49 @@ final class Biblioteca {
             }
         )
 
-        do {
-            let final = try await pipeline.processar(arquivo) { fase in
-                Task { @MainActor [weak self] in
-                    guard self?.identificadorDaExecucao == execucao else { return }
-                    self?.fases[chave] = fase
+        await OperacaoComLimpeza.executar {
+            do {
+                let final = try await pipeline.processar(arquivo) { fase in
+                    Task { @MainActor [weak self] in
+                        guard self?.identificadorDaExecucao == execucao else { return }
+                        self?.fases[chave] = fase
+                    }
                 }
-            }
-            guard identificadorDaExecucao == execucao,
-                  arquivos.contains(where: { $0.id == arquivo.id })
-            else { return }
-            substituir(final)
-            await sincronizar(final)
-            aoConcluirProcessamento?(final)
-            if final.trechos.isEmpty {
-                erros[chave] = "Nenhuma fala reconhecida neste áudio."
+                guard identificadorDaExecucao == execucao,
+                      arquivos.contains(where: { $0.id == arquivo.id })
+                else { return }
+                substituir(final)
+                await sincronizar(final)
+                aoConcluirProcessamento?(final)
+                if final.trechos.isEmpty {
+                    erros[chave] = "Nenhuma fala reconhecida neste áudio."
+                    aoNotificar?(
+                        "Transcrição finalizada sem falas",
+                        "\(final.resumo?.titulo ?? final.titulo) não teve fala reconhecida.",
+                        .aviso
+                    )
+                } else {
+                    aoNotificar?(
+                        "Transcrição concluída",
+                        "\(final.resumo?.titulo ?? final.titulo) já está com transcrição e resumo prontos.",
+                        .sucesso
+                    )
+                }
+            } catch {
+                erros[chave] = "\(error)"
                 aoNotificar?(
-                    "Transcrição finalizada sem falas",
-                    "\(final.resumo?.titulo ?? final.titulo) não teve fala reconhecida.",
-                    .aviso
-                )
-            } else {
-                aoNotificar?(
-                    "Transcrição concluída",
-                    "\(final.resumo?.titulo ?? final.titulo) já está com transcrição e resumo prontos.",
-                    .sucesso
+                    "Transcrição falhou",
+                    "\(arquivo.titulo): \(error.localizedDescription)",
+                    .erro
                 )
             }
-        } catch {
-            erros[chave] = "\(error)"
-            aoNotificar?(
-                "Transcrição falhou",
-                "\(arquivo.titulo): \(error.localizedDescription)",
-                .erro
-            )
+        } limpar: {
+            // Só retorna quando os modelos de linguagem e diarização saíram
+            // da memória, mesmo em erro, cancelamento ou guarda antecipada.
+            await motores.descarregarTudo()
+            await diarizacao.descarregar()
+            await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
         }
-
-        // Os modelos não podem ficar residentes depois que o trabalho acabou.
-        await motores.descarregarTudo()
-        await diarizacao.descarregar()
-        await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
     }
 
     /// Aplica a diarização às palavras de uma transcrição já salva, sem
@@ -956,12 +961,6 @@ final class Biblioteca {
         erros[chave] = nil
         fases[chave] = .diarizando
         await ciclo.registrar(diarizacao)
-        defer {
-            Task {
-                await diarizacao.descarregar()
-                await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
-            }
-        }
 
         // Os motores são apenas o contrato do pipeline; o caminho leve nunca
         // chama transcrever/resumir, então o Whisper não entra em memória. A
@@ -987,13 +986,19 @@ final class Biblioteca {
             }
         )
 
-        let diarizado = await pipeline.diarizarExistente(arquivo)
-        guard arquivos.contains(where: { $0.id == arquivo.id }) else { return }
-        do {
-            try await repositorio.salvar(diarizado)
-            substituir(diarizado)
-        } catch {
-            erros[chave] = "Não foi possível salvar a diarização: \(error.localizedDescription)"
+        await OperacaoComLimpeza.executar {
+            let diarizado = await pipeline.diarizarExistente(arquivo)
+            guard arquivos.contains(where: { $0.id == arquivo.id }) else { return }
+            do {
+                try await repositorio.salvar(diarizado)
+                substituir(diarizado)
+            } catch {
+                erros[chave] = "Não foi possível salvar a diarização: \(error.localizedDescription)"
+            }
+        } limpar: {
+            await motores.descarregarTudo()
+            await diarizacao.descarregar()
+            await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
         }
         fases[chave] = nil
     }
