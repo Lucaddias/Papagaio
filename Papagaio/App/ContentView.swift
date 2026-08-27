@@ -35,9 +35,14 @@ struct ContentView: View {
     /// A gravação é criada no `App` e passada para cá: o item da barra de menus
     /// precisa observar exatamente o mesmo objeto que a janela.
     let modelo: GravadorViewModel
+    private let politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna
 
-    init(gravador: GravadorViewModel) {
+    init(
+        gravador: GravadorViewModel,
+        politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna = .init()
+    ) {
         modelo = gravador
+        self.politicaDeInicializacaoExterna = politicaDeInicializacaoExterna
     }
 
     @State private var biblioteca: Biblioteca?
@@ -68,7 +73,12 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
-    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
+    /// Criado somente quando uma ação de equipe realmente pede CloudKit.
+    /// Construir `CKContainer` junto com a view derruba o host unsigned dos
+    /// testes antes mesmo de a primeira asserção executar.
+    private var servicoDeEquipesCloudKit: ServicoDeEquipesCloudKit {
+        ServicoDeEquipesCloudKit()
+    }
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -225,9 +235,12 @@ struct ContentView: View {
             usarEquipe(equipe)
         }
         .task {
-            notificacoes.preparar()
-            perfil.iniciar()
             await abrir()
+            await politicaDeInicializacaoExterna.executar {
+                notificacoes.preparar()
+                perfil.iniciar()
+                await conectarGoogleCalendarSeAutorizado()
+            }
         }
         // Retorno do navegador quando a autorização do Granola roda no
         // navegador padrão do sistema.
@@ -425,13 +438,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             }
             googleCalendar = conexaoGoogle
 
-            // Conecta automaticamente se houver credenciais salvas
-            if CredenciaisGoogle.estaConfigurado {
-                Task {
-                    await conexaoGoogle.conectar(biblioteca: nova)
-                }
-            }
-
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos
             )
@@ -485,6 +491,14 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
+    }
+
+    private func conectarGoogleCalendarSeAutorizado() async {
+        guard let googleCalendar, let biblioteca,
+              CredenciaisGoogle.estaConfigurado,
+              googleCalendar.temAutorizacaoPersistida
+        else { return }
+        await googleCalendar.conectar(biblioteca: biblioteca)
     }
 
     private func abrirFichaDaEntrevista(para arquivo: Arquivo) {

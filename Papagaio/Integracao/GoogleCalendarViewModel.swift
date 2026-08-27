@@ -32,6 +32,15 @@ final class GoogleCalendarViewModel {
     private var timerDeSincronizacao: Task<Void, Never>?
     private weak var bibliotecaRef: Biblioteca?
 
+    /// Reconexão automática só é legítima quando já houve consentimento e há
+    /// uma credencial persistida. Ter Client ID no build apenas habilita o
+    /// botão de conexão; não autoriza rede nem abertura de navegador.
+    var temAutorizacaoPersistida: Bool {
+        let refresh = cofre.carregar(conta: "refresh_token")
+        let acesso = cofre.carregar(conta: "access_token")
+        return refresh?.isEmpty == false || acesso?.isEmpty == false
+    }
+
     func conectar(biblioteca: Biblioteca) async {
         guard !estado.conectado, !(estado == .conectando) else { return }
         estado = .conectando

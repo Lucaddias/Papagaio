@@ -109,7 +109,19 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
-    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
+    /// O container CloudKit não pertence ao ciclo de abertura da biblioteca
+    /// pessoal. A criação lazy permite testes unsigned e evita inicializar uma
+    /// conta externa quando nenhuma equipe está ativa.
+    @ObservationIgnored
+    private var sincronizadorCloudKitArmazenado: SincronizadorDaBibliotecaCloudKit?
+    private var sincronizadorCloudKit: SincronizadorDaBibliotecaCloudKit {
+        if let sincronizadorCloudKitArmazenado {
+            return sincronizadorCloudKitArmazenado
+        }
+        let novo = SincronizadorDaBibliotecaCloudKit()
+        sincronizadorCloudKitArmazenado = novo
+        return novo
+    }
     private var espaco: EspacoID
     private var equipeCloudKit: EquipeDisponivel?
 
