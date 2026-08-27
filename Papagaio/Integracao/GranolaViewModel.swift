@@ -39,6 +39,10 @@ final class GranolaViewModel {
     private var sessao: SessaoOAuth?
     private var fonte: FonteGranola?
     private let registro = Logger(subsystem: "Papagaio", category: "Granola")
+    private var tarefaDeConexao: Task<Void, Never>?
+    private var idDaTarefaDeConexao: UUID?
+    private var tarefaDeImportacao: Task<Int, Never>?
+    private var idDaTarefaDeImportacao: UUID?
 
     init(servidorMCP: URL = URL(string: "https://mcp.granola.ai/mcp")!) {
         self.servidorMCP = servidorMCP
@@ -47,7 +51,22 @@ final class GranolaViewModel {
     // MARK: - Conexão
 
     func conectar() async {
-        guard !estado.conectado, !(estado == .conectando) else { return }
+        guard tarefaDeConexao == nil, !estado.conectado, !(estado == .conectando) else { return }
+        let id = UUID()
+        let tarefa = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.executarConexao()
+        }
+        idDaTarefaDeConexao = id
+        tarefaDeConexao = tarefa
+        await tarefa.value
+        if idDaTarefaDeConexao == id {
+            tarefaDeConexao = nil
+            idDaTarefaDeConexao = nil
+        }
+    }
+
+    private func executarConexao() async {
         estado = .conectando
         registro.info("Iniciando conexão com o Granola")
 
@@ -85,6 +104,29 @@ final class GranolaViewModel {
         estado = .desconectado
     }
 
+    /// Descarta a sessão e os resultados em memória sem exigir uma chamada de
+    /// revogação. A limpeza do Keychain é feita pela cascata da conta.
+    func encerrarLocalmenteParaExclusaoDoPerfil() async {
+        let conexao = tarefaDeConexao
+        let importacao = tarefaDeImportacao
+        conexao?.cancel()
+        importacao?.cancel()
+        if let conexao { await conexao.value }
+        if let importacao { _ = await importacao.value }
+
+        tarefaDeConexao = nil
+        idDaTarefaDeConexao = nil
+        tarefaDeImportacao = nil
+        idDaTarefaDeImportacao = nil
+        sessao = nil
+        fonte = nil
+        reunioes = []
+        carregandoReunioes = false
+        importando = false
+        falhaDeImportacao = nil
+        estado = .desconectado
+    }
+
     /// Reune a lista da conta. Usado pela UI também para "atualizar".
     func recarregar() async {
         guard estado.conectado else { return }
@@ -110,6 +152,23 @@ final class GranolaViewModel {
     /// é pedida quando existe (planos pagos); Basic e falhas de transcrição
     /// entram com notas e resumo. Devolve quantas foram salvas.
     func importar(_ ids: Set<String>, biblioteca: Biblioteca) async -> Int {
+        guard tarefaDeImportacao == nil else { return 0 }
+        let id = UUID()
+        let tarefa = Task { @MainActor [weak self, weak biblioteca] () -> Int in
+            guard let self, let biblioteca else { return 0 }
+            return await self.executarImportacao(ids, biblioteca: biblioteca)
+        }
+        idDaTarefaDeImportacao = id
+        tarefaDeImportacao = tarefa
+        let quantidade = await tarefa.value
+        if idDaTarefaDeImportacao == id {
+            tarefaDeImportacao = nil
+            idDaTarefaDeImportacao = nil
+        }
+        return quantidade
+    }
+
+    private func executarImportacao(_ ids: Set<String>, biblioteca: Biblioteca) async -> Int {
         guard let fonte, estado.conectado, !importando else { return 0 }
         importando = true
         falhaDeImportacao = nil
@@ -119,9 +178,11 @@ final class GranolaViewModel {
         var salvas = 0
         var importadas: [ReuniaoExterna] = []
         for id in ids {
+            guard !Task.isCancelled else { break }
             guard let reuniao = reunioes.first(where: { $0.id == id }) else { continue }
             do {
                 let detalhe = try await fonte.obterReuniao(id: id, incluirTranscricao: true)
+                guard !Task.isCancelled else { break }
                 if await biblioteca.registrarExterna(detalhe, identificador: fonte.identificador) != nil {
                     salvas += 1
                     importadas.append(reuniao)

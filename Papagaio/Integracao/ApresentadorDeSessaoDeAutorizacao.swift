@@ -21,31 +21,38 @@ struct ApresentadorDeSessaoDeAutorizacao: ApresentadorDeAutorizacaoOAuth {
             .value ?? ""
         registro.info("Pedindo autorização no navegador padrão")
 
-        return try await withCheckedThrowingContinuation { continuacao in
-            GerenciadorDeCallbackDeAutorizacao.compartilhado
-                .aguardar(estado: estadoEsperado) { resultado in
-                    continuacao.resume(with: resultado)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuacao in
+                GerenciadorDeCallbackDeAutorizacao.compartilhado
+                    .aguardar(estado: estadoEsperado) { resultado in
+                        continuacao.resume(with: resultado)
+                    }
+
+                if !NSWorkspace.shared.open(url) {
+                    registro.fault("Navegador padrão não abriu a URL de autorização")
+                    GerenciadorDeCallbackDeAutorizacao.compartilhado.resolver(
+                        estado: estadoEsperado,
+                        com: .failure(.navegadorNaoAbriu)
+                    )
+                    return
                 }
 
-            if !NSWorkspace.shared.open(url) {
-                registro.fault("Navegador padrão não abriu a URL de autorização")
-                GerenciadorDeCallbackDeAutorizacao.compartilhado.resolver(
-                    estado: estadoEsperado,
-                    com: .failure(.navegadorNaoAbriu)
-                )
-                return
+                // Garantia contra espera eterna: encerra a autorização depois de
+                // 5 minutos, não importa o caminho (navegador perdido, aba
+                // fechada sem voltar ao app etc.).
+                Task {
+                    try? await Task.sleep(for: .seconds(300))
+                    GerenciadorDeCallbackDeAutorizacao.compartilhado.resolver(
+                        estado: estadoEsperado,
+                        com: .failure(.tempoEsgotado)
+                    )
+                }
             }
-
-            // Garantia contra espera eterna: encerra a autorização depois de
-            // 5 minutos, não importa o caminho (navegador perdido, aba
-            // fechada sem voltar ao app etc.).
-            Task {
-                try? await Task.sleep(for: .seconds(300))
-                GerenciadorDeCallbackDeAutorizacao.compartilhado.resolver(
-                    estado: estadoEsperado,
-                    com: .failure(.tempoEsgotado)
-                )
-            }
+        } onCancel: {
+            GerenciadorDeCallbackDeAutorizacao.compartilhado.resolver(
+                estado: estadoEsperado,
+                com: .failure(.autorizacaoNegada)
+            )
         }
     }
 }

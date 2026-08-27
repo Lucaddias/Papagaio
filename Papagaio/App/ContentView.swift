@@ -751,11 +751,20 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             await modelo.cancelar()
         }
 
-        try await biblioteca?.excluirDadosDaConta()
+        await googleCalendar?.encerrarLocalmenteParaExclusaoDoPerfil()
+        await granola?.encerrarLocalmenteParaExclusaoDoPerfil()
 
-        // Todos os stores de dados da conta num caminho só — store novo se
-        // registra lá, não aqui.
-        LimpezaDeConta.executar()
+        // Excluir o perfil pessoal não pode apagar a equipe que por acaso
+        // esteja aberta. O identificador pessoal é capturado antes de remover
+        // sua chave, e a biblioteca devolve exatamente os arquivos do espaço.
+        let espacoPessoalExcluido = Biblioteca.espacoPessoal()
+        let arquivosExcluidos = try await biblioteca?.excluirDadosDaConta(
+            espaco: espacoPessoalExcluido
+        ) ?? []
+
+        LimpezaDeConta.executar(arquivos: arquivosExcluidos)
+        LimpezaDeCredenciaisDaConta.executar()
+        LimpezaDeVinculosDeEquipe.executar(equipes: equipes)
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()
@@ -768,6 +777,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         secaoDaBiblioteca = .todos
         focoNaGravacao = false
         telaSelecionada = .biblioteca
+
+        // A chave do espaço pessoal foi removida pela cascata. Abrir um novo
+        // espaço vazio impede que a interface continue exibindo a equipe que
+        // estava ativa e simula corretamente o próximo relançamento do app.
+        await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
     }
 
     /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da

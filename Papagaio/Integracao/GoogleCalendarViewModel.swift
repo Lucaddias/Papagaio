@@ -30,6 +30,9 @@ final class GoogleCalendarViewModel {
     private var fonte: FonteGoogleCalendarAPI?
     private let registro = Logger(subsystem: "Papagaio", category: "GoogleCalendar")
     private var timerDeSincronizacao: Task<Void, Never>?
+    private var tarefaDeConexao: Task<Void, Never>?
+    private var idDaTarefaDeConexao: UUID?
+    private var tarefasDeImportacao: [UUID: Task<Arquivo?, Never>] = [:]
     private weak var bibliotecaRef: Biblioteca?
 
     /// Reconexão automática só é legítima quando já houve consentimento e há
@@ -42,7 +45,22 @@ final class GoogleCalendarViewModel {
     }
 
     func conectar(biblioteca: Biblioteca) async {
-        guard !estado.conectado, !(estado == .conectando) else { return }
+        guard tarefaDeConexao == nil, !estado.conectado, !(estado == .conectando) else { return }
+        let id = UUID()
+        let tarefa = Task { @MainActor [weak self, weak biblioteca] in
+            guard let self, let biblioteca else { return }
+            await self.executarConexao(biblioteca: biblioteca)
+        }
+        idDaTarefaDeConexao = id
+        tarefaDeConexao = tarefa
+        await tarefa.value
+        if idDaTarefaDeConexao == id {
+            tarefaDeConexao = nil
+            idDaTarefaDeConexao = nil
+        }
+    }
+
+    private func executarConexao(biblioteca: Biblioteca) async {
         estado = .conectando
         registro.info("Iniciando conexão com o Google Calendar")
 
@@ -76,6 +94,33 @@ final class GoogleCalendarViewModel {
         fonte = nil
         bibliotecaRef = nil
         reunioesPendentes = []
+        falhaDeImportacao = nil
+        estado = .desconectado
+    }
+
+    /// Interrompe o estado local sem depender da rede. A cascata de exclusão
+    /// apaga o Keychain em seguida, inclusive quando a reconexão havia falhado
+    /// antes de criar uma sessão em memória.
+    func encerrarLocalmenteParaExclusaoDoPerfil() async {
+        let timer = timerDeSincronizacao
+        timer?.cancel()
+        timerDeSincronizacao = nil
+
+        let conexao = tarefaDeConexao
+        conexao?.cancel()
+        let importacoes = Array(tarefasDeImportacao.values)
+        importacoes.forEach { $0.cancel() }
+        if let conexao { await conexao.value }
+        for importacao in importacoes { _ = await importacao.value }
+
+        tarefaDeConexao = nil
+        idDaTarefaDeConexao = nil
+        tarefasDeImportacao.removeAll()
+        sessao = nil
+        fonte = nil
+        bibliotecaRef = nil
+        reunioesPendentes = []
+        carregandoReunioes = false
         falhaDeImportacao = nil
         estado = .desconectado
     }
@@ -157,16 +202,35 @@ final class GoogleCalendarViewModel {
     /// conexão: a pendente já está em memória.
     @discardableResult
     func importarAudioParaReuniao(_ pendente: ReuniaoPendenteCalendar, audioURL: URL, biblioteca: Biblioteca) async -> Arquivo? {
-        do {
-            let arquivo = try await biblioteca.criarArquivoDeReuniaoPendente(pendente, audioURL: audioURL)
-            if arquivo != nil {
-                reunioesPendentes.removeAll { $0.id == pendente.id }
-            }
-            return arquivo
-        } catch {
-            falhaDeImportacao = "\(pendente.titulo): \(ErroDaConexao.descricao(do: error))"
-            return nil
+        let id = UUID()
+        let tarefa = Task { @MainActor [weak self, weak biblioteca] () -> Arquivo? in
+            guard let self, let biblioteca else { return nil }
+            return await self.executarImportacaoDeAudio(
+                pendente,
+                audioURL: audioURL,
+                biblioteca: biblioteca
+            )
         }
+        tarefasDeImportacao[id] = tarefa
+        let arquivo = await tarefa.value
+        tarefasDeImportacao[id] = nil
+        return arquivo
+    }
+
+    private func executarImportacaoDeAudio(
+        _ pendente: ReuniaoPendenteCalendar,
+        audioURL: URL,
+        biblioteca: Biblioteca
+    ) async -> Arquivo? {
+        guard !Task.isCancelled else { return nil }
+        let arquivo = await biblioteca.criarArquivoDeReuniaoPendente(
+            pendente,
+            audioURL: audioURL
+        )
+        if arquivo != nil {
+            reunioesPendentes.removeAll { $0.id == pendente.id }
+        }
+        return arquivo
     }
 
     func ignorarPendente(_ pendente: ReuniaoPendenteCalendar) {

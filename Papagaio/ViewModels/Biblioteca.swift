@@ -124,6 +124,10 @@ final class Biblioteca {
     }
     private var espaco: EspacoID
     private var equipeCloudKit: EquipeDisponivel?
+    /// Espaços cuja exclusão já começou não aceitam mais gravações tardias.
+    /// O bloqueio dura pela vida desta biblioteca porque o identificador do
+    /// perfil excluído é aposentado e não deve voltar a receber dados.
+    private var espacosExcluidos: Set<EspacoID> = []
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -147,14 +151,14 @@ final class Biblioteca {
 
     /// O espaço individual é um só e precisa sobreviver a relançamentos: sem
     /// isto, cada abertura criaria um espaço novo e a lista voltaria vazia.
-    static func espacoPessoal() -> EspacoID {
+    static func espacoPessoal(em defaults: UserDefaults = .standard) -> EspacoID {
         let chave = "espacoIndividual"
-        if let guardado = UserDefaults.standard.string(forKey: chave),
+        if let guardado = defaults.string(forKey: chave),
            let id = UUID(uuidString: guardado) {
             return EspacoID(rawValue: id)
         }
         let novo = UUID()
-        UserDefaults.standard.set(novo.uuidString, forKey: chave)
+        defaults.set(novo.uuidString, forKey: chave)
         return EspacoID(rawValue: novo)
     }
 
@@ -208,12 +212,19 @@ final class Biblioteca {
         notas: [NotaDaConversa] = [],
         dataDeGravacao: Date? = nil
     ) async -> Arquivo? {
+        let espacoDestino = espaco
+        guard !espacosExcluidos.contains(espacoDestino) else {
+            if !pastaRelativa.isEmpty {
+                try? armazenamento.removerGravacao(relativa: pastaRelativa)
+            }
+            return nil
+        }
         let arquivo = Arquivo(
             titulo: titulo,
             criadoEm: dataDeGravacao ?? Date(),
             duracao: duracao,
             pastaRelativa: pastaRelativa,
-            espaco: espaco,
+            espaco: espacoDestino,
             notas: notas,
             importadoEm: dataDeGravacao != nil ? Date() : nil
         )
@@ -223,6 +234,17 @@ final class Biblioteca {
             erros[arquivo.id.rawValue] = "Não foi possível salvar: \(error)"
             return nil
         }
+        if espacosExcluidos.contains(espacoDestino) {
+            if !pastaRelativa.isEmpty {
+                try? armazenamento.removerGravacao(relativa: pastaRelativa)
+            }
+            try? await repositorio.descartarRegistro(arquivo.id)
+            return nil
+        }
+        // Trocar de perfil enquanto o save aguardava não move o arquivo para
+        // o novo espaço nem o insere na lista errada. Ele permanece salvo no
+        // espaço em que a operação começou e reaparece quando ele for aberto.
+        guard espaco == espacoDestino else { return arquivo }
         arquivos.insert(arquivo, at: 0)
         await sincronizar(arquivo)
         if processamentoAutomatico {
@@ -240,6 +262,8 @@ final class Biblioteca {
     /// duplica, mesmo se o loop de importação rodar duas vezes.
     @discardableResult
     func registrarExterna(_ reuniao: ReuniaoExterna, identificador: String) async -> Arquivo? {
+        let espacoDestino = espaco
+        guard !espacosExcluidos.contains(espacoDestino) else { return nil }
         let idExternoCompleto = "\(identificador):\(reuniao.id)"
         guard !arquivos.contains(where: { $0.idExterno == idExternoCompleto }),
               !arquivosNaLixeira.contains(where: { $0.idExterno == idExternoCompleto })
@@ -270,7 +294,7 @@ final class Biblioteca {
             criadoEm: reuniao.data == .distantPast ? Date() : reuniao.data,
             duracao: trechos.map(\.end).max() ?? 0,
             pastaRelativa: "",
-            espaco: espaco,
+            espaco: espacoDestino,
             trechos: trechos,
             notas: notas,
             resumo: resumo,
@@ -282,6 +306,11 @@ final class Biblioteca {
             erros[arquivo.id.rawValue] = "Não foi possível importar a reunião: \(error)"
             return nil
         }
+        if espacosExcluidos.contains(espacoDestino) {
+            try? await repositorio.descartarRegistro(arquivo.id)
+            return nil
+        }
+        guard espaco == espacoDestino else { return arquivo }
         arquivos.insert(arquivo, at: 0)
         arquivos.sort { $0.criadoEm > $1.criadoEm }
         return arquivo
@@ -421,10 +450,23 @@ final class Biblioteca {
         }
     }
 
-    /// Remove permanentemente toda a biblioteca da conta atual. A execução do
+    /// Remove permanentemente toda a biblioteca de um espaço. A execução do
     /// pipeline é cancelada e aguardada antes de apagar o banco, impedindo que
     /// um processamento tardio recrie um registro depois da exclusão.
-    func excluirDadosDaConta() async throws {
+    ///
+    /// O espaço pode ser diferente daquele aberto na interface. Isso é
+    /// necessário ao excluir o perfil pessoal enquanto uma equipe está ativa:
+    /// os dados da equipe permanecem no banco e na memória.
+    @discardableResult
+    func excluirDadosDaConta(espaco espacoAlvo: EspacoID? = nil) async throws -> [ArquivoID] {
+        let espacoExcluido = espacoAlvo ?? espaco
+        espacosExcluidos.insert(espacoExcluido)
+        var exclusaoConcluida = false
+        defer {
+            if !exclusaoConcluida {
+                espacosExcluidos.remove(espacoExcluido)
+            }
+        }
         let tarefa = tarefaDeProcessamento
         tarefa?.cancel()
         tarefaDeProcessamento = nil
@@ -438,8 +480,8 @@ final class Biblioteca {
         // `Gravacoes` inteira aqui apagava o áudio de outros espaços que
         // ainda continuavam no banco, deixando conversas sem mídia. Só as
         // pastas referenciadas pela conta atual participam desta exclusão.
-        let arquivosAtivos = try await repositorio.listar(espaco: espaco)
-        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espaco)
+        let arquivosAtivos = try await repositorio.listar(espaco: espacoExcluido)
+        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espacoExcluido)
         let arquivosDaConta = arquivosAtivos + arquivosArquivados
         let pastasDaConta = Set(
             arquivosDaConta.map(\.pastaRelativa).filter { !$0.isEmpty }
@@ -447,15 +489,20 @@ final class Biblioteca {
         for pastaRelativa in pastasDaConta {
             try armazenamento.removerGravacao(relativa: pastaRelativa)
         }
-        try await repositorio.apagarTodosOsDados(espaco: espaco)
+        try await repositorio.apagarTodosOsDados(espaco: espacoExcluido)
 
-        arquivos.removeAll()
-        arquivosNaLixeira.removeAll()
-        fases.removeAll()
-        iniciadoEm.removeAll()
-        erros.removeAll()
-        operacoesDeLixeiraEmAndamento.removeAll()
-        erroDaLixeira = nil
+        if espaco == espacoExcluido {
+            arquivos.removeAll()
+            arquivosNaLixeira.removeAll()
+            fases.removeAll()
+            iniciadoEm.removeAll()
+            erros.removeAll()
+            operacoesDeLixeiraEmAndamento.removeAll()
+            erroDaLixeira = nil
+        }
+
+        exclusaoConcluida = true
+        return arquivosDaConta.map(\.id)
     }
 
     func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
@@ -1060,6 +1107,8 @@ final class Biblioteca {
     /// de processamento — mesma jornada do `registrar` normal.
     @discardableResult
     func criarArquivoDeReuniaoPendente(_ pendente: ReuniaoPendenteCalendar, audioURL: URL) async -> Arquivo? {
+        let espacoDestino = espaco
+        guard !espacosExcluidos.contains(espacoDestino) else { return nil }
         let idExterno = pendente.idExterno
         guard !arquivos.contains(where: { $0.idExterno == idExterno }),
               !arquivosNaLixeira.contains(where: { $0.idExterno == idExterno }),
@@ -1077,7 +1126,7 @@ final class Biblioteca {
             criadoEm: pendente.dataHora,
             duracao: 0,
             pastaRelativa: "",
-            espaco: espaco,
+            espaco: espacoDestino,
             trechos: [],
             notas: pendente.descricao.map { [NotaDaConversa(texto: $0, start: 0)] } ?? [],
             resumo: nil,
@@ -1115,9 +1164,21 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(arquivo)
         } catch {
+            if !arquivo.pastaRelativa.isEmpty {
+                try? armazenamento.removerGravacao(relativa: arquivo.pastaRelativa)
+            }
             erros[arquivo.id.rawValue] = "Não foi possível criar arquivo da reunião: \(error)"
             return nil
         }
+
+        if espacosExcluidos.contains(espacoDestino) {
+            if !arquivo.pastaRelativa.isEmpty {
+                try? armazenamento.removerGravacao(relativa: arquivo.pastaRelativa)
+            }
+            try? await repositorio.descartarRegistro(arquivo.id)
+            return nil
+        }
+        guard espaco == espacoDestino else { return arquivo }
 
         // Em memória ANTES de enfileirar: o loop da fila resolve o próximo
         // arquivo buscando neste array — ausente aqui, o processamento morria
