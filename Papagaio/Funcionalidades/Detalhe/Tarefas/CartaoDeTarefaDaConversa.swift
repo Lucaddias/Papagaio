@@ -1,7 +1,9 @@
 import SwiftUI
 
 /// A tarefa de uma conversa, no mesmo desenho de cartão do Painel de Tarefas
-/// geral — prioridade e ação em cima, título no meio, data embaixo à direita.
+/// geral — tarja lateral com a cor do status, título no meio, prioridade e
+/// data no rodapé, menu "..." no canto (ver `CartaoDeTarefaGeral`, de onde
+/// todo esse desenho e os ajustes de espaço vieram).
 ///
 /// Existe para substituir `LinhaDeTarefaDaConversa`, que era uma linha de
 /// planilha: título à esquerda e depois prioridade, responsável, status e data
@@ -17,38 +19,104 @@ struct CartaoDeTarefaDaConversa: View {
     let tarefa: TarefaDaConversa
     let aoAlternarConclusao: () -> Void
     let aoEditar: () -> Void
+    /// Ver o mesmo par em `CartaoDeTarefaGeral`: esconder uma tarefa
+    /// específica é independente da seção dela estar oculta ou não.
+    let oculta: Bool
+    let aoOcultar: () -> Void
 
     private var concluida: Bool { tarefa.status == .concluida }
 
+    /// Mesma lógica de `CartaoDeTarefaGeral.corDeStatus`: a tarja segue o
+    /// status (a cor da seção onde a tarefa está), com atrasada virando
+    /// vermelha por cima disso — coerente com a seção "Atrasada" que ela
+    /// ocupa nesse caso (ver `TarefasDaConversaView`).
+    private var corDeStatus: Color {
+        atrasada ? PapagaioTema.perigo : tarefa.status.cor
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-            HStack {
-                SeloDePrioridade(prioridade: tarefa.prioridade)
-                Spacer()
-                botaoEditar
-            }
-
             HStack(alignment: .top, spacing: PapagaioTema.Espaco.curto) {
                 botaoConclusao
 
+                // `.minimumScaleFactor` antes das reticências — mesmo
+                // ajuste de `CartaoDeTarefaGeral`: encolhe a fonte antes de
+                // cortar o título.
                 Text(tarefa.titulo)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(concluida ? PapagaioTema.textoSecundario : PapagaioTema.texto)
                     .strikethrough(concluida, color: PapagaioTema.textoSecundario)
                     .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .minimumScaleFactor(0.75)
+                    .truncationMode(.tail)
+                    .padding(.trailing, 34)
             }
 
-            Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(corDoPrazo)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            // Desceu do topo (ao lado do lápis) pra cá, com o rótulo
+            // "Prioridade:" por extenso — sozinho, "Média"/"Alta" não dizia
+            // do que o selo era. Ver o mesmo ajuste em `CartaoDeTarefaGeral`.
+            // Na mesma linha da data, não numa linha só pra ela: prioridade
+            // à esquerda, data à direita — as duas informações de rodapé
+            // dividindo a mesma altura em vez de empilhar o cartão mais alto.
+            //
+            // Sem o selo "Atrasada" à parte: a tarja lateral já conta essa
+            // história agora (ver `corDeStatus`), igual ao painel geral —
+            // duas formas de dizer a mesma coisa competiam por atenção ali.
+            HStack {
+                if concluida {
+                    SeloDeStatusDaTarefa(status: .concluida)
+                } else {
+                    HStack(spacing: PapagaioTema.Espaco.curto) {
+                        Text("Prioridade:")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                        SeloDePrioridade(prioridade: tarefa.prioridade)
+                    }
+                }
+
+                Spacer(minLength: PapagaioTema.Espaco.medio)
+
+                Label(rotuloDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(corDoPrazo)
+                    .lineLimit(1)
+            }
         }
-        .padding(PapagaioTema.Espaco.largo)
+        // Recuo extra à esquerda: a tarja de cor mora encostada na borda do
+        // cartão, e sem este respiro o texto ficaria colado nela.
+        .padding(.leading, PapagaioTema.Espaco.largo + PapagaioTema.Espaco.curto)
+        .padding([.top, .trailing, .bottom], PapagaioTema.Espaco.largo)
+        // Só `minHeight`, sem `maxHeight` (ver o mesmo ajuste e o motivo em
+        // `CartaoDeTarefaGeral`): uma altura fixa por fora sobrava vazia
+        // embaixo da prioridade/data em cartões de título curto, e cortava
+        // um título de três linhas mais comprido do que o previsto.
         .frame(maxWidth: .infinity, minHeight: 128, alignment: .topLeading)
         .cartaoPapagaio()
+        .overlay(alignment: .topTrailing) {
+            Menu {
+                Button("Editar", systemImage: "pencil", action: aoEditar)
+                Button(oculta ? "Mostrar" : "Ocultar", systemImage: oculta ? "eye" : "eye.slash", action: aoOcultar)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Circle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .help("Ações da tarefa")
+            .padding(.trailing, PapagaioTema.Espaco.curto)
+            .padding(.top, PapagaioTema.Espaco.curto)
+        }
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(corDeStatus)
+                .frame(width: 4)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous))
         .shadow(color: PapagaioTema.destaque.opacity(0.08), radius: 10, y: 6)
+        .opacity(oculta ? 0.5 : 1)
     }
 
     private var botaoConclusao: some View {
@@ -60,18 +128,6 @@ struct CartaoDeTarefaDaConversa: View {
         }
         .buttonStyle(.plain)
         .help(concluida ? "Marcar como em andamento" : "Concluir")
-    }
-
-    private var botaoEditar: some View {
-        Button(action: aoEditar) {
-            Image(systemName: "pencil")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .frame(width: 28, height: 28)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help("Editar tarefa")
     }
 
     private var rotuloDoPrazo: String {
@@ -87,5 +143,12 @@ struct CartaoDeTarefaDaConversa: View {
             return PapagaioTema.perigo
         }
         return PapagaioTema.textoSecundario
+    }
+
+    /// Comparando dia com dia, não hora com hora: ver o mesmo comentário em
+    /// `CartaoDeTarefaGeral`.
+    private var atrasada: Bool {
+        guard let prazo = tarefa.prazo, !concluida, !tarefa.atrasoFoiReconhecido else { return false }
+        return Calendar.current.startOfDay(for: prazo) < Calendar.current.startOfDay(for: Date())
     }
 }

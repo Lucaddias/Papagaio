@@ -18,14 +18,14 @@ struct LinhaDeSugestaoDeTarefa: View {
                     .foregroundStyle(PapagaioTema.texto)
                     .lineLimit(2)
 
-                HStack(spacing: PapagaioTema.Espaco.curto) {
-                    SeloDePrioridade(prioridade: tarefa.prioridade)
-
-                    if let responsavel = tarefa.responsavelValido {
-                        Text(responsavel)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                    }
+                // Sem selo de prioridade aqui: é sugestão, ainda não é
+                // tarefa de verdade, e prioridade é decisão de quem aceita —
+                // não da IA que extraiu o texto da transcrição. Quem quiser
+                // definir uma antes de aceitar, edita (botão de lápis).
+                if let responsavel = tarefa.responsavelValido {
+                    Text(responsavel)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -70,9 +70,6 @@ struct SecaoDeSugestoesDeTarefa: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack(spacing: PapagaioTema.Espaco.curto) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(PapagaioTema.destaqueEscuro)
-
                 Text("Sugestões da conversa")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(PapagaioTema.texto)

@@ -4,6 +4,10 @@ struct LinhaDeTarefaDaConversa: View {
     let tarefa: TarefaDaConversa
     let aoAlternarConclusao: () -> Void
     let aoEditar: () -> Void
+    /// Escondida uma a uma, independente da seção — ver `SecaoDeTarefas` e
+    /// `TarefasOcultasStore`.
+    let oculta: Bool
+    let aoOcultar: () -> Void
 
     /// Largura medida da própria linha — e não mais `ViewThatFits` decidindo
     /// sozinho entre `conteudoHorizontal` e `conteudoCompacto`.
@@ -25,12 +29,22 @@ struct LinhaDeTarefaDaConversa: View {
         tarefa.prazo?.formatted(.dateTime.day().month().year()) ?? "Sem deadline"
     }
 
+    /// Comparando dia com dia, não hora com hora — mesmo critério de
+    /// `CartaoDeTarefaGeral.atrasada`. Sem seção própria (ver o motivo em
+    /// `TarefasDaConversaView`), mas continua marcada aqui na própria
+    /// linha, na coluna que normalmente mostra o status.
+    private var atrasada: Bool {
+        guard let prazo = tarefa.prazo, !concluida, !tarefa.atrasoFoiReconhecido else { return false }
+        return Calendar.current.startOfDay(for: prazo) < Calendar.current.startOfDay(for: Date())
+    }
+
     /// Soma dos mínimos de `conteudoHorizontal`: botão (22) + título (160) +
     /// 4 separadores (1pt cada) + 4 colunas de metadado (96+130+96+104) +
-    /// botão de editar (34) + os espaços `Espaco.medio` entre os 10 pares de
-    /// itens vizinhos. Abaixo disso, `conteudoHorizontal` de verdade não
-    /// cabe — não é só o título encolhendo, é tudo espremido.
-    private static let larguraMinimaHorizontal: CGFloat = 800
+    /// botão de ocultar (34) + botão de editar (34) + os espaços
+    /// `Espaco.medio`/`Espaco.minimo` entre os itens vizinhos. Abaixo disso,
+    /// `conteudoHorizontal` de verdade não cabe — não é só o título
+    /// encolhendo, é tudo espremido.
+    private static let larguraMinimaHorizontal: CGFloat = 830
 
     var body: some View {
         Group {
@@ -49,6 +63,7 @@ struct LinhaDeTarefaDaConversa: View {
             RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
                 .stroke(PapagaioTema.borda, lineWidth: 1)
         }
+        .opacity(oculta ? 0.5 : 1)
     }
 
     private var conteudoHorizontal: some View {
@@ -72,7 +87,7 @@ struct LinhaDeTarefaDaConversa: View {
 
             SeparadorDaLinhaDeTarefa()
             ColunaDaTarefa(rotulo: "Status") {
-                SeloDeStatusDaTarefa(status: tarefa.status)
+                seloDeStatus
             }
             .frame(minWidth: 96, idealWidth: 124, maxWidth: 150, alignment: .leading)
 
@@ -86,7 +101,7 @@ struct LinhaDeTarefaDaConversa: View {
             }
             .frame(minWidth: 104, idealWidth: 136, maxWidth: 160, alignment: .leading)
 
-            botaoEditar
+            acoes
         }
     }
 
@@ -96,7 +111,7 @@ struct LinhaDeTarefaDaConversa: View {
                 botaoConclusao
                 tituloDaTarefa
                 Spacer()
-                botaoEditar
+                acoes
             }
 
             Divider()
@@ -114,7 +129,7 @@ struct LinhaDeTarefaDaConversa: View {
                     responsavelDaTarefa
                 }
                 ColunaDaTarefa(rotulo: "Status") {
-                    SeloDeStatusDaTarefa(status: tarefa.status)
+                    seloDeStatus
                 }
                 ColunaDaTarefa(rotulo: "Data") {
                     Label(dataDoPrazo, systemImage: concluida ? "checkmark.circle" : "calendar")
@@ -127,6 +142,25 @@ struct LinhaDeTarefaDaConversa: View {
         }
     }
 
+    /// "Atrasada" no lugar do status literal quando o prazo já passou — a
+    /// pessoa continua sabendo que a tarefa está "Não iniciado" ou "Em
+    /// andamento" por baixo (é isso que muda ao arrastar entre seções),
+    /// mas o que precisa saltar aos olhos aqui é que ela está vencida.
+    private var seloDeStatus: some View {
+        Group {
+            if atrasada {
+                Text("Atrasada")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .padding(.horizontal, PapagaioTema.Espaco.curto)
+                    .frame(height: PapagaioTema.Altura.compacta)
+                    .background(PapagaioTema.perigo.opacity(0.12), in: Capsule())
+            } else {
+                SeloDeStatusDaTarefa(status: tarefa.status)
+            }
+        }
+    }
+
     private var botaoConclusao: some View {
         Button(action: aoAlternarConclusao) {
             Image(systemName: concluida ? "checkmark.square.fill" : "square")
@@ -135,6 +169,25 @@ struct LinhaDeTarefaDaConversa: View {
         }
         .buttonStyle(.plain)
         .help(concluida ? "Marcar como em andamento" : "Concluir")
+    }
+
+    private var acoes: some View {
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
+            botaoOcultar
+            botaoEditar
+        }
+    }
+
+    private var botaoOcultar: some View {
+        Button(action: aoOcultar) {
+            Image(systemName: oculta ? "eye.slash" : "eye")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(PapagaioTema.textoSecundario)
+                .frame(width: 34, height: 34)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(oculta ? "Mostrar tarefa" : "Ocultar tarefa")
     }
 
     private var botaoEditar: some View {
