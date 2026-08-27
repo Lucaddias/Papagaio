@@ -46,10 +46,7 @@ final class GoogleCalendarViewModel {
         estado = .conectando
         registro.info("Iniciando conexão com o Google Calendar")
 
-        let sessao = SessaoOAuthGoogle(
-            cofre: cofre,
-            apresentador: ApresentadorDeSessaoDeAutorizacao()
-        )
+        let sessao = SessaoOAuthGoogle(cofre: cofre)
         self.sessao = sessao
 
         do {
@@ -60,7 +57,7 @@ final class GoogleCalendarViewModel {
             self.fonte = fonte
             self.bibliotecaRef = biblioteca
             estado = .conectado(conta)
-            registro.info("Conectado: \(conta.email, privacy: .public)")
+            registro.info("Conta Google Calendar conectada")
             await carregarReunioes()
             iniciarTimerSincronizacao()
         } catch {
