@@ -65,7 +65,7 @@ struct SegurancaDoPerfil: View {
                 Text("Excluir conta")
                     .font(.headline)
                     .foregroundStyle(PapagaioTema.perigo)
-                Text("Remove permanentemente seu perfil, conversas, áudios, notas e equipes deste Mac.")
+                Text("Remove permanentemente seu perfil, conversas, áudios, notas e tarefas deste Mac.")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }

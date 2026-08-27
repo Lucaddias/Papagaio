@@ -157,7 +157,11 @@ final class JanelaFlutuanteDeGravacao {
             contexto.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             painel.animator().setFrame(origem, display: true)
         } completionHandler: {
-            painel.close()
+            // O AppKit conclui animações de janela na main thread, mas a
+            // assinatura antiga deste callback não carrega essa anotação.
+            MainActor.assumeIsolated {
+                painel.close()
+            }
         }
     }
 

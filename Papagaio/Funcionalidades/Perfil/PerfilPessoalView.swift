@@ -7,6 +7,7 @@ struct PerfilPessoalView: View {
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void
+    let aoEntrarComCodigo: (String) -> Void
     let aoSair: () -> Void
     let aoExcluirConta: () async throws -> Void
     @State private var nome: String = ""
@@ -43,7 +44,8 @@ struct PerfilPessoalView: View {
                             equipeAtiva: equipeAtiva,
                             equipes: equipes,
                             aoSelecionar: aoSelecionarEquipe,
-                            aoAdicionarEquipe: aoAdicionarEquipe
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
                         )
                         .frame(width: 330)
                     }
@@ -59,7 +61,8 @@ struct PerfilPessoalView: View {
                             equipeAtiva: equipeAtiva,
                             equipes: equipes,
                             aoSelecionar: aoSelecionarEquipe,
-                            aoAdicionarEquipe: aoAdicionarEquipe
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
                         )
                     }
                 }

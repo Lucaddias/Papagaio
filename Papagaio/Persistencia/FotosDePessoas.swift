@@ -153,6 +153,18 @@ enum FotosDePessoas {
         return imagem
     }
 
+    /// Remove fotos ligadas às pessoas das conversas da conta atual.
+    @MainActor
+    static func removerTodas(em defaults: UserDefaults = .standard) {
+        for chave in defaults.dictionaryRepresentation().keys where chave.hasPrefix(prefixo) {
+            defaults.removeObject(forKey: chave)
+        }
+        urlsResolvidas.removeAll()
+        decodificadas.removeAllObjects()
+        CorDominanteDeImagem.esquecerTudo()
+        aviso.versao += 1
+    }
+
     /// Abre o seletor e guarda a escolha. Devolve `true` quando trocou.
     @MainActor
     @discardableResult

@@ -9,6 +9,7 @@ struct BibliotecaHomeView: View {
     let gravador: GravadorViewModel
     let biblioteca: Biblioteca?
     let modelos: ModelosViewModel?
+    let googleCalendar: GoogleCalendarViewModel?
     @Binding var consulta: String
     @Binding var secaoSelecionada: SecaoDaBiblioteca
     @Binding var pastaSelecionada: String?
@@ -21,6 +22,9 @@ struct BibliotecaHomeView: View {
     let aoEscolherPastaDeModelos: (URL) -> Void
     let aoUsarPastaDoApp: () -> Void
     let aoSoltarArquivos: ([URL]) -> Void
+    let aoPrepararGravacaoParaReuniao: (ReuniaoPendenteCalendar) -> Void
+    let aoImportarAudioDaReuniao: (ReuniaoPendenteCalendar) -> Void
+    let aoIgnorarReuniao: (ReuniaoPendenteCalendar) -> Void
     /// Enquanto a gravação roda a pessoa pode sair da tela de captura e voltar
     /// à biblioteca; a gravação continua. Este é o foco visual, não o estado
     /// da gravação.
@@ -33,6 +37,7 @@ struct BibliotecaHomeView: View {
     @State private var arquivoParaExclusaoDefinitiva: Arquivo?
     @State private var confirmandoEsvaziarLixeira = false
     @State private var erroDaLixeiraDeMidia: String?
+    @State private var erroDeExportacao: String?
     @State private var menuAberto: ArquivoID?
     @State private var filtroSelecionado: FiltroDaBiblioteca = .todas
     @State private var atalhoSelecionado: AtalhoDaBiblioteca?
@@ -276,6 +281,57 @@ struct BibliotecaHomeView: View {
         gravador.gravando && focoNaGravacao
     }
 
+/// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
+    /// Exibidas no topo da biblioteca com scroll horizontal.
+    private var reunioesDoCalendar: some View {
+        guard let biblioteca,
+              let googleCalendar,
+              !googleCalendar.reunioesPendentes.isEmpty,
+              secaoSelecionada == .todos,
+              !emCaptura
+        else { return AnyView(EmptyView()) }
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                HStack {
+                    Label("Próximas 24h", systemImage: "calendar.badge.clock")
+                        .font(PapagaioTema.Tipo.tituloDeSecao)
+                        .foregroundStyle(PapagaioTema.destaqueEscuro)
+                    Spacer()
+                    Text("\(googleCalendar.reunioesPendentes.count) reun\(googleCalendar.reunioesPendentes.count == 1 ? "ião" : "iões")")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: PapagaioTema.Espaco.medio) {
+                        ForEach(googleCalendar.reunioesPendentes) { pendente in
+CartaoReuniaoPendente(
+                            pendente: pendente,
+                            aoGravar: { aoPrepararGravacaoParaReuniao(pendente) },
+                            aoImportar: { aoImportarAudioDaReuniao(pendente) },
+                            aoIgnorar: { aoIgnorarReuniao(pendente) }
+                        )
+                        }
+                    }
+                    .padding(.horizontal, PapagaioTema.Espaco.secao)
+                }
+                .frame(height: 160)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                PapagaioTema.superficie,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    .stroke(PapagaioTema.borda, lineWidth: 1.5)
+            }
+            .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
+        )
+    }
+
     private var arquivosFiltrados: [Arquivo] {
         guard let biblioteca else { return [] }
         _ = invalidacaoVisual.geracao
@@ -488,9 +544,9 @@ struct BibliotecaHomeView: View {
         }
     }
 
-    private func pacoteDaPasta(_ nome: String) -> URL? {
-        guard let biblioteca else { return nil }
-        return PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
+    private func pacoteDaPasta(_ nome: String) async throws -> URL {
+        guard let biblioteca else { throw PastasDaBiblioteca.Erro.pastaVazia }
+        return try await PastasDaBiblioteca.pacote(nome, biblioteca: biblioteca)
     }
 
     /// Salva a pasta inteira onde a pessoa escolher, como pasta de verdade.
@@ -499,24 +555,43 @@ struct BibliotecaHomeView: View {
     /// conter horas de áudio, e o `copyItem` síncrono congelava a janela
     /// inteira até terminar.
     private func baixarPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome) else { return }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                let painel = NSOpenPanel()
+                painel.title = "Escolha onde salvar a pasta \(nome)"
+                painel.prompt = "Salvar aqui"
+                painel.canChooseFiles = false
+                painel.canChooseDirectories = true
+                painel.canCreateDirectories = true
 
-        let painel = NSOpenPanel()
-        painel.title = "Escolha onde salvar a pasta \(nome)"
-        painel.prompt = "Salvar aqui"
-        painel.canChooseFiles = false
-        painel.canChooseDirectories = true
-        painel.canCreateDirectories = true
+                painel.begin { resposta in
+                    guard resposta == .OK, let destino = painel.url else {
+                        DossieDaConversa.descartarPastaTemporaria(pacote)
+                        return
+                    }
+                    Task.detached {
+                        defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
+                        let acesso = destino.startAccessingSecurityScopedResource()
+                        defer { if acesso { destino.stopAccessingSecurityScopedResource() } }
 
-        painel.begin { resposta in
-            guard resposta == .OK, let destino = painel.url else { return }
-            Task.detached {
-                guard destino.startAccessingSecurityScopedResource() else { return }
-                defer { destino.stopAccessingSecurityScopedResource() }
-
-                let alvo = destino.appendingPathComponent(nome, isDirectory: true)
-                try? FileManager.default.removeItem(at: alvo)
-                try? FileManager.default.copyItem(at: pacote, to: alvo)
+                        let alvo = destino.appendingPathComponent(
+                            pacote.lastPathComponent, isDirectory: true
+                        )
+                        do {
+                            if FileManager.default.fileExists(atPath: alvo.path) {
+                                try FileManager.default.removeItem(at: alvo)
+                            }
+                            try FileManager.default.copyItem(at: pacote, to: alvo)
+                        } catch {
+                            await MainActor.run {
+                                erroDeExportacao = error.localizedDescription
+                            }
+                        }
+                    }
+                }
+            } catch {
+                erroDeExportacao = error.localizedDescription
             }
         }
     }
@@ -527,19 +602,29 @@ struct BibliotecaHomeView: View {
     /// painel de compartilhamento é o que trava e-mail e mensagem — e do outro
     /// lado ninguém remonta a estrutura de pastas na mão.
     private func compartilharPasta(_ nome: String) {
-        guard let pacote = pacoteDaPasta(nome),
-              let zip = try? DossieDaConversa.zipar(pacote),
-              let view = NSApp.keyWindow?.contentView
-        else { return }
+        Task { @MainActor in
+            do {
+                let pacote = try await pacoteDaPasta(nome)
+                defer { DossieDaConversa.descartarPastaTemporaria(pacote) }
+                let zip = try await Task.detached {
+                    try DossieDaConversa.zipar(pacote)
+                }.value
+                guard let view = NSApp.keyWindow?.contentView else {
+                    DossieDaConversa.descartarArquivoTemporario(zip)
+                    return
+                }
 
-        // O mesmo painel do cartão de conversa, com o delegate que acrescenta
-        // "Salvar em…". Sem ele, compartilhar uma pasta oferecia só os apps —
-        // e guardar num diretório, que é o caso mais comum, ficava de fora.
-        let picker = NSSharingServicePicker(items: [zip])
-        let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
-        delegadoDeCompartilhamento = opcoes
-        picker.delegate = opcoes
-        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+                // O mesmo painel do cartão de conversa, com o delegate que
+                // acrescenta "Salvar em…".
+                let picker = NSSharingServicePicker(items: [zip])
+                let opcoes = OpcoesDeCompartilhamento(arquivos: [zip])
+                delegadoDeCompartilhamento = opcoes
+                picker.delegate = opcoes
+                picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+            } catch {
+                erroDeExportacao = error.localizedDescription
+            }
+        }
     }
 
     /// As pastas cujo nome casa com a busca. Vazio sem termo digitado.
@@ -606,6 +691,8 @@ struct BibliotecaHomeView: View {
         }
     }
 
+    /// Preenche os metadados da gravação com os dados da reunião do Calendar
+    /// e inicia a gravação na tela de captura.
     private func limparAtalhoVisual() {
         guard atalhoVisualSelecionado != nil else { return }
         withAnimation(.snappy(duration: 0.16)) {
@@ -733,11 +820,17 @@ struct BibliotecaHomeView: View {
                 AcoesDaLixeira(
                     temArquivos: !biblioteca.arquivosNaLixeira.isEmpty || !LixeiraDeTarefas.itens().isEmpty || !LixeiraDeMidia.itens().isEmpty || !LixeiraDePastas.itens().isEmpty,
                     aoRestaurarTudo: {
-                        Task { await biblioteca.restaurarTudoDaLixeira() }
-                        LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos + biblioteca.arquivosNaLixeira)
-                        LixeiraDeMidia.restaurarTudo()
-                        LixeiraDePastas.restaurarTudo()
-                        atualizarPreferenciasVisuais()
+                        Task { @MainActor in
+                            await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
+                            // Uma conversa que não conseguiu sair da lixeira não pode
+                            // recuperar suas tarefas antes dela. Assim o item continua
+                            // visível e recuperável numa nova tentativa.
+                            LixeiraDeTarefas.restaurarTudo(arquivos: biblioteca.arquivos)
+                            if !LixeiraDeMidia.restaurarTudo() {
+                                erroDaLixeiraDeMidia = "Um ou mais anexos não puderam ser restaurados. Revise os itens restantes na lixeira."
+                            }
+                            atualizarPreferenciasVisuais()
+                        }
                     },
                     aoEsvaziar: {
                         confirmandoEsvaziarLixeira = true
@@ -769,6 +862,8 @@ struct BibliotecaHomeView: View {
                             aoUsarPastaDoApp: aoUsarPastaDoApp
                         )
                     }
+
+                    reunioesDoCalendar
 
                     cabecalhoDaBiblioteca
 
@@ -853,13 +948,21 @@ struct BibliotecaHomeView: View {
         } message: {
             Text("Essa ação remove o áudio, a transcrição e o resumo do Mac e não pode ser desfeita.")
         }
-        .alert("Não foi possível restaurar", isPresented: Binding(
+        .alert("Não foi possível concluir", isPresented: Binding(
             get: { erroDaLixeiraDeMidia != nil },
             set: { if !$0 { erroDaLixeiraDeMidia = nil } }
         )) {
             Button("OK", role: .cancel) { erroDaLixeiraDeMidia = nil }
         } message: {
             Text(erroDaLixeiraDeMidia ?? "")
+        }
+        .alert("Não foi possível exportar", isPresented: Binding(
+            get: { erroDeExportacao != nil },
+            set: { if !$0 { erroDeExportacao = nil } }
+        )) {
+            Button("OK", role: .cancel) { erroDeExportacao = nil }
+        } message: {
+            Text(erroDeExportacao ?? "")
         }
         .confirmationDialog(
             "Esvaziar lixeira?",
@@ -868,11 +971,24 @@ struct BibliotecaHomeView: View {
         ) {
             if let biblioteca {
                 Button("Esvaziar lixeira", role: .destructive) {
-                    Task { await biblioteca.esvaziarLixeira() }
-                    LixeiraDeTarefas.esvaziar()
-                    LixeiraDeMidia.esvaziar()
-                    LixeiraDePastas.esvaziar()
-                    atualizarPreferenciasVisuais()
+                    Task { @MainActor in
+                        await biblioteca.esvaziarLixeira()
+                        // A exclusão de conversas parou em uma falha. Tarefas,
+                        // anexos e retratos de pasta ainda podem depender delas;
+                        // preservamos todos os registros para uma nova tentativa.
+                        guard biblioteca.erroDaLixeira == nil else {
+                            atualizarPreferenciasVisuais()
+                            return
+                        }
+                        LixeiraDeTarefas.esvaziar()
+                        do {
+                            try LixeiraDeMidia.esvaziar()
+                        } catch {
+                            erroDaLixeiraDeMidia = error.localizedDescription
+                        }
+                        LixeiraDePastas.esvaziar()
+                        atualizarPreferenciasVisuais()
+                    }
                 }
             }
             Button("Cancelar", role: .cancel) {}
@@ -982,7 +1098,8 @@ struct BibliotecaHomeView: View {
             }
 
         case .lixeira:
-            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
+            let temPendentesIgnoradas = !(biblioteca?.reunioesPendentesNaLixeira.isEmpty ?? true)
+            if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && !temPendentesIgnoradas && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
                     titulo: "A lixeira está vazia",
@@ -990,7 +1107,7 @@ struct BibliotecaHomeView: View {
                 )
                 .frame(minHeight: 280)
                 .cartaoPapagaio()
-            } else if arquivosFiltrados.isEmpty && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
+            } else if arquivosFiltrados.isEmpty && !temPendentesIgnoradas && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "magnifyingglass",
                     titulo: "Nenhum arquivo encontrado",
@@ -999,6 +1116,41 @@ struct BibliotecaHomeView: View {
                 .frame(minHeight: 220)
                 .cartaoPapagaio()
             } else {
+                VStack(spacing: PapagaioTema.Espaco.secao) {
+                // Pendentes ignoradas primeiro: são o que a pessoa acabou de
+                // descartar por engano com mais frequência — restauração a um
+                // clique de distância, sem rolar a lixeira inteira.
+                if let biblioteca, !biblioteca.reunioesPendentesNaLixeira.isEmpty {
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                        Label("Reuniões pendentes ignoradas", systemImage: "calendar.badge.exclamationmark")
+                            .font(PapagaioTema.Tipo.tituloDeSecao)
+                            .foregroundStyle(PapagaioTema.aviso)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: PapagaioTema.Espaco.medio) {
+                                ForEach(biblioteca.reunioesPendentesNaLixeira) { pendente in
+                                    CartaoReuniaoPendenteLixeira(
+                                        pendente: pendente,
+                                        aoRestaurar: { biblioteca.restaurarPendenteDaLixeira(pendente) },
+                                        aoApagarDefinitivamente: { biblioteca.apagarPendenteDefinitivamente(pendente) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .padding(PapagaioTema.Espaco.secao)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        PapagaioTema.superficie,
+                        in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeCard, style: .continuous)
+                            .stroke(PapagaioTema.borda, lineWidth: 1.5)
+                    }
+                    .shadow(color: .black.opacity(0.06), radius: 8, y: 2)
+                }
+
                 LazyVGrid(columns: colunasDaLixeira, spacing: PapagaioTema.Espaco.secao) {
                     ForEach(arquivosFiltrados) { arquivo in
                         if let biblioteca {
@@ -1025,7 +1177,11 @@ struct BibliotecaHomeView: View {
                                 atualizarPreferenciasVisuais()
                             },
                             aoApagarDefinitivamente: {
-                                LixeiraDeMidia.remover(item)
+                                do {
+                                    try LixeiraDeMidia.remover(item)
+                                } catch {
+                                    erroDaLixeiraDeMidia = "Não foi possível apagar “\(item.nome)”: \(error.localizedDescription)"
+                                }
                                 atualizarPreferenciasVisuais()
                             },
                             aoRevelarNoFinder: { LixeiraDeMidia.revelarNoFinder(item) }
@@ -1063,6 +1219,7 @@ struct BibliotecaHomeView: View {
                         }
                     }
                 }
+                }
             }
         }
     }
@@ -1080,6 +1237,9 @@ struct BibliotecaHomeView: View {
             seloDeConclusaoRevelado: biblioteca.seloDeConclusaoRevelado(arquivo.id),
             aoAbrirFicha: { aoAbrirFicha(arquivo) },
             aoReprocessar: { biblioteca.enfileirarProcessamento(arquivo) },
+            aoDiarizar: {
+                Task { await biblioteca.diarizarTranscricao(arquivo) }
+            },
             aoRenomear: { novoTitulo in
                 Task { await biblioteca.renomear(arquivo, para: novoTitulo) }
             },

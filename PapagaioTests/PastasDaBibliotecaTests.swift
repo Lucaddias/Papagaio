@@ -47,7 +47,7 @@ func pastaApagaERestauraCicloCompleto() async throws {
     PreferenciasVisuaisDoArquivo.definirPasta(nome, para: arquivo.id)
 
     // Apagar: a conversa sai de cena junto, e o retrato fica na lixeira.
-    await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
 
     #expect(biblioteca.arquivos.isEmpty)
     #expect(biblioteca.arquivosNaLixeira.map(\.id) == [arquivo.id])
@@ -83,7 +83,7 @@ func restaurarConversaSoltaSemRotulo() async throws {
         )
     )
     PreferenciasVisuaisDoArquivo.definirPasta(nome, para: arquivo.id)
-    await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
 
     await PastasDaBiblioteca.restaurarConversa(arquivo, biblioteca: biblioteca)
 
@@ -97,6 +97,44 @@ func restaurarConversaSoltaSemRotulo() async throws {
 
     // Limpeza do rastro nas chaves globais.
     LixeiraDePastas.remover(retrato)
+    let restantes = PreferenciasVisuaisDoArquivo.pastas().filter { $0 != nome }
+    UserDefaults.standard.set(restantes, forKey: "pastasDaBiblioteca")
+}
+
+@MainActor
+@Test("Restaurar tudo devolve pasta, rótulos e conversas avulsas em ordem")
+func restaurarTudoMantemOsVinculosDasPastas() async throws {
+    let biblioteca = try bibliotecaDeTeste()
+    let nome = "PastaTeste-\(UUID().uuidString.prefix(6))"
+
+    let naPasta = try #require(
+        await biblioteca.registrar(
+            titulo: "Na pasta",
+            pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+            duracao: 30
+        )
+    )
+    let avulsa = try #require(
+        await biblioteca.registrar(
+            titulo: "Avulsa",
+            pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+            duracao: 30
+        )
+    )
+    PreferenciasVisuaisDoArquivo.definirPasta(nome, para: naPasta.id)
+    #expect(await PastasDaBiblioteca.apagar(nome, biblioteca: biblioteca))
+    await biblioteca.moverParaLixeira(avulsa)
+
+    await PastasDaBiblioteca.restaurarTudo(biblioteca: biblioteca)
+
+    #expect(biblioteca.arquivosNaLixeira.isEmpty)
+    #expect(Set(biblioteca.arquivos.map(\.id)) == [naPasta.id, avulsa.id])
+    #expect(PreferenciasVisuaisDoArquivo.pasta(naPasta.id) == nome)
+    #expect(PreferenciasVisuaisDoArquivo.pasta(avulsa.id) == nil)
+    #expect(PreferenciasVisuaisDoArquivo.pastas().contains(nome))
+    #expect(!LixeiraDePastas.itens().contains { $0.nome == nome })
+
+    PreferenciasVisuaisDoArquivo.definirPasta(nil, para: naPasta.id)
     let restantes = PreferenciasVisuaisDoArquivo.pastas().filter { $0 != nome }
     UserDefaults.standard.set(restantes, forKey: "pastasDaBiblioteca")
 }

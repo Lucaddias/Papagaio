@@ -1,0 +1,10 @@
+// Configuração base do target Loro.
+//
+// O include opcional (`#include?`) puxa as credenciais locais de quem
+// desenvolve sem quebrar o build de quem não as tem — variáveis ficam
+// vazias e a integração Google Calendar aparece desabilitada na UI.
+//
+// Secrets.xcconfig é gitignored; o template para copiar é
+// Config/Secrets.example.xcconfig.
+
+#include? "Secrets.xcconfig"

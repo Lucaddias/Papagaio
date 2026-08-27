@@ -8,11 +8,14 @@ struct MenuDeArquivoAberto: View {
     /// descarta um resultado pronto. O item de baixo muda de nome para dizer
     /// isso, em vez de deixar "Mover para Lixeira" fazer o dobro do que diz.
     var cancelavel: Bool = false
-    let aoEditarAparencia: () -> Void
+    let podeDiarizar: Bool
+    let aoDiarizar: () -> Void
+    let aoReprocessar: () -> Void
     let aoRenomear: () -> Void
     let aoBaixar: () -> Void
     let aoCompartilhar: () -> Void
     let aoDuplicar: () -> Void
+    let aoEditarAparencia: () -> Void
     let aoMoverParaLixeira: () -> Void
 
     /// A ordem é por frequência, com a aparência no fim.
@@ -27,15 +30,30 @@ struct MenuDeArquivoAberto: View {
     /// Compartilhar — "guardar comigo" antes de "mandar para alguém".
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Diarização retroativa: arquivos gravados antes da diarização
+            // existir têm palavras sem falante — distinguir é leve (só os
+            // modelos pequenos), reprocessar re-transcreve tudo.
+            ItemDoMenuDeArquivo(
+                simbolo: "person.2.wave.2",
+                titulo: "Distinguir falantes",
+                desabilitado: bloqueioDeEdicao || !podeDiarizar,
+                acao: aoDiarizar
+            )
+            ItemDoMenuDeArquivo(
+                simbolo: "arrow.clockwise",
+                titulo: "Reprocessar",
+                desabilitado: bloqueioDeEdicao,
+                acao: aoReprocessar
+            )
+
             ItemDoMenuDeArquivo(simbolo: "square.and.pencil", titulo: "Editar informações", acao: aoRenomear)
             ItemDoMenuDeArquivo(simbolo: "arrow.down.circle", titulo: "Baixar", acao: aoBaixar)
             ItemDoMenuDeArquivo(simbolo: "square.and.arrow.up", titulo: "Compartilhar", acao: aoCompartilhar)
             ItemDoMenuDeArquivo(simbolo: "rectangle.on.rectangle", titulo: "Duplicar", desabilitado: bloqueioDeEdicao, acao: aoDuplicar)
+            // Favoritar e mover para pasta saem daqui: são botões no rodapé do
+            // cartão. Repetir a ação no menu só alonga a lista e faz a pessoa
+            // procurar em dois lugares o mesmo comando.
             ItemDoMenuDeArquivo(simbolo: "paintpalette", titulo: "Cor e imagem", acao: aoEditarAparencia)
-            // Favoritar, mover para pasta e personalizar saem daqui: os dois
-            // primeiros são botões no rodapé do cartão e o último mora nas
-            // Configurações. Repetir a ação no menu só alonga a lista e faz a
-            // pessoa procurar em dois lugares o mesmo comando.
 
             SeparadorPapagaio()
                 .padding(.horizontal, PapagaioTema.Espaco.medio)

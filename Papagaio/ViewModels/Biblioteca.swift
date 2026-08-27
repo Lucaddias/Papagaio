@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Observation
 import PapagaioCore
@@ -108,7 +109,9 @@ final class Biblioteca {
 
     private let repositorio: SwiftDataRepository
     private let ciclo = CicloDeVidaDeModelos()
+    private let sincronizadorCloudKit = SincronizadorDaBibliotecaCloudKit()
     private var espaco: EspacoID
+    private var equipeCloudKit: EquipeDisponivel?
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
@@ -143,11 +146,11 @@ final class Biblioteca {
         return EspacoID(rawValue: novo)
     }
 
-    /// Troca o acervo exibido sem misturar uma equipe ao perfil pessoal.
-    /// Processamentos em curso continuam com o arquivo que os originou; a
-    /// troca só limpa a fila visual, que pertence à biblioteca aberta.
-    func usarEspaco(_ novoEspaco: EspacoID) async {
+    // MARK: - Ciclo de vida
+
+    func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
         let mudouDeEspaco = espaco != novoEspaco
+        self.equipeCloudKit = equipeCloudKit
         if mudouDeEspaco {
             filaDeProcessamento.removeAll()
             espaco = novoEspaco
@@ -158,9 +161,8 @@ final class Biblioteca {
             erroDaLixeira = nil
         }
         await carregar()
+        await baixarAtualizacoesDaEquipe()
     }
-
-    // MARK: - Ciclo de vida
 
     func preparar() async {
         await ciclo.iniciarMonitoramento()
@@ -210,9 +212,66 @@ final class Biblioteca {
             return nil
         }
         arquivos.insert(arquivo, at: 0)
+        await sincronizar(arquivo)
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }
+        return arquivo
+    }
+
+    /// Importa uma reunião de fonte externa (Granola, Google Calendar etc.):
+    /// sem áudio — `pastaRelativa` vazia é a marca de `Arquivo.semAudio` —,
+    /// com transcrição, notas e resumo prontos, e **fora** da fila de
+    /// processamento (não há nada para os modelos locais fazerem aqui).
+    ///
+    /// A importação é idempotente por `idExterno`: a mesma reunião nunca
+    /// duplica, mesmo se o loop de importação rodar duas vezes.
+    @discardableResult
+    func registrarExterna(_ reuniao: ReuniaoExterna, identificador: String) async -> Arquivo? {
+        let idExternoCompleto = "\(identificador):\(reuniao.id)"
+        guard !arquivos.contains(where: { $0.idExterno == idExternoCompleto }),
+              !arquivosNaLixeira.contains(where: { $0.idExterno == idExternoCompleto })
+        else { return nil }
+
+        let trechos = reuniao.transcricao?.map { segmento in
+            Trecho(
+                start: segmento.inicio ?? 0,
+                end: segmento.fim ?? segmento.inicio ?? 0,
+                texto: segmento.texto,
+                speaker: FalanteExterno.rotulo(de: segmento.falante)
+            )
+        } ?? []
+
+        let notas: [NotaDaConversa]
+        if let texto = reuniao.notas, !texto.isEmpty {
+            notas = [NotaDaConversa(texto: texto, start: 0)]
+        } else {
+            notas = []
+        }
+
+        let resumo = reuniao.resumo.map {
+            Resumo(titulo: reuniao.titulo, visaoGeral: $0)
+        }
+
+        let arquivo = Arquivo(
+            titulo: reuniao.titulo,
+            criadoEm: reuniao.data == .distantPast ? Date() : reuniao.data,
+            duracao: trechos.map(\.end).max() ?? 0,
+            pastaRelativa: "",
+            espaco: espaco,
+            trechos: trechos,
+            notas: notas,
+            resumo: resumo,
+            idExterno: idExternoCompleto
+        )
+        do {
+            try await repositorio.salvar(arquivo)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível importar a reunião: \(error)"
+            return nil
+        }
+        arquivos.insert(arquivo, at: 0)
+        arquivos.sort { $0.criadoEm > $1.criadoEm }
         return arquivo
     }
 
@@ -221,14 +280,18 @@ final class Biblioteca {
     /// Move um arquivo para a lixeira. Se ele estiver resumindo/transcrevendo,
     /// a execução atual é cancelada antes do soft delete para a UI não ficar
     /// presa esperando o pipeline terminar.
-    func moverParaLixeira(_ arquivo: Arquivo) async {
+    @discardableResult
+    func moverParaLixeira(_ arquivo: Arquivo) async -> Bool {
         guard !operacoesDeLixeiraEmAndamento.contains(arquivo.id)
-        else { return }
+        else { return false }
 
-        await cancelarProcessamentoDoArquivo(arquivo.id)
-
+        // `cancelarProcessamentoDoArquivo` também remove o id da fila. A
+        // posição precisa ser capturada antes: se o save do soft delete
+        // falhar, a conversa continua ativa e deve voltar ao processamento
+        // que a própria pessoa já tinha pedido.
         let indiceNaFila = filaDeProcessamento.firstIndex(of: arquivo.id)
-        if let indiceNaFila { filaDeProcessamento.remove(at: indiceNaFila) }
+        let estavaEmProcessamento = arquivoEmProcessamento == arquivo.id
+        await cancelarProcessamentoDoArquivo(arquivo.id)
 
         let chave = arquivo.id.rawValue
         let faseAnterior = fases[chave]
@@ -248,19 +311,22 @@ final class Biblioteca {
             movido.apagadoEm = Date()
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             arquivosNaLixeira.insert(movido, at: 0)
+            await sincronizar(movido)
+            return true
         } catch {
             // O registro continuou ativo porque o soft delete não foi salvo;
             // devolvemos a posição anterior da fila em vez de perder trabalho.
             fases[chave] = faseAnterior
             erros[chave] = erroAnterior
-            if let indiceNaFila {
+            if estavaEmProcessamento || indiceNaFila != nil {
                 filaDeProcessamento.insert(
                     arquivo.id,
-                    at: min(indiceNaFila, filaDeProcessamento.count)
+                    at: min(indiceNaFila ?? filaDeProcessamento.count, filaDeProcessamento.count)
                 )
                 iniciarProximoProcessamentoSeNecessario()
             }
             erroDaLixeira = "Não foi possível mover o arquivo para a lixeira: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -284,6 +350,7 @@ final class Biblioteca {
             arquivos.removeAll { $0.id == arquivo.id }
             arquivos.append(restaurado)
             arquivos.sort { $0.criadoEm > $1.criadoEm }
+            await sincronizar(restaurado)
             return true
         } catch {
             erroDaLixeira = "Não foi possível recuperar o arquivo: \(error.localizedDescription)"
@@ -309,13 +376,14 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
+            if let equipeCloudKit { try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit) }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
             erros[arquivo.id.rawValue] = nil
-            // Sem isto o arquivo apagado deixa favorito, pasta, capa e
-            // metadados órfãos em UserDefaults para sempre.
-            PreferenciasVisuaisDoArquivo.remover(arquivo.id)
+            // O registro e a pasta já saíram; agora nenhum store auxiliar
+            // pode continuar apontando para esta conversa inexistente.
+            LimpezaDeArquivo.executar(arquivo.id)
         } catch {
             erroDaLixeira = "Não foi possível apagar o arquivo definitivamente: \(error.localizedDescription)"
         }
@@ -354,7 +422,19 @@ final class Biblioteca {
 
         if let tarefa { await tarefa.value }
 
-        try armazenamento.removerTodasAsGravacoes()
+        // O repositório separa os registros por espaço. Apagar a pasta
+        // `Gravacoes` inteira aqui apagava o áudio de outros espaços que
+        // ainda continuavam no banco, deixando conversas sem mídia. Só as
+        // pastas referenciadas pela conta atual participam desta exclusão.
+        let arquivosAtivos = try await repositorio.listar(espaco: espaco)
+        let arquivosArquivados = try await repositorio.listarNaLixeira(espaco: espaco)
+        let arquivosDaConta = arquivosAtivos + arquivosArquivados
+        let pastasDaConta = Set(
+            arquivosDaConta.map(\.pastaRelativa).filter { !$0.isEmpty }
+        )
+        for pastaRelativa in pastasDaConta {
+            try armazenamento.removerGravacao(relativa: pastaRelativa)
+        }
         try await repositorio.apagarTodosOsDados(espaco: espaco)
 
         arquivos.removeAll()
@@ -397,6 +477,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível renomear: \(error.localizedDescription)"
         }
@@ -430,6 +511,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as informações: \(error.localizedDescription)"
         }
@@ -444,6 +526,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar as notas: \(error.localizedDescription)"
         }
@@ -463,6 +546,7 @@ final class Biblioteca {
         do {
             try await repositorio.salvar(editado)
             substituir(editado)
+            await sincronizar(editado)
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível salvar a transcrição: \(error.localizedDescription)"
         }
@@ -478,7 +562,8 @@ final class Biblioteca {
         let destino = armazenamento.resolver(relativo: pastaNovaRelativa)
 
         do {
-            if FileManager.default.fileExists(atPath: origem.path) {
+            let origemExiste = FileManager.default.fileExists(atPath: origem.path)
+            if origemExiste {
                 try FileManager.default.copyItem(at: origem, to: destino)
             } else {
                 try FileManager.default.createDirectory(at: destino, withIntermediateDirectories: true)
@@ -511,12 +596,33 @@ final class Biblioteca {
                 )
             }
 
+            if origemExiste {
+                let anexosCopiados = try MidiasDaConversa.anexosCopiados(
+                    de: arquivo.id,
+                    da: origem,
+                    para: destino
+                )
+                if !anexosCopiados.isEmpty {
+                    try MidiasDaConversa.salvar(anexosCopiados, para: novoID)
+                }
+            }
+            TarefasGeraisStore.duplicar(arquivo, para: copia)
             try await repositorio.salvar(copia)
             arquivos.insert(copia, at: 0)
+            await sincronizar(copia)
             return copia
         } catch {
-            try? FileManager.default.removeItem(at: destino)
-            erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            // O id novo ainda não é visível em lugar nenhum. Se a cópia de
+            // disco, seus bookmarks ou o registro falharem, eliminar os dois
+            // resíduos impede que uma tentativa posterior herde mídia órfã.
+            MidiasDaConversa.remover(novoID)
+            TarefasGeraisStore.remover(novoID)
+            do {
+                try armazenamento.removerGravacao(relativa: pastaNovaRelativa)
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription)"
+            } catch {
+                erros[arquivo.id.rawValue] = "Não foi possível duplicar: \(error.localizedDescription). A cópia incompleta permaneceu no armazenamento para não apagar dados de forma insegura."
+            }
             return nil
         }
     }
@@ -667,6 +773,9 @@ final class Biblioteca {
             },
             diarizar: { [diarizacao] url in
                 try await diarizacao.diarizar(url)
+            },
+            resolverFalantes: { [motores] arquivo in
+                try await motores.resolverFalantes(arquivo)
             }
         )
 
@@ -681,6 +790,7 @@ final class Biblioteca {
                   arquivos.contains(where: { $0.id == arquivo.id })
             else { return }
             substituir(final)
+            await sincronizar(final)
             aoConcluirProcessamento?(final)
             if final.trechos.isEmpty {
                 erros[chave] = "Nenhuma fala reconhecida neste áudio."
@@ -711,6 +821,71 @@ final class Biblioteca {
         await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
     }
 
+    /// Aplica a diarização às palavras de uma transcrição já salva, sem
+    /// re-transcrever nem resumir — para arquivos de antes da diarização
+    /// existir. Os modelos pequenos de diarização (~40 MB) entram sempre; o
+    /// Whisper nunca. O Qwen entra SÓ se sobrarem falas curtas entre vozes
+    /// DIFERENTES para a resolução contextual — se a costura de vozes iguais
+    /// resolver tudo, o modelo nem carrega (ver `MotoresLocais
+    /// .resolverFalantes`).
+    func diarizarTranscricao(_ arquivo: Arquivo) async {
+        guard arquivoEmProcessamento != arquivo.id,
+              !filaDeProcessamento.contains(arquivo.id),
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+        let chave = arquivo.id.rawValue
+        guard fases[chave] == nil else { return }
+
+        let diarizacao = GerenciadorDeModelosDeDiarizacao.embutido()
+        guard diarizacao.disponivel else {
+            erros[chave] = "Modelos de diarização não estagiados. Rode Scripts/bootstrap-runtimes.sh."
+            return
+        }
+
+        erros[chave] = nil
+        fases[chave] = .diarizando
+        await ciclo.registrar(diarizacao)
+        defer {
+            Task {
+                await diarizacao.descarregar()
+                await ciclo.remover(GerenciadorDeModelosDeDiarizacao.identificador)
+            }
+        }
+
+        // Os motores são apenas o contrato do pipeline; o caminho leve nunca
+        // chama transcrever/resumir, então o Whisper não entra em memória. A
+        // resolução contextual usa o Qwen quando há caso entre vozes
+        // diferentes (o mesmo modelo do resumo, carregado e descarregado aqui).
+        let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
+        let pipeline = PipelineDeArquivo(
+            armazenamento: armazenamento,
+            repositorio: repositorio,
+            idTranscricao: WhisperEngine.identificador,
+            idResumo: QwenEngine.identificador,
+            transcrever: { [motores] url, speaker in
+                try await motores.transcrever(url, speaker: speaker)
+            },
+            resumir: { [motores] trechos in
+                try await motores.resumir(trechos)
+            },
+            diarizar: { [diarizacao] url in
+                try await diarizacao.diarizar(url)
+            },
+            resolverFalantes: { [motores] arquivo in
+                try await motores.resolverFalantes(arquivo)
+            }
+        )
+
+        let diarizado = await pipeline.diarizarExistente(arquivo)
+        guard arquivos.contains(where: { $0.id == arquivo.id }) else { return }
+        do {
+            try await repositorio.salvar(diarizado)
+            substituir(diarizado)
+        } catch {
+            erros[chave] = "Não foi possível salvar a diarização: \(error.localizedDescription)"
+        }
+        fases[chave] = nil
+    }
+
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
         guard identificadorDaExecucao == execucao else { return }
 
@@ -739,6 +914,25 @@ final class Biblioteca {
         } else {
             arquivos.insert(arquivo, at: 0)
         }
+    }
+
+    private func sincronizar(_ arquivo: Arquivo) async {
+        guard let equipeCloudKit else { return }
+        do {
+            try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+        } catch {
+            aoNotificar?("Conversa salva só neste Mac", "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.", .aviso)
+        }
+    }
+
+    private func baixarAtualizacoesDaEquipe() async {
+        guard let equipeCloudKit else { return }
+        do {
+            for arquivo in try await sincronizadorCloudKit.baixar(da: equipeCloudKit) {
+                try await repositorio.salvar(arquivo)
+            }
+            await carregar()
+        } catch { }
     }
 
     // MARK: - Consulta pela view
@@ -838,5 +1032,125 @@ final class Biblioteca {
         if arquivo.resumo != nil { return .transcritoEResumido }
         if !arquivo.trechos.isEmpty { return .transcrito }
         return .prontoParaTranscrever
+    }
+
+    /// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
+    var reunioesPendentesCalendar: [ReuniaoPendenteCalendar] = []
+
+    /// Reuniões pendentes movidas para a lixeira.
+    var reunioesPendentesNaLixeira: [ReuniaoPendenteCalendar] = []
+
+    /// Cria um Arquivo definitivo a partir de uma reunião pendente + áudio.
+    ///
+    /// O áudio é obrigatório: gravar ou importar são os únicos caminhos que
+    /// transformam uma pendente em conversa. O arquivo entra na biblioteca
+    /// (array em memória **e** banco) e, quando o áudio veio de fora, na fila
+    /// de processamento — mesma jornada do `registrar` normal.
+    @discardableResult
+    func criarArquivoDeReuniaoPendente(_ pendente: ReuniaoPendenteCalendar, audioURL: URL) async -> Arquivo? {
+        let idExterno = pendente.idExterno
+        guard !arquivos.contains(where: { $0.idExterno == idExterno }),
+              !arquivosNaLixeira.contains(where: { $0.idExterno == idExterno }),
+              !reunioesPendentesNaLixeira.contains(where: { $0.id == pendente.id })
+        else { return nil }
+
+        // Sem pasta não há transcrição possível — falha antes de sujar o banco.
+        guard FileManager.default.fileExists(atPath: audioURL.path) else {
+            erros[ArquivoID().rawValue] = "O arquivo de áudio escolhido não foi encontrado."
+            return nil
+        }
+
+        var arquivo = Arquivo(
+            titulo: pendente.titulo,
+            criadoEm: pendente.dataHora,
+            duracao: 0,
+            pastaRelativa: "",
+            espaco: espaco,
+            trechos: [],
+            notas: pendente.descricao.map { [NotaDaConversa(texto: $0, start: 0)] } ?? [],
+            resumo: nil,
+            idExterno: idExterno
+        )
+
+        do {
+            if audioURL.lastPathComponent.hasPrefix(Armazenamento.Nome.microfone) {
+                // Veio da gravação interna (`microfone.wav`): a pasta já existe
+                // no lugar canônico; só apontamos para ela.
+                let relativa = audioURL.deletingLastPathComponent().lastPathComponent
+                let pastaPai = audioURL.deletingLastPathComponent().deletingLastPathComponent()
+                guard pastaPai.lastPathComponent == Armazenamento.pastaGravacoes else {
+                    throw ErroDeImportacao.pastaInesperada
+                }
+                arquivo.pastaRelativa = "\(Armazenamento.pastaGravacoes)/\(relativa)"
+            } else {
+                // Importado: pasta nova + extensão preservada (`gravacao.<ext>`).
+                let idNovo = UUID()
+                let destino = try armazenamento.criarArquivoImportado(
+                    id: idNovo,
+                    extensao: audioURL.pathExtension.lowercased()
+                )
+                try FileManager.default.copyItem(at: audioURL, to: destino)
+                arquivo.pastaRelativa = Armazenamento.caminhoRelativo(id: idNovo)
+                // Duração real lida do arquivo: alimenta a estimativa de
+                // progresso e o cartão desde o primeiro segundo.
+                arquivo.duracao = await Self.duracaoDoAudio(audioURL)
+            }
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível copiar o áudio da reunião: \(error)"
+            return nil
+        }
+
+        do {
+            try await repositorio.salvar(arquivo)
+        } catch {
+            erros[arquivo.id.rawValue] = "Não foi possível criar arquivo da reunião: \(error)"
+            return nil
+        }
+
+        // Em memória ANTES de enfileirar: o loop da fila resolve o próximo
+        // arquivo buscando neste array — ausente aqui, o processamento morria
+        // silenciosamente no primeiro tick.
+        arquivos.insert(arquivo, at: 0)
+        arquivos.sort { $0.criadoEm > $1.criadoEm }
+        enfileirarProcessamento(arquivo)
+        return arquivo
+    }
+
+    enum ErroDeImportacao: LocalizedError {
+        case pastaInesperada
+
+        var errorDescription: String? {
+            switch self {
+            case .pastaInesperada:
+                "A gravação não estava na pasta esperada da biblioteca."
+            }
+        }
+    }
+
+    /// Duração em segundos lida dos metadados do arquivo de áudio.
+    /// Falha silenciosa devolve 0 — o pipeline recalcula ao transcrever.
+    private static func duracaoDoAudio(_ url: URL) async -> TimeInterval {
+        await Task.detached {
+            let asset = AVURLAsset(url: url)
+            return (try? await asset.load(.duration).seconds) ?? 0
+        }.value
+    }
+
+    /// Move uma pendente para a lixeira de pendentes
+    func moverPendenteParaLixeira(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesCalendar.removeAll { $0.id == pendente.id }
+        reunioesPendentesNaLixeira.append(pendente)
+    }
+
+    /// Restaura uma pendente da lixeira
+    func restaurarPendenteDaLixeira(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
+        reunioesPendentesCalendar.append(pendente)
+        reunioesPendentesCalendar.sort { $0.dataHora < $1.dataHora }
+    }
+
+    /// Apaga definitivamente uma pendente da lixeira
+    func apagarPendenteDefinitivamente(_ pendente: ReuniaoPendenteCalendar) {
+        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
     }
 }

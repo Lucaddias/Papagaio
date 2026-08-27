@@ -530,7 +530,7 @@ final class DitadoDeNota {
         let nova = CapturaDeDitado(arquivoDeAudio: destino)
 
         do {
-            try nova.iniciar(reconhecedor: reconhecedor) { texto in
+            try nova.iniciar(reconhecedor: reconhecedor) { [weak self] texto in
                 Task { @MainActor [weak self] in
                     self?.textoParcial = texto
                 }

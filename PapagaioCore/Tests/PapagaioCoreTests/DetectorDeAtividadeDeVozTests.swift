@@ -27,7 +27,14 @@ private actor GuardaDeSobreposicao {
 /// A frase de fala vem de uma fixture commitada (gerada **uma vez** por
 /// Tests/PapagaioCoreTests/Fixtures/gerar_fixture.sh via `say`), para o teste
 /// rodar sempre — sem depender de `say`/voz instalada na hora do teste.
-@Suite("Detector de atividade de voz com Silero")
+///
+/// Serializado de propósito: o `DetectorDeAtividadeDeVoz` compartilha uma
+/// única instância do Silero (design de produção — modelo residente). Os
+/// testes desta suite rodarem em paralelo zeraria o contexto/estado do VAD
+/// uns dos outros no meio da inferência (a "memória" de frase vaza entre
+/// arquivos) e a decisão sobre ruído rosa passa a depender da ordem de
+/// entrelaçamento.
+@Suite("Detector de atividade de voz com Silero", .serialized)
 struct DetectorDeAtividadeDeVozTests {
     private func carregarFixture(_ nome: String) async throws -> [Float] {
         let pasta = URL(fileURLWithPath: #filePath)
@@ -162,6 +169,52 @@ struct IsolamentoDeSessoesDoVADTests {
     }
 }
 
+@Suite("VAD em fluxo")
+struct VADEmFluxoTests {
+    @Test("Corte forçado não cria uma segunda janela só com overlap e silêncio")
+    func overlapSemFalaNovaEhDescartado() async throws {
+        let sessao = DetectorDeAtividadeDeVoz.SessaoEmFluxo(
+            limiarDeFala: -1,
+            silencioMinimoParaCortar: 0.6,
+            margem: 0.2,
+            limiteDaJanela: 1
+        )
+        await sessao.iniciar()
+
+        // 0,85 s com energia e 1 s de silêncio. O limite de 1 s corta antes
+        // dos 0,6 s necessários para o corte natural; a janela seguinte fica
+        // apenas com o overlap já entregue e precisa desaparecer.
+        let fala = [Float](repeating: 0.02, count: 13_600)
+        let silencio = [Float](repeating: 0, count: 16_000)
+        let prontas = try await sessao.receber(.init(
+            inicio: 0, amostras: fala + silencio
+        ))
+        let finais = await sessao.finalizar()
+
+        #expect((prontas + finais).count == 1)
+    }
+
+    @Test("Fala contínua é limitada e mantém timestamps crescentes")
+    func falaContinuaTemJanelasLimitadas() async throws {
+        let sessao = DetectorDeAtividadeDeVoz.SessaoEmFluxo(
+            limiarDeFala: -1,
+            margem: 0.2,
+            limiteDaJanela: 1
+        )
+        await sessao.iniciar()
+
+        var janelas = try await sessao.receber(.init(
+            inicio: 0,
+            amostras: [Float](repeating: 0.02, count: 16_000 * 2)
+        ))
+        janelas += await sessao.finalizar()
+
+        #expect(janelas.count >= 2)
+        #expect(janelas.allSatisfy { $0.amostras.count <= 16_000 + 512 })
+        #expect(zip(janelas, janelas.dropFirst()).allSatisfy { $0.inicio < $1.inicio })
+    }
+}
+
 /// Fontes de ruído **determinísticas** (LCG de 64 bits): os testes não podem
 /// depender do `random()` do sistema — CI e máquina local têm que ver a mesma
 /// sequência.
@@ -184,7 +237,7 @@ private struct RuidoDeterministico {
     /// detector, para provar que a rejeição vem do Silero e não da porta de
     /// energia).
     mutating func branco(_ quantidade: Int, alvoRms: Float) -> [Float] {
-        var cru = (0..<quantidade).map { _ in proximo() }
+        let cru = (0..<quantidade).map { _ in proximo() }
         let escala = alvoRms / rms(cru)
         return cru.map { $0 * escala }
     }

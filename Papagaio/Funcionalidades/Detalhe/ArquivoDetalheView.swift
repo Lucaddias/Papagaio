@@ -993,21 +993,27 @@ struct ArquivoDetalheView: View {
     /// Uma ação só: documento e áudio no mesmo pacote, e dentro do painel do
     /// sistema também a opção de salvar em pasta.
     private func compartilhar() {
-        let itens: [Any]
-        do {
-            itens = [try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: audio)]
-        } catch {
-            let destino = FileManager.default.temporaryDirectory
-                .appendingPathComponent(DossieDaConversa.nomeDeArquivo(para: arquivo))
-            if (try? DossieDaConversa.gerar(arquivo: arquivo)
-                .write(to: destino, atomically: true, encoding: .utf8)) != nil {
-                itens = [destino]
-            } else {
-                itens = [DossieDaConversa.gerar(arquivo: arquivo)]
+        Task { @MainActor in
+            let itens: [Any]
+            do {
+                let arquivoParaExportar = arquivo
+                let audioParaExportar = audio
+                itens = [try await Task.detached {
+                    try DossieDaConversa.pacoteComAudio(
+                        arquivo: arquivoParaExportar,
+                        audioPrincipal: audioParaExportar
+                    )
+                }.value]
+            } catch {
+                if let destino = try? DossieDaConversa.markdownTemporario(arquivo: arquivo) {
+                    itens = [destino]
+                } else {
+                    itens = [DossieDaConversa.gerar(arquivo: arquivo)]
+                }
             }
-        }
 
-        apresentarCompartilhamento(itens)
+            apresentarCompartilhamento(itens)
+        }
     }
 
     private func apresentarCompartilhamento(_ itens: [Any]) {
@@ -1016,9 +1022,11 @@ struct ArquivoDetalheView: View {
         delegadoDeCompartilhamento = opcoes
         picker.delegate = opcoes
 
-        if let view = NSApp.keyWindow?.contentView {
-            picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        guard let view = NSApp.keyWindow?.contentView else {
+            itens.compactMap { $0 as? URL }.forEach(DossieDaConversa.descartarArquivoTemporario)
+            return
         }
+        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
     }
 
     private var avisoDeAudioRemovido: some View {
