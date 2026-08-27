@@ -1,12 +1,30 @@
 import CloudKit
 import Foundation
 
+protocol ServicoDeMembrosDaEquipe: Sendable {
+    func carregarMembros(da equipe: EquipeDisponivel) async throws -> [MembroDaEquipe]
+    func adicionarMembro(
+        email: String,
+        permissao: PermissaoDoMembroDaEquipe,
+        a equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe]
+    func atualizarPermissao(
+        do membro: MembroDaEquipe,
+        para permissao: PermissaoDoMembroDaEquipe,
+        na equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe]
+    func removerMembro(
+        _ membro: MembroDaEquipe,
+        da equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe]
+}
+
 /// Workspaces colaborativos no container do Papagaio.
 ///
 /// Cada equipe vive numa zona privada própria e a zona inteira recebe um
 /// `CKShare`. Assim, os próximos tipos de registro (conversa, tarefa e mídia)
 /// entram no mesmo escopo sem que seja necessário compartilhar item a item.
-actor ServicoDeEquipesCloudKit {
+actor ServicoDeEquipesCloudKit: ServicoDeMembrosDaEquipe {
     static let identificadorDoContainer = "iCloud.com.papagaio.Papagaio"
 
     private enum Campo {
@@ -46,7 +64,7 @@ actor ServicoDeEquipesCloudKit {
         let registro = registroDaEquipe(equipe, espacoID: espacoID, na: zonaID)
         let compartilhamento = CKShare(recordZoneID: zonaID)
         compartilhamento[CKShare.SystemFieldKey.title] = equipe.nome as NSString
-        compartilhamento.publicPermission = .readWrite
+        compartilhamento.publicPermission = .none
 
         _ = try await banco.modifyRecords(
             saving: [registro, compartilhamento],
@@ -105,23 +123,65 @@ actor ServicoDeEquipesCloudKit {
         _ = try await container.privateCloudDatabase.save(registro)
     }
 
-    /// Inclui um membro identificado pelo e-mail do Apple Account com acesso
-    /// de leitura e escrita ao workspace completo da equipe.
-    func adicionarMembro(email: String, a equipe: EquipeDisponivel) async throws {
+    func carregarMembros(da equipe: EquipeDisponivel) async throws -> [MembroDaEquipe] {
         try await garantirContaICloudDisponivel()
-        let referencia = try referenciaDaZona(de: equipe)
-        let idDoCompartilhamento = try idDoCompartilhamento(de: equipe, na: referencia)
-        let banco = container.privateCloudDatabase
-        guard let compartilhamento = try await banco.record(
-            for: idDoCompartilhamento
-        ) as? CKShare else {
-            throw ErroDeEquipeCloudKit.compartilhamentoInvalido
-        }
+        let compartilhamento = try await carregarCompartilhamento(da: equipe)
+        return Self.mapearMembros(de: compartilhamento)
+    }
+
+    /// Inclui um Apple Account no `CKShare`. O espelho local só deve ser
+    /// atualizado por quem chama depois que este salvamento remoto terminar.
+    func adicionarMembro(
+        email: String,
+        permissao: PermissaoDoMembroDaEquipe,
+        a equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe] {
+        try await garantirContaICloudDisponivel()
+        let banco = try bancoAdministrativo(da: equipe)
+        let compartilhamento = try await carregarCompartilhamento(da: equipe)
         let participante = try await container.shareParticipant(forEmailAddress: email)
 
-        participante.permission = .readWrite
+        participante.permission = Self.permissaoCloudKit(permissao)
         compartilhamento.addParticipant(participante)
         _ = try await banco.save(compartilhamento)
+        return Self.mapearMembros(de: compartilhamento)
+    }
+
+    func atualizarPermissao(
+        do membro: MembroDaEquipe,
+        para permissao: PermissaoDoMembroDaEquipe,
+        na equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe] {
+        try await garantirContaICloudDisponivel()
+        let banco = try bancoAdministrativo(da: equipe)
+        let compartilhamento = try await carregarCompartilhamento(da: equipe)
+        let participante = try participante(membro.id, no: compartilhamento)
+        guard participante.role != .owner else {
+            throw ErroDeEquipeCloudKit.proprietarioNaoPodeSerAlterado
+        }
+
+        participante.permission = Self.permissaoCloudKit(permissao)
+        _ = try await banco.save(compartilhamento)
+        return Self.mapearMembros(de: compartilhamento)
+    }
+
+    func removerMembro(
+        _ membro: MembroDaEquipe,
+        da equipe: EquipeDisponivel
+    ) async throws -> [MembroDaEquipe] {
+        try await garantirContaICloudDisponivel()
+        let banco = try bancoAdministrativo(da: equipe)
+        let compartilhamento = try await carregarCompartilhamento(da: equipe)
+        let participante = try participante(membro.id, no: compartilhamento)
+        guard participante.role != .owner,
+              participante !== compartilhamento.currentUserParticipant
+        else {
+            throw ErroDeEquipeCloudKit.proprietarioNaoPodeSerRemovido
+        }
+
+        compartilhamento.removeParticipant(participante)
+        _ = try await banco.save(compartilhamento)
+        return Self.mapearMembros(de: compartilhamento)
     }
 
     /// Aceita um convite entregue pelo sistema e devolve a equipe para a lista
@@ -203,6 +263,121 @@ actor ServicoDeEquipesCloudKit {
         return configuracoes
     }
 
+    private func carregarCompartilhamento(
+        da equipe: EquipeDisponivel
+    ) async throws -> CKShare {
+        let zona = try referenciaDaZona(de: equipe)
+        let id = try idDoCompartilhamento(de: equipe, na: zona)
+        let banco: CKDatabase
+        switch equipe.bancoCloudKit.flatMap(BancoCloudKitDaEquipe.init(rawValue:)) {
+        case .privado: banco = container.privateCloudDatabase
+        case .compartilhado: banco = container.sharedCloudDatabase
+        case nil: throw ErroDeEquipeCloudKit.equipeAindaLocal
+        }
+        guard let compartilhamento = try await banco.record(for: id) as? CKShare else {
+            throw ErroDeEquipeCloudKit.compartilhamentoInvalido
+        }
+        return compartilhamento
+    }
+
+    private func bancoAdministrativo(da equipe: EquipeDisponivel) throws -> CKDatabase {
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else {
+            throw ErroDeEquipeCloudKit.apenasAdministrador
+        }
+        return container.privateCloudDatabase
+    }
+
+    private func participante(
+        _ id: String,
+        no compartilhamento: CKShare
+    ) throws -> CKShare.Participant {
+        guard let participante = compartilhamento.participants.first(where: {
+            Self.identificador(de: $0) == id
+        }) else {
+            throw ErroDeEquipeCloudKit.membroNaoEncontrado
+        }
+        return participante
+    }
+
+    private static func mapearMembros(de compartilhamento: CKShare) -> [MembroDaEquipe] {
+        compartilhamento.participants.map { participante in
+            let identidade = participante.userIdentity
+            let nomeFormatado = identidade.nameComponents.map {
+                PersonNameComponentsFormatter.localizedString(
+                    from: $0,
+                    style: .default,
+                    options: []
+                )
+            }
+            let email = identidade.lookupInfo?.emailAddress
+            let nome = nomeFormatado.flatMap { $0.isEmpty ? nil : $0 }
+            return MembroDaEquipe(
+                id: identificador(de: participante),
+                nome: nome ?? "Membro do iCloud",
+                email: email ?? "Email não disponibilizado pelo iCloud",
+                cargo: cargo(de: participante.role),
+                status: status(de: participante.acceptanceStatus),
+                atual: participante === compartilhamento.currentUserParticipant,
+                permissao: permissaoLocal(participante.permission)
+            )
+        }
+        .sorted {
+            if $0.atual != $1.atual { return $0.atual }
+            return $0.nome.localizedCaseInsensitiveCompare($1.nome) == .orderedAscending
+        }
+    }
+
+    private static func identificador(de participante: CKShare.Participant) -> String {
+        if let nome = participante.userIdentity.userRecordID?.recordName { return nome }
+        if let email = participante.userIdentity.lookupInfo?.emailAddress {
+            return "email:\(email.lowercased())"
+        }
+        let nome = participante.userIdentity.nameComponents.map {
+            PersonNameComponentsFormatter.localizedString(
+                from: $0,
+                style: .default,
+                options: []
+            )
+        } ?? "desconhecido"
+        return "identidade:\(nome)"
+    }
+
+    private static func cargo(de role: CKShare.ParticipantRole) -> String {
+        switch role {
+        case .owner: "Proprietário"
+        case .privateUser: "Membro"
+        case .publicUser: "Acesso público"
+        case .unknown: "Função desconhecida"
+        @unknown default: "Função desconhecida"
+        }
+    }
+
+    private static func status(
+        de status: CKShare.ParticipantAcceptanceStatus
+    ) -> StatusDaEquipe {
+        switch status {
+        case .accepted: .ativo
+        case .pending: .aguardando
+        case .removed, .unknown: .offline
+        @unknown default: .offline
+        }
+    }
+
+    private static func permissaoLocal(
+        _ permissao: CKShare.ParticipantPermission
+    ) -> PermissaoDoMembroDaEquipe {
+        permissao == .readOnly ? .leitura : .escrita
+    }
+
+    private static func permissaoCloudKit(
+        _ permissao: PermissaoDoMembroDaEquipe
+    ) -> CKShare.ParticipantPermission {
+        switch permissao {
+        case .leitura: .readOnly
+        case .escrita: .readWrite
+        }
+    }
+
     private func referenciaDaZona(de equipe: EquipeDisponivel) throws -> CKRecordZone.ID {
         guard let zona = equipe.zonaCloudKit
         else {
@@ -236,6 +411,9 @@ enum ErroDeEquipeCloudKit: LocalizedError {
     case apenasAdministrador
     case compartilhamentoInvalido
     case cursorInvalido
+    case membroNaoEncontrado
+    case proprietarioNaoPodeSerAlterado
+    case proprietarioNaoPodeSerRemovido
 
     var errorDescription: String? {
         switch self {
@@ -255,6 +433,12 @@ enum ErroDeEquipeCloudKit: LocalizedError {
             "O compartilhamento desta equipe não é válido."
         case .cursorInvalido:
             "Não foi possível continuar a paginação do espaço compartilhado."
+        case .membroNaoEncontrado:
+            "Esse membro não faz mais parte do compartilhamento."
+        case .proprietarioNaoPodeSerAlterado:
+            "A permissão do proprietário da equipe não pode ser alterada."
+        case .proprietarioNaoPodeSerRemovido:
+            "O proprietário da equipe não pode ser removido."
         }
     }
 }
