@@ -3,6 +3,13 @@ import Foundation
 import Observation
 import PapagaioCore
 
+enum EstadoDaSincronizacaoCloudKit: Equatable {
+    case local
+    case enviando
+    case sincronizado
+    case falhou(String)
+}
+
 /// A biblioteca de arquivos do app: o que está salvo, o que está processando e
 /// o que falhou.
 ///
@@ -42,6 +49,7 @@ final class Biblioteca {
     /// que um item seja re-enfileirado enquanto está sendo removido.
     private var operacoesDeLixeiraEmAndamento: Set<ArquivoID> = []
     private(set) var erroDaLixeira: String?
+    private(set) var estadoDaSincronizacaoCloudKit: EstadoDaSincronizacaoCloudKit = .local
 
     let armazenamento: Armazenamento
 
@@ -151,7 +159,8 @@ final class Biblioteca {
         armazenamento: Armazenamento,
         repositorio: SwiftDataRepository,
         espaco: EspacoID,
-        salvarArquivo: (@Sendable (Arquivo) async throws -> Void)? = nil
+        salvarArquivo: (@Sendable (Arquivo) async throws -> Void)? = nil,
+        sincronizadorCloudKit: SincronizadorDaBibliotecaCloudKit? = nil
     ) {
         self.armazenamento = armazenamento
         self.pastaDeModelos = armazenamento.pastaDeModelos
@@ -159,6 +168,7 @@ final class Biblioteca {
         self.salvarReuniaoNoRepositorio = salvarArquivo ?? { arquivo in
             try await repositorio.salvar(arquivo)
         }
+        self.sincronizadorCloudKitArmazenado = sincronizadorCloudKit
         self.espaco = espaco
     }
 
@@ -180,6 +190,9 @@ final class Biblioteca {
     func usarEspaco(_ novoEspaco: EspacoID, equipeCloudKit: EquipeDisponivel? = nil) async {
         let mudouDeEspaco = espaco != novoEspaco
         self.equipeCloudKit = equipeCloudKit
+        if equipeCloudKit == nil {
+            estadoDaSincronizacaoCloudKit = .local
+        }
         if mudouDeEspaco {
             filaDeProcessamento.removeAll()
             espaco = novoEspaco
@@ -430,7 +443,16 @@ final class Biblioteca {
 
         do {
             try await repositorio.apagar(arquivo.id)
-            if let equipeCloudKit { try? await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit) }
+            if let equipeCloudKit {
+                do {
+                    try await sincronizadorCloudKit.remover(arquivo, da: equipeCloudKit)
+                    estadoDaSincronizacaoCloudKit = .sincronizado
+                } catch {
+                    let mensagem = "A conversa saiu deste Mac, mas não foi removida do iCloud: \(error.localizedDescription)"
+                    estadoDaSincronizacaoCloudKit = .falhou(mensagem)
+                    aoNotificar?("Falha ao remover do iCloud", mensagem, .aviso)
+                }
+            }
             arquivosNaLixeira.removeAll { $0.id == arquivo.id }
             filaDeProcessamento.removeAll { $0 == arquivo.id }
             fases[arquivo.id.rawValue] = nil
@@ -990,21 +1012,31 @@ final class Biblioteca {
 
     private func sincronizar(_ arquivo: Arquivo) async {
         guard let equipeCloudKit else { return }
+        estadoDaSincronizacaoCloudKit = .enviando
         do {
             try await sincronizadorCloudKit.enviar(arquivo, para: equipeCloudKit)
+            estadoDaSincronizacaoCloudKit = .sincronizado
         } catch {
-            aoNotificar?("Conversa salva só neste Mac", "A sincronização de \(arquivo.titulo) será retomada quando o iCloud estiver disponível.", .aviso)
+            let mensagem = "A sincronização de \(arquivo.titulo) falhou: \(error.localizedDescription)"
+            estadoDaSincronizacaoCloudKit = .falhou(mensagem)
+            aoNotificar?("Conversa salva só neste Mac", mensagem, .aviso)
         }
     }
 
     private func baixarAtualizacoesDaEquipe() async {
         guard let equipeCloudKit else { return }
+        estadoDaSincronizacaoCloudKit = .enviando
         do {
             for arquivo in try await sincronizadorCloudKit.baixar(da: equipeCloudKit) {
                 try await repositorio.salvar(arquivo)
             }
             await carregar()
-        } catch { }
+            estadoDaSincronizacaoCloudKit = .sincronizado
+        } catch {
+            let mensagem = "Não foi possível baixar as conversas da equipe: \(error.localizedDescription)"
+            estadoDaSincronizacaoCloudKit = .falhou(mensagem)
+            aoNotificar?("Falha de sincronização do iCloud", mensagem, .aviso)
+        }
     }
 
     // MARK: - Consulta pela view

@@ -112,7 +112,11 @@ actor ServicoDeEquipesCloudKit {
         let referencia = try referenciaDaZona(de: equipe)
         let idDoCompartilhamento = try idDoCompartilhamento(de: equipe, na: referencia)
         let banco = container.privateCloudDatabase
-        let compartilhamento = try await banco.record(for: idDoCompartilhamento) as! CKShare
+        guard let compartilhamento = try await banco.record(
+            for: idDoCompartilhamento
+        ) as? CKShare else {
+            throw ErroDeEquipeCloudKit.compartilhamentoInvalido
+        }
         let participante = try await container.shareParticipant(forEmailAddress: email)
 
         participante.permission = .readWrite
@@ -230,6 +234,8 @@ enum ErroDeEquipeCloudKit: LocalizedError {
     case codigoInvalido
     case conviteIndisponivel
     case apenasAdministrador
+    case compartilhamentoInvalido
+    case cursorInvalido
 
     var errorDescription: String? {
         switch self {
@@ -245,6 +251,10 @@ enum ErroDeEquipeCloudKit: LocalizedError {
             "Não foi possível preparar o convite desta equipe."
         case .apenasAdministrador:
             "Somente quem criou a equipe pode alterar estas configurações."
+        case .compartilhamentoInvalido:
+            "O compartilhamento desta equipe não é válido."
+        case .cursorInvalido:
+            "Não foi possível continuar a paginação do espaço compartilhado."
         }
     }
 }

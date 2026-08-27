@@ -234,6 +234,10 @@ struct ContentView: View {
             equipes = EquipesDoUsuario.carregar()
             usarEquipe(equipe)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitFalhou)) { notificacao in
+            guard let mensagem = notificacao.object as? String else { return }
+            falhaDeAbertura = "Não foi possível aceitar o convite do iCloud: \(mensagem)"
+        }
         .task {
             await abrir()
             await politicaDeInicializacaoExterna.executar {

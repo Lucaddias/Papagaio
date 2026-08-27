@@ -1,20 +1,20 @@
 import Foundation
 
-enum VisibilidadeDosArquivosDaEquipe: String, CaseIterable, Codable, Identifiable {
+enum VisibilidadeDosArquivosDaEquipe: String, CaseIterable, Codable, Identifiable, Sendable {
     case todosOsMembros = "Todos os membros"
     case apenasAdministrador = "Somente administradores"
 
     var id: Self { self }
 }
 
-enum RecebimentoDeArquivosDaEquipe: String, CaseIterable, Codable, Identifiable {
+enum RecebimentoDeArquivosDaEquipe: String, CaseIterable, Codable, Identifiable, Sendable {
     case automatico = "Entrar automaticamente"
     case aguardarRevisao = "Aguardar revisão"
 
     var id: Self { self }
 }
 
-struct ConfiguracoesDaEquipe: Codable, Hashable {
+struct ConfiguracoesDaEquipe: Codable, Hashable, Sendable {
     var visibilidadeDosArquivos: VisibilidadeDosArquivosDaEquipe = .todosOsMembros
     var recebimentoDeArquivos: RecebimentoDeArquivosDaEquipe = .automatico
 }
@@ -24,7 +24,7 @@ struct ConfiguracoesDaEquipe: Codable, Hashable {
 /// Não existe equipe padrão: um app recém-instalado não tem equipe nenhuma até
 /// que a pessoa crie a primeira. Por isso todo consumidor trata `EquipeDisponivel?`
 /// em vez de assumir que sempre há uma ativa.
-struct EquipeDisponivel: Identifiable, Hashable, Codable {
+struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let nome: String
     let papel: String
