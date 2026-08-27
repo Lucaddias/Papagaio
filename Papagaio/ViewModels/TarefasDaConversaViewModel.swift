@@ -147,6 +147,20 @@ final class TarefasDaConversaViewModel {
         mostrandoEdicao = false
     }
 
+    /// Apaga a tarefa que está aberta no formulário de edição — vai para a
+    /// lixeira (a mesma de `LixeiraDeTarefas`, usada pelo Painel de Tarefas
+    /// geral), de onde dá para restaurar depois, em vez de sumir de vez.
+    func excluirTarefaEmEdicao(conversaTitulo: String) {
+        guard let tarefaEmEdicaoID,
+              let tarefa = tarefas.first(where: { $0.id == tarefaEmEdicaoID })
+        else { return }
+
+        tarefas.removeAll { $0.id == tarefaEmEdicaoID }
+        salvar()
+        LixeiraDeTarefas.mover(tarefa, arquivoID: arquivoID, conversaTitulo: conversaTitulo)
+        cancelarEdicao()
+    }
+
     // MARK: - Sugestões
 
     /// Aceita a sugestão do jeito que a IA propôs, sem abrir o formulário —

@@ -4,6 +4,11 @@ struct CartaoDeAnexoDeMidia: View {
     let anexo: AnexoDeMidiaDaConversa
     let aoAbrir: () -> Void
     let aoRemover: () -> Void
+    /// Só usado pela tela agregada de Mídias (todas as conversas juntas) —
+    /// `nil` na aba "Mídia" de dentro de uma conversa, onde repetir o nome
+    /// dela em cada cartão seria repetir o título da própria página (mesmo
+    /// raciocínio de `CartaoDeTarefaDaConversa` para tarefas).
+    var origem: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
@@ -23,6 +28,14 @@ struct CartaoDeAnexoDeMidia: View {
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
                         .frame(minHeight: 44, alignment: .topLeading)
+
+                    if let origem {
+                        Text(origem)
+                            .font(.callout)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }

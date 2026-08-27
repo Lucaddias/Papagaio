@@ -420,7 +420,8 @@ struct ArquivoDetalheView: View {
                 prazo: $tarefasDaConversaVM.prazoDaTarefa,
                 responsaveisDisponiveis: responsaveisDisponiveis,
                 aoCancelar: tarefasDaConversaVM.cancelarEdicao,
-                aoAdicionar: tarefasDaConversaVM.salvarEdicao
+                aoAdicionar: tarefasDaConversaVM.salvarEdicao,
+                aoExcluir: { tarefasDaConversaVM.excluirTarefaEmEdicao(conversaTitulo: titulo) }
             )
         }
     }

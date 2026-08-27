@@ -36,6 +36,11 @@ struct NovaTarefaDaConversaSheet: View {
     let responsaveisDisponiveis: [ResponsavelDaTarefa]
     let aoCancelar: () -> Void
     let aoAdicionar: () -> Void
+    /// Só existe no modo edição — não faz sentido "excluir" uma tarefa que
+    /// ainda nem foi criada. `nil` no modo criação (ver o call site) some
+    /// com o botão por completo, em vez de deixá-lo desabilitado.
+    var aoExcluir: (() -> Void)? = nil
+    @State private var confirmandoExclusao = false
 
     private var podeAdicionar: Bool {
         !titulo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -170,6 +175,23 @@ struct NovaTarefaDaConversaSheet: View {
             }
 
             HStack(spacing: PapagaioTema.Espaco.medio) {
+                if let aoExcluir {
+                    Button("Excluir", systemImage: "trash", role: .destructive) {
+                        confirmandoExclusao = true
+                    }
+                    .buttonStyle(BotaoDeContornoDestrutivoPapagaio())
+                    .confirmationDialog(
+                        "Excluir esta tarefa?",
+                        isPresented: $confirmandoExclusao,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Excluir", role: .destructive, action: aoExcluir)
+                        Button("Cancelar", role: .cancel) {}
+                    } message: {
+                        Text("Ela vai para a lixeira, de onde dá para restaurar depois.")
+                    }
+                }
+
                 Button("Cancelar", action: aoCancelar)
                     .buttonStyle(BotaoDeContornoPapagaio())
 
@@ -186,5 +208,31 @@ struct NovaTarefaDaConversaSheet: View {
         .padding(PapagaioTema.Espaco.secao)
         .frame(minWidth: 340, idealWidth: 500, maxWidth: 520, alignment: .leading)
         .background(PapagaioTema.fundo)
+    }
+}
+
+/// Mesmo contorno de `BotaoDeContornoPapagaio`, só que vermelho — para a
+/// única ação destrutiva que aparece solta (fora de um menu) neste
+/// formulário. Um `role: .destructive` sozinho não tinge nada de vermelho
+/// quando o `ButtonStyle` é customizado (o estilo de contorno padrão do app
+/// define sua própria cor de texto por cima), então este estilo existe só
+/// para não perder esse sinal visual aqui.
+private struct BotaoDeContornoDestrutivoPapagaio: ButtonStyle {
+    @Environment(\.isEnabled) private var habilitado
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(.medium))
+            .foregroundStyle(habilitado ? PapagaioTema.perigo : PapagaioTema.textoSecundario)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, PapagaioTema.Espaco.largo)
+            .frame(minHeight: PapagaioTema.Altura.destaque)
+            .background(PapagaioTema.superficie, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(PapagaioTema.perigo.opacity(habilitado ? 0.6 : 0.3), lineWidth: 1)
+            }
+            .opacity(configuration.isPressed ? 0.72 : 1)
     }
 }

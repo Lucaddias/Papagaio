@@ -282,10 +282,12 @@ struct ContentView: View {
             // obrigatório como é numa conversa aberta ou na captura.
             exibindoBotaoVoltar: !naTelaInicial
                 && telaSelecionada != .tarefas
+                && telaSelecionada != .midias
                 && telaSelecionada != .configuracoes
                 && !(telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira),
             bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
             tarefasSelecionada: telaSelecionada == .tarefas,
+            midiasSelecionada: telaSelecionada == .midias,
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
@@ -295,6 +297,7 @@ struct ContentView: View {
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
             aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas, aoLimparNotificacoes: notificacoes.limpar,
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
+            aoAbrirMidias: abrirMidias,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
             aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
             aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
@@ -315,6 +318,8 @@ struct ContentView: View {
                                aoAbrirFicha: abrirFichaDaEntrevista)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
+        case .midias:
+            MidiasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia, consulta: consulta)
         case .perfil:
@@ -498,6 +503,11 @@ struct ContentView: View {
 
     private func abrirTarefas() {
         telaSelecionada = .tarefas
+        secaoDaBiblioteca = .todos
+    }
+
+    private func abrirMidias() {
+        telaSelecionada = .midias
         secaoDaBiblioteca = .todos
     }
 
