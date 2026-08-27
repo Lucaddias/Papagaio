@@ -80,8 +80,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		PA00000000000000000003 /* Papagaio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Papagaio;
 			sourceTree = "<group>";
 		};
@@ -431,7 +429,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 8CTC75M93B;
+				DEVELOPMENT_TEAM = YJZ4H74CX4;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -449,7 +447,7 @@
 				);
 				MARKETING_VERSION = 1.1.2;
 				OTHER_LDFLAGS = "-Wl,-export_dynamic";
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaioo;
 				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -466,7 +464,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 31;
-				DEVELOPMENT_TEAM = 8CTC75M93B;
+				DEVELOPMENT_TEAM = YJZ4H74CX4;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -484,7 +482,7 @@
 				);
 				MARKETING_VERSION = 1.1.2;
 				OTHER_LDFLAGS = "-Wl,-export_dynamic";
-				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
+				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaioo;
 				PRODUCT_MODULE_NAME = Papagaio;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

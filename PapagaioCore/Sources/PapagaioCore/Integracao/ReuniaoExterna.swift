@@ -41,7 +41,7 @@ public struct ReuniaoExterna: Sendable, Identifiable, Equatable {
     public let id: String
     public let titulo: String
     public let data: Date
-    public let participantes: [String]
+    public let participantes: [ParticipanteDaReuniao]
     public let notas: String?
     public let resumo: String?
     public let transcricao: [SegmentoDeTranscricaoExterna]?
@@ -50,7 +50,7 @@ public struct ReuniaoExterna: Sendable, Identifiable, Equatable {
         id: String,
         titulo: String,
         data: Date,
-        participantes: [String] = [],
+        participantes: [ParticipanteDaReuniao] = [],
         notas: String? = nil,
         resumo: String? = nil,
         transcricao: [SegmentoDeTranscricaoExterna]? = nil
@@ -62,6 +62,32 @@ public struct ReuniaoExterna: Sendable, Identifiable, Equatable {
         self.notas = notas
         self.resumo = resumo
         self.transcricao = transcricao
+    }
+
+    /// Compat: inicializa a partir de strings legadas (email ou nome).
+    public init(
+        id: String,
+        titulo: String,
+        data: Date,
+        participantesLegado: [String],
+        notas: String? = nil,
+        resumo: String? = nil,
+        transcricao: [SegmentoDeTranscricaoExterna]? = nil
+    ) {
+        self.init(
+            id: id,
+            titulo: titulo,
+            data: data,
+            participantes: participantesLegado.map { ParticipanteDaReuniao(legado: $0) },
+            notas: notas,
+            resumo: resumo,
+            transcricao: transcricao
+        )
+    }
+
+    /// Nomes para exibição legada (nome ?? email).
+    public var participantesNomes: [String] {
+        participantes.map(\.displayNome).filter { !$0.isEmpty }
     }
 
     public var temTranscricao: Bool {
@@ -109,12 +135,16 @@ public static func parseDate(_ string: String) -> Date? {
             inicio = Date()
         }
 
-        let participantes: [String]
+        let participantes: [ParticipanteDaReuniao]
         if let attendees = evento["attendees"] as? [[String: Any]] {
-            participantes = attendees.compactMap { a in
-                if let email = a["email"] as? String { return email }
-                if let displayName = a["displayName"] as? String { return displayName }
-                return nil
+            participantes = attendees.compactMap { a -> ParticipanteDaReuniao? in
+                let email = (a["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let nome = (a["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let isSelf = (a["self"] as? Bool) ?? false
+                let isOrganizer = (a["organizer"] as? Bool) ?? false
+                let status = a["responseStatus"] as? String
+                if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
+                return ParticipanteDaReuniao(nome: nome, email: email, isSelf: isSelf, isOrganizer: isOrganizer, responseStatus: status)
             }
         } else {
             participantes = []

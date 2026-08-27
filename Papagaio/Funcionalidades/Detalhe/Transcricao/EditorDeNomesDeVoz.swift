@@ -27,7 +27,7 @@ struct EditorDeNomesDeVoz: View {
                 Image(systemName: "person.text.rectangle")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
-                Text("Quem é quem")
+                Text("Quem é quem?")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
                 BotaoDeAjudaPapagaio(

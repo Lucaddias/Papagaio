@@ -81,6 +81,7 @@ struct ContentView: View {
     @State private var conversaAberta: [UUID] = []
     @State private var pastaDaBibliotecaSelecionada: String?
     @AppStorage("processamentoAutomatico") private var processamentoAutomatico = true
+    @AppStorage("exibirFichaAutomaticamente") private var exibirFichaAutomaticamente = true
     @AppStorage("contextoDaConta") private var contextoDaContaRaw = ContextoDaConta.perfil.rawValue
     @AppStorage("equipeAtiva") private var equipeAtivaID = ""
     @AppStorage("aparenciaDoApp") private var aparenciaRaw = AparenciaDoApp.sistema.rawValue
@@ -237,6 +238,18 @@ struct ContentView: View {
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor
         }
+        .onChange(of: biblioteca?.arquivosComFichaPendente) { _, novoValor in
+            guard exibirFichaAutomaticamente,
+                  let pendentes = novoValor, !pendentes.isEmpty,
+                  let bib = biblioteca,
+                  // Pega a mais recente marcada (a que acabou de entrar)
+                  let id = pendentes.first,
+                  let arquivo = bib.arquivos.first(where: { $0.id == id })
+            else { return }
+            // Evita reabrir se já está com sheet aberto
+            guard arquivoParaConfigurar == nil else { return }
+            abrirFichaDaEntrevista(para: arquivo)
+        }
         .fileImporter(
             isPresented: $mostrandoImportador,
             // Sai da mesma lista do arraste: antes o painel aceitava menos
@@ -341,14 +354,20 @@ struct ContentView: View {
                                aoContinuarGravacao: aoContinuarGravacao, aoCancelarGravacao: aoCancelarGravacao,
                                aoEscolherPastaDeModelos: escolherPastaDeModelos, aoUsarPastaDoApp: usarPastaDoApp,
                                aoSoltarArquivos: importarArrastados,
-aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
+ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                     // Marca ANTES de iniciar: se a pessoa
                                     // finalizar rápido, o handler de áudio
                                     // já precisa saber que é uma pendente.
                                     pendenteEmGravacao.pendente = pendente
+                                    let equipe = equipes.first { $0.id == equipeAtivaID } ?? equipes.first
+                                    let res = ClassificacaoDeParticipantes.classificar(pendente.participantes, equipe: equipe)
                                     ficha.titulo = pendente.titulo
                                     ficha.data = pendente.dataHora
-                                    ficha.entrevistadores = pendente.participantes.joined(separator: "\n")
+                                    ficha.entrevistadores = res.equipeNomes
+                                    ficha.emailDosEntrevistadores = res.equipeEmails
+                                    ficha.entrevistado = res.externosNomes
+                                    ficha.emailDoEntrevistado = res.externosEmails
+                                    ficha.descricao = pendente.descricao ?? ""
                                     arquivoParaConfigurar = nil
                                     Task {
                                         await aoAlternarGravacao()
@@ -379,7 +398,7 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
-            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
+            ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, exibirFichaAutomaticamente: $exibirFichaAutomaticamente, aparencia: aparencia,
                               granola: granola, googleCalendar: googleCalendar, biblioteca: biblioteca)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
@@ -405,10 +424,9 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             nova.aoConcluirProcessamento = { arquivo in
                 guard arquivosAguardandoFicha.contains(arquivo.id) else { return }
                 arquivosAguardandoFicha.remove(arquivo.id)
-                // Não abre mais o formulário sozinho — a pessoa pode estar em
-                // qualquer outra tela nesse momento. Só marca a ficha como
-                // pendente; o cartão mostra um selo "Concluído" e é o clique
-                // nele que de fato abre `abrirFichaDaEntrevista`.
+                // Sempre marca como pendente; a exibição automática é decidida
+                // pela View (onChange de arquivosComFichaPendente + preferência)
+                // para manter a decisão de UI na camada de View.
                 nova.marcarFichaPendente(arquivo.id)
             }
             biblioteca = nova

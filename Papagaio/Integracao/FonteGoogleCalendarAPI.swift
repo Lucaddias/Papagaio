@@ -74,7 +74,7 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         let id: String
         let titulo: String
         let dataHora: Date
-        let participantes: [String]
+        let participantes: [ParticipanteDaReuniao]
         let descricao: String?
     }
 
@@ -134,12 +134,16 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
                     inicio = Date()
                 }
 
-                let participantes: [String]
+                let participantes: [ParticipanteDaReuniao]
                 if let attendees = evento["attendees"] as? [[String: Any]] {
-                    participantes = attendees.compactMap { a in
-                        if let email = a["email"] as? String { return email }
-                        if let displayName = a["displayName"] as? String { return displayName }
-                        return nil
+                    participantes = attendees.compactMap { a -> ParticipanteDaReuniao? in
+                        let email = (a["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let nome = (a["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let isSelf = (a["self"] as? Bool) ?? false
+                        let isOrganizer = (a["organizer"] as? Bool) ?? false
+                        let status = a["responseStatus"] as? String
+                        if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
+                        return ParticipanteDaReuniao(nome: nome, email: email, isSelf: isSelf, isOrganizer: isOrganizer, responseStatus: status)
                     }
                 } else {
                     participantes = []
@@ -192,12 +196,16 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
             inicio = Date()
         }
 
-        let participantes: [String]
+        let participantes: [ParticipanteDaReuniao]
         if let attendees = json["attendees"] as? [[String: Any]] {
-            participantes = attendees.compactMap { a in
-                if let email = a["email"] as? String { return email }
-                if let displayName = a["displayName"] as? String { return displayName }
-                return nil
+            participantes = attendees.compactMap { a -> ParticipanteDaReuniao? in
+                let email = (a["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let nome = (a["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let isSelf = (a["self"] as? Bool) ?? false
+                let isOrganizer = (a["organizer"] as? Bool) ?? false
+                let status = a["responseStatus"] as? String
+                if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
+                return ParticipanteDaReuniao(nome: nome, email: email, isSelf: isSelf, isOrganizer: isOrganizer, responseStatus: status)
             }
         } else {
             participantes = []

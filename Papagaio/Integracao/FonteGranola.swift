@@ -131,7 +131,7 @@ private enum FonteGranolaXML {
             guard let id = atributos["id"], !id.isEmpty else { return nil }
             let titulo = atributos["title"] ?? "Reunião"
 
-            var participantes: [String] = []
+            var participantes: [ParticipanteDaReuniao] = []
             var resumo: String?
             var notas: String?
             let filhos = sentinelaDeFilhos.matches(in: documento, range: marcacao.range(at: 2))
@@ -143,7 +143,7 @@ private enum FonteGranolaXML {
                 let texto = String(documento[conteudo]).desescaparEntidades()
                 switch documento[nome] {
                 case "known_participants":
-                    participantes = nomesDeParticipantes(em: texto)
+                    participantes = participantesDeTexto(em: texto)
                 case "summary": resumo = textoNaoLimpa(texto)
                 case "notes": notas = textoNaoLimpa(texto)
                 default: continue
@@ -216,22 +216,32 @@ private enum FonteGranolaXML {
     }
 
     /// Linhas de `<known_participants>`: nome + papel + `from <org> <email>`.
-    /// Prefere o e-mail; sem ele, o nome limpo.
-    private static func nomesDeParticipantes(em bloco: String) -> [String] {
-        bloco.components(separatedBy: "\n").compactMap { linha in
+    private static func participantesDeTexto(em bloco: String) -> [ParticipanteDaReuniao] {
+        bloco.components(separatedBy: "\n").compactMap { linha -> ParticipanteDaReuniao? in
             let limpa = linha.trimmingCharacters(in: .whitespaces)
             guard !limpa.isEmpty else { return nil }
-            if let email = sentinelaDeEmail.firstMatch(in: limpa, range: NSRange(limpa.startIndex..., in: limpa)),
-               email.numberOfRanges > 1,
-               let conteudo = Range(email.range(at: 1), in: limpa) {
-                return String(limpa[conteudo])
+            var email: String?
+            var nomeParte = limpa
+            if let emailMatch = sentinelaDeEmail.firstMatch(in: limpa, range: NSRange(limpa.startIndex..., in: limpa)),
+               emailMatch.numberOfRanges > 1,
+               let conteudo = Range(emailMatch.range(at: 1), in: limpa) {
+                email = String(limpa[conteudo])
+                // Remove o trecho de email para extrair nome limpo
+                if let rangeFull = Range(emailMatch.range(at: 0), in: limpa) {
+                    nomeParte = String(limpa[..<rangeFull.lowerBound]) + String(limpa[rangeFull.upperBound...])
+                }
             }
-            let antesDoPapel = limpa
+            let antesDoPapel = nomeParte
                 .replacingOccurrences(of: #"\s*\(note\s*creator\).*"#, with: "", options: .regularExpression)
                 .replacingOccurrences(of: #"\s+from\s+.*"#, with: "", options: .regularExpression)
-            let nome = antesDoPapel.trimmingCharacters(in: .whitespaces)
-            return nome.isEmpty ? nil : nome
+            let nome = antesDoPapel.trimmingCharacters(in: .whitespaces).nilIfEmpty
+            if email == nil && nome == nil { return nil }
+            return ParticipanteDaReuniao(nome: nome, email: email)
         }
+    }
+
+    private static func nomesDeParticipantes(em bloco: String) -> [String] {
+        participantesDeTexto(em: bloco).map(\.displayNome)
     }
 
     private static let sentinelaDeEmail = try! NSRegularExpression(
@@ -317,18 +327,20 @@ private enum FonteGranolaXML {
 
 /// Acesso tolerante a dicionários vindos do JSON do Granola (formato antigo).
 private enum FonteGranolaDicionario {
-    static func nomesDeParticipantes(in dicionario: [String: Any]) -> [String] {
+    static func nomesDeParticipantes(in dicionario: [String: Any]) -> [ParticipanteDaReuniao] {
         for chave in ["attendees", "participants", "people"] {
             guard let lista = dicionario[chave] as? [Any] else { continue }
-            let nomes = lista.compactMap { item -> String? in
-                if let texto = item as? String { return texto }
+            let participantes = lista.compactMap { item -> ParticipanteDaReuniao? in
+                if let texto = item as? String { return ParticipanteDaReuniao(legado: texto) }
                 if let objeto = item as? [String: Any] {
-                    return objeto["email"] as? String
-                        ?? objeto["name"] as? String
+                    let email = objeto["email"] as? String
+                    let nome = objeto["name"] as? String
+                    if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
+                    return ParticipanteDaReuniao(nome: nome, email: email)
                 }
                 return nil
             }
-            if !nomes.isEmpty { return nomes }
+            if !participantes.isEmpty { return participantes }
         }
         return []
     }
@@ -350,6 +362,7 @@ private enum FonteGranolaDicionario {
 }
 
 private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
     /// `&lt;`, `&gt;`, `&amp;`, `&quot;` e `&#39;` de volta ao texto.
     func desescaparEntidades() -> String {
         replacingOccurrences(of: "&lt;", with: "<")

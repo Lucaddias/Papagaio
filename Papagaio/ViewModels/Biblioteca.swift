@@ -1112,6 +1112,27 @@ final class Biblioteca {
         // silenciosamente no primeiro tick.
         arquivos.insert(arquivo, at: 0)
         arquivos.sort { $0.criadoEm > $1.criadoEm }
+
+        // Preenche automaticamente Equipe/Externos (entrevistadores/entrevistado)
+        // a partir dos participantes do Calendar — ficha nasce completa.
+        let equipes = EquipesDoUsuario.carregar()
+        let equipeAtivaID = UserDefaults.standard.string(forKey: "equipeAtiva") ?? ""
+        let equipe: EquipeDisponivel? = equipes.first { $0.id == equipeAtivaID } ?? equipes.first
+        let res = ClassificacaoDeParticipantes.classificar(pendente.participantes, equipe: equipe)
+        let qtdEquipe = res.equipeNomes.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.count
+        let qtdExternos = res.externosNomes.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.count
+        let quantidade = max(1, qtdEquipe + qtdExternos)
+        let metadados = MetadadosVisuaisDoArquivo(
+            entrevistado: res.externosNomes,
+            emailDoEntrevistado: res.externosEmails,
+            entrevistadores: res.equipeNomes,
+            emailDosEntrevistadores: res.equipeEmails,
+            descricao: pendente.descricao ?? "",
+            formato: "",
+            participantes: quantidade
+        )
+        PreferenciasVisuaisDoArquivo.definirMetadados(metadados, para: arquivo.id)
+
         enfileirarProcessamento(arquivo)
         return arquivo
     }

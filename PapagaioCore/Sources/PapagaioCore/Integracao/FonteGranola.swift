@@ -156,26 +156,27 @@ struct MapeadorGranola {
         return mapa
     }
 
-    static func participantes(de mapa: [String: ValorJSON]) -> [String] {
-        var nomes: [String] = []
+    static func participantes(de mapa: [String: ValorJSON]) -> [ParticipanteDaReuniao] {
+        var lista: [ParticipanteDaReuniao] = []
         for chave in ["attendees", "participants"] {
-            guard case .lista(let lista)? = mapa[chave] else { continue }
-            for item in lista {
+            guard case .lista(let itens)? = mapa[chave] else { continue }
+            for item in itens {
                 switch item {
                 case .texto(let nome):
-                    nomes.append(nome.trimmingCharacters(in: .whitespaces))
+                    let t = nome.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !t.isEmpty else { continue }
+                    lista.append(ParticipanteDaReuniao(legado: t))
                 case .objeto(let m):
-                    if let nome = m.texto("name") {
-                        nomes.append(nome)
-                    } else if let email = m.texto("email") {
-                        nomes.append(email)
-                    }
+                    let nome = m.texto("name")?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let email = m.texto("email")?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if (nome == nil || nome?.isEmpty == true) && (email == nil || email?.isEmpty == true) { continue }
+                    lista.append(ParticipanteDaReuniao(nome: nome, email: email))
                 default:
                     continue
                 }
             }
         }
-        return nomes
+        return lista
     }
 
     /// Data da reunião — ISO 8601 ou `yyyy-MM-dd`, com e sem fração de segundo.

@@ -5,6 +5,7 @@ import SwiftUI
 /// sem criar um caminho de processamento paralelo.
 struct ConfiguracoesView: View {
     @Binding var processamentoAutomatico: Bool
+    @Binding var exibirFichaAutomaticamente: Bool
     @Binding var aparencia: AparenciaDoApp
     /// A conexão Granola viva do app. Quem a cria e a observa é a `ContentView`.
     var granola: GranolaViewModel?
@@ -127,7 +128,7 @@ struct ConfiguracoesView: View {
 
     private var secaoDeTranscricao: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            Label("Transcrição", systemImage: "text.quote")
+            Label("Preferências", systemImage: "text.quote")
                 .font(PapagaioTema.Tipo.tituloDeSecao)
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
 
@@ -154,6 +155,21 @@ struct ConfiguracoesView: View {
                         .foregroundStyle(PapagaioTema.texto)
 
                     Text("Uma janela pequena, sempre visível por cima dos outros apps, para anotar, pausar e finalizar sem voltar ao Papagaio.")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(PapagaioTema.preenchimentoPrimario)
+
+            Toggle(isOn: $exibirFichaAutomaticamente) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text("Exibir ficha automaticamente após processar")
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    Text("Quando ligado, a ficha abre sozinha ao fim da transcrição. Quando desligado, mostra só o selo “Concluído” — ideal quando a ficha já foi preenchida pelo calendário.")
                         .font(PapagaioTema.Tipo.apoio)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .fixedSize(horizontal: false, vertical: true)
@@ -415,9 +431,9 @@ struct ConfiguracoesView: View {
 
                 HStack(spacing: PapagaioTema.Espaco.curto) {
                     Text(reuniao.data.formatted(date: .abbreviated, time: .omitted))
-                    if !reuniao.participantes.isEmpty {
+                    if !reuniao.participantesNomes.isEmpty {
                         Text("·")
-                        Text(reuniao.participantes.prefix(3).joined(separator: ", "))
+                        Text(reuniao.participantesNomes.prefix(3).joined(separator: ", "))
                     }
                 }
                 .font(PapagaioTema.Tipo.apoio)

@@ -428,7 +428,7 @@ case "granola":
             )
             print("# \(reuniao.titulo)")
             print("data: \(reuniao.data.formatted(date: .abbreviated, time: .shortened))")
-            print("participantes: \(reuniao.participantes.isEmpty ? "—" : reuniao.participantes.joined(separator: ", "))")
+            print("participantes: \(reuniao.participantesNomes.isEmpty ? "—" : reuniao.participantesNomes.joined(separator: ", "))")
             if let notas = reuniao.notas, !notas.isEmpty {
                 print()
                 print("## Notas")
@@ -455,8 +455,8 @@ case "granola":
                              indice + 1,
                              reuniao.data.formatted(date: .abbreviated, time: .omitted),
                              reuniao.titulo))
-                if !reuniao.participantes.isEmpty {
-                    print("        com \(reuniao.participantes.joined(separator: ", "))")
+                if !reuniao.participantesNomes.isEmpty {
+                    print("        com \(reuniao.participantesNomes.joined(separator: ", "))")
                 }
             }
             if soLista { exit(0) }
