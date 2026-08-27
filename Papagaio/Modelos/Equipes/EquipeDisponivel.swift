@@ -41,6 +41,12 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
     var codigoDeEntrada: String?
     var configuracoes: ConfiguracoesDaEquipe
 
+    private enum CodingKeys: String, CodingKey {
+        case id, nome, papel, quantidadeDeMembros
+        case espacoID, zonaCloudKit, compartilhamentoCloudKit, bancoCloudKit
+        case codigoDeEntrada, configuracoes
+    }
+
     init(
         id: String,
         nome: String,
@@ -63,6 +69,27 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         self.bancoCloudKit = bancoCloudKit
         self.codigoDeEntrada = codigoDeEntrada
         self.configuracoes = configuracoes
+    }
+
+    /// Equipes persistidas antes das preferências de compartilhamento não têm
+    /// a chave `configuracoes`. O valor padrão do inicializador não é aplicado
+    /// automaticamente pelo `Decodable` sintetizado, por isso a migração
+    /// precisa ser explícita e não destrutiva.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        nome = try container.decode(String.self, forKey: .nome)
+        papel = try container.decode(String.self, forKey: .papel)
+        quantidadeDeMembros = try container.decode(Int.self, forKey: .quantidadeDeMembros)
+        espacoID = try container.decodeIfPresent(String.self, forKey: .espacoID)
+        zonaCloudKit = try container.decodeIfPresent(String.self, forKey: .zonaCloudKit)
+        compartilhamentoCloudKit = try container.decodeIfPresent(String.self, forKey: .compartilhamentoCloudKit)
+        bancoCloudKit = try container.decodeIfPresent(String.self, forKey: .bancoCloudKit)
+        codigoDeEntrada = try container.decodeIfPresent(String.self, forKey: .codigoDeEntrada)
+        configuracoes = try container.decodeIfPresent(
+            ConfiguracoesDaEquipe.self,
+            forKey: .configuracoes
+        ) ?? .init()
     }
 
     static func novoCodigoDeEntrada() -> String {
