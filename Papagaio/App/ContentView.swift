@@ -250,7 +250,7 @@ struct ContentView: View {
         // Retorno do navegador quando a autorização do Granola roda no
         // navegador padrão do sistema.
         .onOpenURL { url in
-            GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
+            _ = GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
         }
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor

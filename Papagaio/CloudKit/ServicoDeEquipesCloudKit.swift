@@ -345,6 +345,7 @@ actor ServicoDeEquipesCloudKit: ServicoDeMembrosDaEquipe {
     private static func cargo(de role: CKShare.ParticipantRole) -> String {
         switch role {
         case .owner: "Proprietário"
+        case .administrator: "Administrador"
         case .privateUser: "Membro"
         case .publicUser: "Acesso público"
         case .unknown: "Função desconhecida"
