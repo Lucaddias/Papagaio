@@ -39,6 +39,7 @@ enum LimpezaDeConta {
 
         // O espaço individual renasce na próxima abertura da biblioteca.
         defaults.removeObject(forKey: "espacoIndividual")
+        EstadoDasReunioesCalendar(defaults: defaults).removerTodos()
     }
 }
 

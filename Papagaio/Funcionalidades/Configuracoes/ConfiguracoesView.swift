@@ -512,7 +512,7 @@ struct ConfiguracoesView: View {
     private func listaDeReunioesGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel) -> some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             HStack {
-                Text("Reuniões futuras (próximos 90 dias)")
+                Text("Reuniões futuras (próximas 24 horas)")
                     .font(PapagaioTema.Tipo.corpo.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
 

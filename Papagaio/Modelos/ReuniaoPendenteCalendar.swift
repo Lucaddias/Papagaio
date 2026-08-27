@@ -1,6 +1,6 @@
 import Foundation
 
-struct ReuniaoPendenteCalendar: Identifiable, Equatable {
+struct ReuniaoPendenteCalendar: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let titulo: String
     let dataHora: Date

@@ -20,6 +20,7 @@ enum EstadoDaConexaoGoogleCalendar: Equatable {
 final class GoogleCalendarViewModel {
     private(set) var estado: EstadoDaConexaoGoogleCalendar = .desconectado
     private(set) var reunioesPendentes: [ReuniaoPendenteCalendar] = []
+    private(set) var reunioesIgnoradas: [ReuniaoPendenteCalendar]
     private(set) var carregandoReunioes = false
     private(set) var falhaDeImportacao: String?
 
@@ -34,6 +35,13 @@ final class GoogleCalendarViewModel {
     private var idDaTarefaDeConexao: UUID?
     private var tarefasDeImportacao: [UUID: Task<Arquivo?, Never>] = [:]
     private weak var bibliotecaRef: Biblioteca?
+    private let estadoDasReunioes: EstadoDasReunioesCalendar
+
+    init(defaults: UserDefaults = .standard) {
+        let estadoDasReunioes = EstadoDasReunioesCalendar(defaults: defaults)
+        self.estadoDasReunioes = estadoDasReunioes
+        self.reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
+    }
 
     /// Reconexão automática só é legítima quando já houve consentimento e há
     /// uma credencial persistida. Ter Client ID no build apenas habilita o
@@ -120,6 +128,7 @@ final class GoogleCalendarViewModel {
         fonte = nil
         bibliotecaRef = nil
         reunioesPendentes = []
+        reunioesIgnoradas = []
         carregandoReunioes = false
         falhaDeImportacao = nil
         estado = .desconectado
@@ -158,39 +167,9 @@ final class GoogleCalendarViewModel {
         defer { carregandoReunioes = false }
         do {
             let eventos = try await fonte.listarEventos()
-            let agora = Date()
-            let limite24h = agora.addingTimeInterval(24 * 3600)
-
-            let jaConvertidos: Set<String> = {
-                guard let bib = bibliotecaRef else { return [] }
-                let idsArquivos = bib.arquivos.compactMap(\.idExterno)
-                let idsLixeira = bib.arquivosNaLixeira.compactMap(\.idExterno)
-                let idsPendentesLixeira = bib.reunioesPendentesNaLixeira.map(\.idExterno)
-                return Set(idsArquivos + idsLixeira + idsPendentesLixeira)
-            }()
-
-            let pendentes = eventos
-                .filter { evento in
-                    // Só eventos futuros (até 24h) e que não expiraram
-                    guard evento.dataHora <= limite24h,
-                          evento.dataHora.addingTimeInterval(12 * 3600) > Date()
-                    else { return false }
-                    // Já virou conversa ou foi ignorada: não reaparece
-                    if jaConvertidos.contains("google-calendar-api:\(evento.id)") { return false }
-                    return true
-                }
-                .map { ReuniaoPendenteCalendar(
-                    id: $0.id,
-                    titulo: $0.titulo,
-                    dataHora: $0.dataHora,
-                    participantes: $0.participantes,
-                    descricao: $0.descricao,
-                    idExterno: "google-calendar-api:\($0.id)"
-                ) }
-                .sorted { $0.dataHora < $1.dataHora }
-
-            self.reunioesPendentes = pendentes
-            registro.info("\(pendentes.count) reuniões pendentes carregadas do Google Calendar")
+            aplicar(eventos: eventos, biblioteca: bibliotecaRef)
+            falhaDeImportacao = nil
+            registro.info("\(self.reunioesPendentes.count) reuniões pendentes carregadas do Google Calendar")
         } catch {
             falhaDeImportacao = ErroDaConexao.descricao(do: error)
             registro.error("Falha ao carregar reuniões: \(ErroDaConexao.descricao(do: error), privacy: .public)")
@@ -201,14 +180,22 @@ final class GoogleCalendarViewModel {
     /// Arquivo definitivo na biblioteca (com transcrição na fila). Não exige
     /// conexão: a pendente já está em memória.
     @discardableResult
-    func importarAudioParaReuniao(_ pendente: ReuniaoPendenteCalendar, audioURL: URL, biblioteca: Biblioteca) async -> Arquivo? {
+    func importarAudioParaReuniao(
+        _ pendente: ReuniaoPendenteCalendar,
+        audioURL: URL,
+        biblioteca: Biblioteca,
+        duracao: TimeInterval? = nil,
+        notas: [NotaDaConversa] = []
+    ) async -> Arquivo? {
         let id = UUID()
         let tarefa = Task { @MainActor [weak self, weak biblioteca] () -> Arquivo? in
             guard let self, let biblioteca else { return nil }
             return await self.executarImportacaoDeAudio(
                 pendente,
                 audioURL: audioURL,
-                biblioteca: biblioteca
+                biblioteca: biblioteca,
+                duracao: duracao,
+                notas: notas
             )
         }
         tarefasDeImportacao[id] = tarefa
@@ -220,21 +207,87 @@ final class GoogleCalendarViewModel {
     private func executarImportacaoDeAudio(
         _ pendente: ReuniaoPendenteCalendar,
         audioURL: URL,
-        biblioteca: Biblioteca
+        biblioteca: Biblioteca,
+        duracao: TimeInterval? = nil,
+        notas: [NotaDaConversa] = []
     ) async -> Arquivo? {
         guard !Task.isCancelled else { return nil }
         let arquivo = await biblioteca.criarArquivoDeReuniaoPendente(
             pendente,
-            audioURL: audioURL
+            audioURL: audioURL,
+            duracao: duracao,
+            notas: notas
         )
         if arquivo != nil {
+            estadoDasReunioes.definir(.convertida, para: pendente)
             reunioesPendentes.removeAll { $0.id == pendente.id }
+            reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
         }
         return arquivo
     }
 
     func ignorarPendente(_ pendente: ReuniaoPendenteCalendar) {
+        estadoDasReunioes.definir(.ignorada, para: pendente)
         reunioesPendentes.removeAll { $0.id == pendente.id }
+        reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
+    }
+
+    func restaurarPendente(_ pendente: ReuniaoPendenteCalendar) {
+        estadoDasReunioes.definir(.ativa, para: pendente)
+        reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
+        let agora = Date()
+        guard pendente.dataHora <= agora.addingTimeInterval(24 * 3600),
+              pendente.dataHora.addingTimeInterval(12 * 3600) > agora,
+              !reunioesPendentes.contains(where: { $0.idExterno == pendente.idExterno })
+        else { return }
+        reunioesPendentes.append(pendente)
+        reunioesPendentes.sort { $0.dataHora < $1.dataHora }
+    }
+
+    func apagarPendenteDefinitivamente(_ pendente: ReuniaoPendenteCalendar) {
+        // Uma reunião apagada da lixeira precisa continuar suprimida nas
+        // próximas sincronizações; `convertida` representa o estado terminal.
+        estadoDasReunioes.definir(.convertida, para: pendente)
+        reunioesPendentes.removeAll { $0.idExterno == pendente.idExterno }
+        reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
+    }
+
+    /// Concilia a página remota com o estado local persistido. É interna para
+    /// permitir fixtures determinísticas sem qualquer acesso ao Google.
+    func aplicar(
+        eventos: [FonteGoogleCalendarAPI.EventoCalendarSimples],
+        biblioteca: Biblioteca?,
+        agora: Date = Date()
+    ) {
+        let limite = agora.addingTimeInterval(24 * 3600)
+        let idsJaConvertidos = Set(
+            (biblioteca?.arquivos ?? []).compactMap(\.idExterno)
+            + (biblioteca?.arquivosNaLixeira ?? []).compactMap(\.idExterno)
+        )
+
+        var ativas: [ReuniaoPendenteCalendar] = []
+        for evento in eventos {
+            let pendente = ReuniaoPendenteCalendar(
+                id: evento.id,
+                titulo: evento.titulo,
+                dataHora: evento.dataHora,
+                participantes: evento.participantes,
+                descricao: evento.descricao,
+                idExterno: "google-calendar-api:\(evento.id)"
+            )
+            estadoDasReunioes.registrarSeNecessario(pendente)
+            if idsJaConvertidos.contains(pendente.idExterno) {
+                estadoDasReunioes.definir(.convertida, para: pendente)
+            }
+            guard pendente.dataHora <= limite,
+                  pendente.dataHora.addingTimeInterval(12 * 3600) > agora,
+                  estadoDasReunioes.registro(de: pendente.idExterno)?.estado == .ativa
+            else { continue }
+            ativas.append(pendente)
+        }
+
+        reunioesPendentes = ativas.sorted { $0.dataHora < $1.dataHora }
+        reunioesIgnoradas = estadoDasReunioes.reunioesIgnoradas()
     }
 
     private enum ErroDaConexao {

@@ -384,7 +384,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                 aoIgnorarReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                     Task { @MainActor in
                                         googleCalendar?.ignorarPendente(pendente)
-                                        biblioteca?.moverPendenteParaLixeira(pendente)
                                     }
                                 },
                                focoNaGravacao: $focoNaGravacao,
@@ -459,7 +458,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                     let audioURL = nova.armazenamento.resolver(relativo: pasta)
                         .appendingPathComponent(Armazenamento.Nome.microfone)
                     _ = await gcalCapturado?.importarAudioParaReuniao(
-                        pendente, audioURL: audioURL, biblioteca: nova
+                        pendente,
+                        audioURL: audioURL,
+                        biblioteca: nova,
+                        duracao: duracao,
+                        notas: notas
                     )
                     await MainActor.run { caixaPendente.pendente = nil }
                     await MainActor.run { focoNaGravacao = false }

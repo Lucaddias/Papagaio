@@ -108,6 +108,7 @@ final class Biblioteca {
     }
 
     private let repositorio: SwiftDataRepository
+    private let salvarReuniaoNoRepositorio: @Sendable (Arquivo) async throws -> Void
     private let ciclo = CicloDeVidaDeModelos()
     /// O container CloudKit não pertence ao ciclo de abertura da biblioteca
     /// pessoal. A criação lazy permite testes unsigned e evita inicializar uma
@@ -131,21 +132,33 @@ final class Biblioteca {
 
     init() throws {
         let armazenamento = try Armazenamento.padrao()
-        self.armazenamento = armazenamento
-        self.pastaDeModelos = armazenamento.pastaDeModelos
-        self.repositorio = SwiftDataRepository(
+        let repositorio = SwiftDataRepository(
             modelContainer: try SwiftDataRepository.containerLocal()
         )
+        self.armazenamento = armazenamento
+        self.pastaDeModelos = armazenamento.pastaDeModelos
+        self.repositorio = repositorio
+        self.salvarReuniaoNoRepositorio = { arquivo in
+            try await repositorio.salvar(arquivo)
+        }
         self.espaco = Self.espacoPessoal()
     }
 
     /// Injeção para testes: container em memória, armazenamento temporário e
     /// espaço isolado — sem tocar o banco nem o container reais do usuário.
     /// O caminho de produção continua sendo o `init()` acima.
-    init(armazenamento: Armazenamento, repositorio: SwiftDataRepository, espaco: EspacoID) {
+    init(
+        armazenamento: Armazenamento,
+        repositorio: SwiftDataRepository,
+        espaco: EspacoID,
+        salvarArquivo: (@Sendable (Arquivo) async throws -> Void)? = nil
+    ) {
         self.armazenamento = armazenamento
         self.pastaDeModelos = armazenamento.pastaDeModelos
         self.repositorio = repositorio
+        self.salvarReuniaoNoRepositorio = salvarArquivo ?? { arquivo in
+            try await repositorio.salvar(arquivo)
+        }
         self.espaco = espaco
     }
 
@@ -1093,12 +1106,6 @@ final class Biblioteca {
         return .prontoParaTranscrever
     }
 
-    /// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
-    var reunioesPendentesCalendar: [ReuniaoPendenteCalendar] = []
-
-    /// Reuniões pendentes movidas para a lixeira.
-    var reunioesPendentesNaLixeira: [ReuniaoPendenteCalendar] = []
-
     /// Cria um Arquivo definitivo a partir de uma reunião pendente + áudio.
     ///
     /// O áudio é obrigatório: gravar ou importar são os únicos caminhos que
@@ -1106,13 +1113,17 @@ final class Biblioteca {
     /// (array em memória **e** banco) e, quando o áudio veio de fora, na fila
     /// de processamento — mesma jornada do `registrar` normal.
     @discardableResult
-    func criarArquivoDeReuniaoPendente(_ pendente: ReuniaoPendenteCalendar, audioURL: URL) async -> Arquivo? {
+    func criarArquivoDeReuniaoPendente(
+        _ pendente: ReuniaoPendenteCalendar,
+        audioURL: URL,
+        duracao: TimeInterval? = nil,
+        notas: [NotaDaConversa] = []
+    ) async -> Arquivo? {
         let espacoDestino = espaco
         guard !espacosExcluidos.contains(espacoDestino) else { return nil }
         let idExterno = pendente.idExterno
         guard !arquivos.contains(where: { $0.idExterno == idExterno }),
-              !arquivosNaLixeira.contains(where: { $0.idExterno == idExterno }),
-              !reunioesPendentesNaLixeira.contains(where: { $0.id == pendente.id })
+              !arquivosNaLixeira.contains(where: { $0.idExterno == idExterno })
         else { return nil }
 
         // Sem pasta não há transcrição possível — falha antes de sujar o banco.
@@ -1124,11 +1135,11 @@ final class Biblioteca {
         var arquivo = Arquivo(
             titulo: pendente.titulo,
             criadoEm: pendente.dataHora,
-            duracao: 0,
+            duracao: max(0, duracao ?? 0),
             pastaRelativa: "",
             espaco: espacoDestino,
             trechos: [],
-            notas: pendente.descricao.map { [NotaDaConversa(texto: $0, start: 0)] } ?? [],
+            notas: Self.combinarNotas(descricaoDoEvento: pendente.descricao, notasDaGravacao: notas),
             resumo: nil,
             idExterno: idExterno
         )
@@ -1154,7 +1165,9 @@ final class Biblioteca {
                 arquivo.pastaRelativa = Armazenamento.caminhoRelativo(id: idNovo)
                 // Duração real lida do arquivo: alimenta a estimativa de
                 // progresso e o cartão desde o primeiro segundo.
-                arquivo.duracao = await Self.duracaoDoAudio(audioURL)
+                if duracao == nil {
+                    arquivo.duracao = await Self.duracaoDoAudio(audioURL)
+                }
             }
         } catch {
             erros[arquivo.id.rawValue] = "Não foi possível copiar o áudio da reunião: \(error)"
@@ -1162,7 +1175,7 @@ final class Biblioteca {
         }
 
         do {
-            try await repositorio.salvar(arquivo)
+            try await salvarReuniaoNoRepositorio(arquivo)
         } catch {
             if !arquivo.pastaRelativa.isEmpty {
                 try? armazenamento.removerGravacao(relativa: arquivo.pastaRelativa)
@@ -1185,7 +1198,9 @@ final class Biblioteca {
         // silenciosamente no primeiro tick.
         arquivos.insert(arquivo, at: 0)
         arquivos.sort { $0.criadoEm > $1.criadoEm }
-        enfileirarProcessamento(arquivo)
+        if processamentoAutomatico {
+            enfileirarProcessamento(arquivo)
+        }
         return arquivo
     }
 
@@ -1209,21 +1224,15 @@ final class Biblioteca {
         }.value
     }
 
-    /// Move uma pendente para a lixeira de pendentes
-    func moverPendenteParaLixeira(_ pendente: ReuniaoPendenteCalendar) {
-        reunioesPendentesCalendar.removeAll { $0.id == pendente.id }
-        reunioesPendentesNaLixeira.append(pendente)
-    }
-
-    /// Restaura uma pendente da lixeira
-    func restaurarPendenteDaLixeira(_ pendente: ReuniaoPendenteCalendar) {
-        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
-        reunioesPendentesCalendar.append(pendente)
-        reunioesPendentesCalendar.sort { $0.dataHora < $1.dataHora }
-    }
-
-    /// Apaga definitivamente uma pendente da lixeira
-    func apagarPendenteDefinitivamente(_ pendente: ReuniaoPendenteCalendar) {
-        reunioesPendentesNaLixeira.removeAll { $0.id == pendente.id }
+    private static func combinarNotas(
+        descricaoDoEvento: String?,
+        notasDaGravacao: [NotaDaConversa]
+    ) -> [NotaDaConversa] {
+        let descricao = descricaoDoEvento?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let notaDoEvento = descricao.isEmpty
+            ? []
+            : [NotaDaConversa(texto: descricao, start: 0)]
+        return notaDoEvento + notasDaGravacao
     }
 }
