@@ -16,6 +16,10 @@ struct ArquivoDetalheView: View {
     /// Veio de um arquivo escolhido pela pessoa, em vez de uma gravação feita
     /// dentro do app.
     let importado: Bool
+    /// Metadados recebidos da equipe não transportam o áudio do outro Mac.
+    /// A interface precisa explicar essa fronteira sem mandar a pessoa para
+    /// uma lixeira que nunca recebeu esse arquivo.
+    let midiaNaoDisponivelNesteMac: Bool
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: EstadoDoArquivo
@@ -88,6 +92,7 @@ struct ArquivoDetalheView: View {
         audio: URL,
         audioSecundario: URL?,
         importado: Bool,
+        midiaNaoDisponivelNesteMac: Bool = false,
         estado: EstadoDoArquivo,
         processando: Bool,
         naFila: Bool,
@@ -103,6 +108,7 @@ struct ArquivoDetalheView: View {
         self.audio = audio
         self.audioSecundario = audioSecundario
         self.importado = importado
+        self.midiaNaoDisponivelNesteMac = midiaNaoDisponivelNesteMac
         self.estado = estado
         self.processando = processando
         self.naFila = naFila
@@ -215,8 +221,12 @@ struct ArquivoDetalheView: View {
     /// mesmo com o arquivo visível ali. Duração zero depois de `preparar()` é
     /// o único sinal confiável de que o `AVAudioPlayer` não abriu nada.
     private var audioIndisponivel: Bool {
+        if midiaNaoDisponivelNesteMac { return true }
         guard let reprodutor else { return false }
         return reprodutor.duracao <= 0
+    }
+    private var deveMostrarAvisoDeAudio: Bool {
+        midiaNaoDisponivelNesteMac || (deveMostrarPlayer && audioIndisponivel)
     }
 
     /// O AppKit usa um `NSTextView` como field editor de `NSTextField` e
@@ -252,7 +262,12 @@ struct ArquivoDetalheView: View {
                         ScrollView {
                             conteudoDaSecao
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
-                                .padding(.bottom, deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
+                                .padding(
+                                    .bottom,
+                                    deveMostrarPlayer || midiaNaoDisponivelNesteMac
+                                        ? alturaMedidaDoPlayer
+                                        : 0
+                                )
                         }
                         // Barra de rolagem escondida nesta tela.
                         //
@@ -272,7 +287,7 @@ struct ArquivoDetalheView: View {
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if deveMostrarPlayer, audioIndisponivel {
+            if deveMostrarAvisoDeAudio {
                 avisoDeAudioRemovido
                     .transition(.opacity)
             } else if deveMostrarPlayer, let reprodutor {
@@ -305,7 +320,11 @@ struct ArquivoDetalheView: View {
         // `alturaMedidaDoPlayer` (medida de verdade, ver o `@State` acima) —
         // zero quando o player não está na tela, e aí o selo volta para o
         // canto de baixo.
-        .alturaDoPlayerPapagaio(deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
+        .alturaDoPlayerPapagaio(
+            deveMostrarPlayer || midiaNaoDisponivelNesteMac
+                ? alturaMedidaDoPlayer
+                : 0
+        )
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         // Piso baixo de propósito: acima disso o conteúdo era desenhado mais
@@ -1038,11 +1057,19 @@ struct ArquivoDetalheView: View {
                 .background(PapagaioTema.aviso.opacity(0.12), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text("Não foi possível abrir o áudio desta conversa")
+                Text(
+                    midiaNaoDisponivelNesteMac
+                        ? "Áudio não disponível neste Mac"
+                        : "Não foi possível abrir o áudio desta conversa"
+                )
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(PapagaioTema.texto)
 
-                Text("A transcrição, as notas e o resumo continuam aqui. Restaure o áudio pela Lixeira do app — assim ele volta com o nome que a reprodução espera.")
+                Text(
+                    midiaNaoDisponivelNesteMac
+                        ? "A equipe compartilha a transcrição, as notas e o resumo. O áudio não faz parte dos dados sincronizados e não está na Lixeira deste dispositivo."
+                        : "A transcrição, as notas e o resumo continuam aqui. Restaure o áudio pela Lixeira do app — assim ele volta com o nome que a reprodução espera."
+                )
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)

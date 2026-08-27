@@ -73,12 +73,51 @@ func mapeamentoCloudKitRespeitaEspaco() async throws {
     try await sincronizador.enviar(esperado, para: equipe)
     let enviado = try #require(await transporte.ultimoArquivoSalvo())
     let baixados = try await sincronizador.baixar(da: equipe)
+    let payload = try JSONDecoder().decode(PayloadDeConversaCloudKit.self, from: enviado)
 
-    #expect(
-        try JSONDecoder().decode(PayloadDeConversaCloudKit.self, from: enviado).arquivo
-            == esperado
+    #expect(payload.arquivo.id == esperado.id)
+    #expect(payload.arquivo.titulo == esperado.titulo)
+    #expect(payload.arquivo.notas == esperado.notas)
+    #expect(payload.versao == 2)
+    #expect(payload.arquivo.pastaRelativa.isEmpty)
+    #expect(payload.midiaDisponivelNaOrigem == true)
+    var esperadoBaixado = esperado
+    esperadoBaixado.pastaRelativa = ""
+    #expect(baixados == [esperadoBaixado])
+}
+
+@Test("Metadados remotos não carregam caminho local e preservam mídia deste Mac")
+func fronteiraDeMidiaCloudKitEhExplicita() {
+    let espaco = EspacoID()
+    let local = Arquivo(
+        titulo: "Entrevista",
+        pastaRelativa: "Gravacoes/entrevista",
+        espaco: espaco
     )
-    #expect(baixados == [esperado])
+    let remoto = PoliticaDeMidiaCloudKit.prepararParaEnvio(local)
+
+    #expect(remoto.semAudio)
+    #expect(
+        PoliticaDeMidiaCloudKit.mesclar(
+            remoto: remoto,
+            local: nil,
+            midiaLocalExiste: false
+        ).semAudio
+    )
+    #expect(
+        PoliticaDeMidiaCloudKit.mesclar(
+            remoto: remoto,
+            local: local,
+            midiaLocalExiste: true
+        ).pastaRelativa == local.pastaRelativa
+    )
+    #expect(
+        PoliticaDeMidiaCloudKit.mesclar(
+            remoto: remoto,
+            local: local,
+            midiaLocalExiste: false
+        ).semAudio
+    )
 }
 
 @MainActor

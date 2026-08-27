@@ -162,6 +162,7 @@ struct ContentView: View {
                         audio: audio,
                         audioSecundario: audioSecundario,
                         importado: importado,
+                        midiaNaoDisponivelNesteMac: arquivo.semAudio && equipeAtiva != nil,
                         estado: estado,
                         processando: processando,
                         naFila: naFila,
@@ -406,7 +407,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
                                 aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
-                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe,
                                 estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
                                 aoRetomarSincronizacao: {
                                     Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
@@ -699,20 +699,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                 usarEquipe(equipe)
             } catch {
                 falhaDeAbertura = "Não foi possível entrar na equipe: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func atualizarConfiguracoesDaEquipe(_ equipe: EquipeDisponivel, configuracoes: ConfiguracoesDaEquipe) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
-        equipes[indice].configuracoes = configuracoes
-        EquipesDoUsuario.salvar(equipes)
-        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else { return }
-        Task { @MainActor in
-            do {
-                try await servicoDeEquipesCloudKit.atualizarConfiguracoes(configuracoes, da: equipes[indice])
-            } catch {
-                falhaDeAbertura = "As configurações foram salvas neste Mac, mas não puderam ser sincronizadas: \(error.localizedDescription)"
             }
         }
     }

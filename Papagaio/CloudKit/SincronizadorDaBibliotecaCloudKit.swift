@@ -21,17 +21,45 @@ struct PayloadDeConversaCloudKit: Codable, Sendable, Equatable {
     let versao: Int
     let atualizadoEm: Date
     let arquivo: Arquivo
+    let midiaDisponivelNaOrigem: Bool?
 
-    init(arquivo: Arquivo, atualizadoEm: Date) {
-        versao = 1
+    init(
+        arquivo: Arquivo,
+        atualizadoEm: Date,
+        midiaDisponivelNaOrigem: Bool? = nil
+    ) {
+        versao = 2
         self.atualizadoEm = atualizadoEm
         self.arquivo = arquivo
+        self.midiaDisponivelNaOrigem = midiaDisponivelNaOrigem
     }
 }
 
 struct ConversaRecebidaCloudKit: Sendable, Equatable {
     let arquivo: Arquivo
     let atualizadoEm: Date
+    let midiaDisponivelNaOrigem: Bool
+}
+
+enum PoliticaDeMidiaCloudKit {
+    static func prepararParaEnvio(_ arquivo: Arquivo) -> Arquivo {
+        var compartilhavel = arquivo
+        compartilhavel.pastaRelativa = ""
+        return compartilhavel
+    }
+
+    static func mesclar(
+        remoto: Arquivo,
+        local: Arquivo?,
+        midiaLocalExiste: Bool
+    ) -> Arquivo {
+        guard let local, midiaLocalExiste, !local.pastaRelativa.isEmpty else {
+            return remoto
+        }
+        var combinado = remoto
+        combinado.pastaRelativa = local.pastaRelativa
+        return combinado
+    }
 }
 
 enum PoliticaDeConflitoCloudKit {
@@ -67,6 +95,11 @@ protocol TransporteDeConversasCloudKit: Sendable {
 actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
     private enum Campo {
         static let dados = "dados"
+        static let conteudo = "conteudo"
+        static let titulo = "titulo"
+        static let criadoEm = "criadoEm"
+        static let atualizadoEm = "atualizadoEm"
+        static let midiaDisponivelNaOrigem = "midiaDisponivelNaOrigem"
     }
 
     private static let tipoDeRegistro = "Conversa"
@@ -81,7 +114,20 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         let banco = try bancoDaEquipe(equipe)
         let recordID = CKRecord.ID(recordName: id, zoneID: zona)
         let registro = try await registroExistente(ouNovo: recordID, no: banco)
-        registro[Campo.dados] = dados as NSData
+        let payload = try JSONDecoder().decode(PayloadDeConversaCloudKit.self, from: dados)
+        let temporario = FileManager.default.temporaryDirectory
+            .appendingPathComponent("papagaio-cloudkit-\(UUID().uuidString).json")
+        try dados.write(to: temporario, options: .atomic)
+        defer { try? FileManager.default.removeItem(at: temporario) }
+
+        registro[Campo.conteudo] = CKAsset(fileURL: temporario)
+        registro[Campo.dados] = nil
+        registro[Campo.titulo] = payload.arquivo.titulo as NSString
+        registro[Campo.criadoEm] = payload.arquivo.criadoEm as NSDate
+        registro[Campo.atualizadoEm] = payload.atualizadoEm as NSDate
+        registro[Campo.midiaDisponivelNaOrigem] = NSNumber(
+            value: payload.midiaDisponivelNaOrigem ?? false
+        )
         _ = try await banco.save(registro)
     }
 
@@ -98,7 +144,7 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
             }
             let resposta = try await banco.records(
                 continuingMatchFrom: cursorCloudKit,
-                desiredKeys: [Campo.dados],
+                desiredKeys: [Campo.conteudo, Campo.dados],
                 resultsLimit: 200
             )
             return try Self.pagina(
@@ -114,7 +160,7 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         let resposta = try await banco.records(
             matching: consulta,
             inZoneWith: zona,
-            desiredKeys: [Campo.dados],
+            desiredKeys: [Campo.conteudo, Campo.dados],
             resultsLimit: 200
         )
         return try Self.pagina(
@@ -141,6 +187,10 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
     ) throws -> PaginaDeConversasCloudKit {
         let dados = try resultados.compactMap { _, resultado -> Data? in
             let registro = try resultado.get()
+            if let asset = registro[Campo.conteudo] as? CKAsset,
+               let url = asset.fileURL {
+                return try Data(contentsOf: url)
+            }
             return registro[Campo.dados] as? Data
         }
         return PaginaDeConversasCloudKit(
@@ -203,8 +253,13 @@ actor SincronizadorDaBibliotecaCloudKit {
         para equipe: EquipeDisponivel,
         revisao: Date = Date()
     ) async throws {
+        let compartilhavel = PoliticaDeMidiaCloudKit.prepararParaEnvio(arquivo)
         let dados = try JSONEncoder().encode(
-            PayloadDeConversaCloudKit(arquivo: arquivo, atualizadoEm: revisao)
+            PayloadDeConversaCloudKit(
+                arquivo: compartilhavel,
+                atualizadoEm: revisao,
+                midiaDisponivelNaOrigem: !arquivo.semAudio
+            )
         )
         try await transporte.salvar(
             dados,
@@ -253,14 +308,16 @@ actor SincronizadorDaBibliotecaCloudKit {
         let decodificador = JSONDecoder()
         if let payload = try? decodificador.decode(PayloadDeConversaCloudKit.self, from: dados) {
             return ConversaRecebidaCloudKit(
-                arquivo: payload.arquivo,
-                atualizadoEm: payload.atualizadoEm
+                arquivo: PoliticaDeMidiaCloudKit.prepararParaEnvio(payload.arquivo),
+                atualizadoEm: payload.atualizadoEm,
+                midiaDisponivelNaOrigem: payload.midiaDisponivelNaOrigem ?? false
             )
         }
         let legado = try decodificador.decode(Arquivo.self, from: dados)
         return ConversaRecebidaCloudKit(
-            arquivo: legado,
-            atualizadoEm: legado.entradaNaBiblioteca
+            arquivo: PoliticaDeMidiaCloudKit.prepararParaEnvio(legado),
+            atualizadoEm: legado.entradaNaBiblioteca,
+            midiaDisponivelNaOrigem: !legado.semAudio
         )
     }
 

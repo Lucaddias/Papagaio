@@ -5,7 +5,6 @@ struct GestaoDeEquipeView: View {
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
-    let aoAtualizarConfiguracoes: (EquipeDisponivel, ConfiguracoesDaEquipe) -> Void
     let estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit
     let aoRetomarSincronizacao: () -> Void
 
@@ -15,14 +14,12 @@ struct GestaoDeEquipeView: View {
     @State private var mostrandoConvite = false
     @State private var convite = Self.novoConvite()
     @State private var membroEmEdicao: MembroDaEquipe?
-    @State private var configuracoes = ConfiguracoesDaEquipe()
 
     init(
         equipeAtiva: EquipeDisponivel?,
         equipes: [EquipeDisponivel],
         aoSelecionarEquipe: @escaping (EquipeDisponivel) -> Void,
         aoAtualizarQuantidadeDeMembros: @escaping (String, Int) -> Void,
-        aoAtualizarConfiguracoes: @escaping (EquipeDisponivel, ConfiguracoesDaEquipe) -> Void,
         estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit = .local,
         aoRetomarSincronizacao: @escaping () -> Void = {},
         servicoDeMembros: any ServicoDeMembrosDaEquipe = ServicoDeEquipesCloudKit()
@@ -31,7 +28,6 @@ struct GestaoDeEquipeView: View {
         self.equipes = equipes
         self.aoSelecionarEquipe = aoSelecionarEquipe
         self.aoAtualizarQuantidadeDeMembros = aoAtualizarQuantidadeDeMembros
-        self.aoAtualizarConfiguracoes = aoAtualizarConfiguracoes
         self.estadoDaSincronizacao = estadoDaSincronizacao
         self.aoRetomarSincronizacao = aoRetomarSincronizacao
         _gestor = State(initialValue: GestorDeMembrosDaEquipe(servico: servicoDeMembros))
@@ -44,7 +40,6 @@ struct GestaoDeEquipeView: View {
                     cabecalho(equipeAtiva)
                     estadoDoICloud
                     codigoDaEquipe(equipeAtiva)
-                    configuracoesDaEquipe(equipeAtiva)
 
                     if let erro = gestor.erro {
                         avisoDeErro(erro, equipe: equipeAtiva)
@@ -192,26 +187,6 @@ struct GestaoDeEquipeView: View {
         .cartaoPapagaio()
     }
 
-    private func configuracoesDaEquipe(_ equipe: EquipeDisponivel) -> some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-            Label("Arquivos da equipe", systemImage: "folder.badge.gearshape").font(.headline)
-            Picker("Quem pode ver os arquivos enviados", selection: $configuracoes.visibilidadeDosArquivos) {
-                ForEach(VisibilidadeDosArquivosDaEquipe.allCases) { Text($0.rawValue).tag($0) }
-            }
-            Picker("Quando um arquivo chega", selection: $configuracoes.recebimentoDeArquivos) {
-                ForEach(RecebimentoDeArquivosDaEquipe.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .onChange(of: configuracoes) { _, novo in
-                aoAtualizarConfiguracoes(equipe, novo)
-            }
-            Text("Estas preferências ficam salvas na equipe. A revisão de arquivos será aplicada quando o fluxo de aprovação estiver disponível.")
-                .font(.caption)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-        }
-        .padding(PapagaioTema.Espaco.secao)
-        .cartaoPapagaio()
-    }
-
     private func avisoDeErro(_ mensagem: String, equipe: EquipeDisponivel) -> some View {
         HStack(spacing: PapagaioTema.Espaco.medio) {
             Image(systemName: "exclamationmark.icloud")
@@ -228,7 +203,6 @@ struct GestaoDeEquipeView: View {
     private func carregarEquipe() async {
         gestor.selecionar(equipeAtiva)
         pagina = 0
-        configuracoes = equipeAtiva?.configuracoes ?? .init()
         guard let equipeAtiva else { return }
         await recarregar(equipeAtiva)
     }
@@ -302,8 +276,7 @@ struct GestaoDeEquipeView: View {
             )
         ],
         aoSelecionarEquipe: { _ in },
-        aoAtualizarQuantidadeDeMembros: { _, _ in },
-        aoAtualizarConfiguracoes: { _, _ in }
+        aoAtualizarQuantidadeDeMembros: { _, _ in }
     )
     .frame(width: 1_200, height: 760)
 }

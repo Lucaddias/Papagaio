@@ -1099,7 +1099,21 @@ final class Biblioteca {
                     conflitos += 1
                     continue
                 }
-                try await repositorio.salvar(conversa.arquivo)
+                let local = (arquivos + arquivosNaLixeira).first {
+                    $0.id == conversa.arquivo.id
+                }
+                let midiaLocalExiste = local.map {
+                    !$0.pastaRelativa.isEmpty
+                        && FileManager.default.fileExists(
+                            atPath: armazenamento.resolver(relativo: $0.pastaRelativa).path
+                        )
+                } ?? false
+                let combinado = PoliticaDeMidiaCloudKit.mesclar(
+                    remoto: conversa.arquivo,
+                    local: local,
+                    midiaLocalExiste: midiaLocalExiste
+                )
+                try await repositorio.salvar(combinado)
             }
             await carregar()
             if conflitos == 0 {
@@ -1136,6 +1150,12 @@ final class Biblioteca {
     /// nesses casos ele é o canal único. A reprodução em dois canais usa
     /// `audioSecundario` junto.
     func audio(de arquivo: Arquivo) -> URL {
+        if arquivo.semAudio {
+            return armazenamento.raiz
+                .appendingPathComponent("MidiaIndisponivel", isDirectory: true)
+                .appendingPathComponent(arquivo.id.rawValue.uuidString, isDirectory: true)
+                .appendingPathComponent("audio-indisponivel")
+        }
         let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
         let microfone = pasta.appendingPathComponent(Armazenamento.Nome.microfone)
         if Self.existe(microfone) { return microfone }
