@@ -19,7 +19,7 @@ struct ApresentadorDeSessaoDeAutorizacao: ApresentadorDeAutorizacaoOAuth {
             .queryItems?
             .first { $0.name == "state" }?
             .value ?? ""
-        registro.info("Pedindo autorização (state \(estadoEsperado, privacy: .public))")
+        registro.info("Pedindo autorização no navegador padrão")
 
         return try await withCheckedThrowingContinuation { continuacao in
             GerenciadorDeCallbackDeAutorizacao.compartilhado
