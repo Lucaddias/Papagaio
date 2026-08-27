@@ -5,6 +5,7 @@ struct TabelaDaEquipe: View {
 
     let membros: [MembroDaEquipe]
     let pagina: Int
+    let podeGerenciar: Bool
     let aoEditar: (MembroDaEquipe) -> Void
     let aoRemover: (MembroDaEquipe) -> Void
     let aoAlternarPagina: (Int) -> Void
@@ -43,6 +44,7 @@ struct TabelaDaEquipe: View {
                 ForEach(membrosDaPagina) { membro in
                     LinhaDeMembroDaEquipe(
                         membro: membro,
+                        podeGerenciar: podeGerenciar,
                         aoEditar: { aoEditar(membro) },
                         aoRemover: { aoRemover(membro) }
                     )
@@ -114,6 +116,7 @@ struct CabecalhoDeColuna: View {
 
 struct LinhaDeMembroDaEquipe: View {
     let membro: MembroDaEquipe
+    let podeGerenciar: Bool
     let aoEditar: () -> Void
     let aoRemover: () -> Void
 
@@ -160,17 +163,9 @@ struct LinhaDeMembroDaEquipe: View {
 
             Spacer()
 
-            if membro.atual {
-                Button(action: aoEditar) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 21, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .help("Editar")
-            } else {
+            if podeGerenciar && !membro.atual && membro.cargo != "Proprietário" {
                 Menu {
-                    Button("Editar", systemImage: "pencil", action: aoEditar)
+                    Button("Alterar permissão", systemImage: "pencil", action: aoEditar)
                     Button("Remover", systemImage: "trash", role: .destructive, action: aoRemover)
                 } label: {
                     Image(systemName: "ellipsis")
@@ -181,6 +176,9 @@ struct LinhaDeMembroDaEquipe: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .help("Ações")
+            } else {
+                Text("—")
+                    .foregroundStyle(PapagaioTema.textoSecundario)
             }
         }
         .padding(.horizontal, PapagaioTema.Espaco.pagina)

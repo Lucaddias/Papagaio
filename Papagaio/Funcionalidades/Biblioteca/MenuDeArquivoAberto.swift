@@ -9,14 +9,14 @@ struct MenuDeArquivoAberto: View {
     /// isso, em vez de deixar "Mover para Lixeira" fazer o dobro do que diz.
     var cancelavel: Bool = false
     let podeDiarizar: Bool
-    let aoDiarizar: () -> Void
-    let aoReprocessar: () -> Void
-    let aoRenomear: () -> Void
-    let aoBaixar: () -> Void
-    let aoCompartilhar: () -> Void
-    let aoDuplicar: () -> Void
-    let aoEditarAparencia: () -> Void
-    let aoMoverParaLixeira: () -> Void
+    let aoDiarizar: @MainActor @Sendable () -> Void
+    let aoReprocessar: @MainActor @Sendable () -> Void
+    let aoRenomear: @MainActor @Sendable () -> Void
+    let aoBaixar: @MainActor @Sendable () -> Void
+    let aoCompartilhar: @MainActor @Sendable () -> Void
+    let aoDuplicar: @MainActor @Sendable () -> Void
+    let aoEditarAparencia: @MainActor @Sendable () -> Void
+    let aoMoverParaLixeira: @MainActor @Sendable () -> Void
 
     /// A ordem é por frequência, com a aparência no fim.
     ///
@@ -80,7 +80,7 @@ struct ItemDoMenuDeArquivo: View {
     let titulo: String
     var destrutivo = false
     var desabilitado = false
-    let acao: () -> Void
+    let acao: @MainActor @Sendable () -> Void
 
     var body: some View {
         Button(action: acao) {

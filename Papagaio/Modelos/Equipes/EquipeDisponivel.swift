@@ -1,20 +1,20 @@
 import Foundation
 
-enum VisibilidadeDosArquivosDaEquipe: String, CaseIterable, Codable, Identifiable {
+enum VisibilidadeDosArquivosDaEquipe: String, CaseIterable, Codable, Identifiable, Sendable {
     case todosOsMembros = "Todos os membros"
     case apenasAdministrador = "Somente administradores"
 
     var id: Self { self }
 }
 
-enum RecebimentoDeArquivosDaEquipe: String, CaseIterable, Codable, Identifiable {
+enum RecebimentoDeArquivosDaEquipe: String, CaseIterable, Codable, Identifiable, Sendable {
     case automatico = "Entrar automaticamente"
     case aguardarRevisao = "Aguardar revisão"
 
     var id: Self { self }
 }
 
-struct ConfiguracoesDaEquipe: Codable, Hashable {
+struct ConfiguracoesDaEquipe: Codable, Hashable, Sendable {
     var visibilidadeDosArquivos: VisibilidadeDosArquivosDaEquipe = .todosOsMembros
     var recebimentoDeArquivos: RecebimentoDeArquivosDaEquipe = .automatico
 }
@@ -24,7 +24,7 @@ struct ConfiguracoesDaEquipe: Codable, Hashable {
 /// Não existe equipe padrão: um app recém-instalado não tem equipe nenhuma até
 /// que a pessoa crie a primeira. Por isso todo consumidor trata `EquipeDisponivel?`
 /// em vez de assumir que sempre há uma ativa.
-struct EquipeDisponivel: Identifiable, Hashable, Codable {
+struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
     let id: String
     let nome: String
     let papel: String
@@ -40,6 +40,12 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
     /// apenas resolve o convite CloudKit público desta equipe.
     var codigoDeEntrada: String?
     var configuracoes: ConfiguracoesDaEquipe
+
+    private enum CodingKeys: String, CodingKey {
+        case id, nome, papel, quantidadeDeMembros
+        case espacoID, zonaCloudKit, compartilhamentoCloudKit, bancoCloudKit
+        case codigoDeEntrada, configuracoes
+    }
 
     init(
         id: String,
@@ -63,6 +69,27 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable {
         self.bancoCloudKit = bancoCloudKit
         self.codigoDeEntrada = codigoDeEntrada
         self.configuracoes = configuracoes
+    }
+
+    /// Equipes persistidas antes das preferências de compartilhamento não têm
+    /// a chave `configuracoes`. O valor padrão do inicializador não é aplicado
+    /// automaticamente pelo `Decodable` sintetizado, por isso a migração
+    /// precisa ser explícita e não destrutiva.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        nome = try container.decode(String.self, forKey: .nome)
+        papel = try container.decode(String.self, forKey: .papel)
+        quantidadeDeMembros = try container.decode(Int.self, forKey: .quantidadeDeMembros)
+        espacoID = try container.decodeIfPresent(String.self, forKey: .espacoID)
+        zonaCloudKit = try container.decodeIfPresent(String.self, forKey: .zonaCloudKit)
+        compartilhamentoCloudKit = try container.decodeIfPresent(String.self, forKey: .compartilhamentoCloudKit)
+        bancoCloudKit = try container.decodeIfPresent(String.self, forKey: .bancoCloudKit)
+        codigoDeEntrada = try container.decodeIfPresent(String.self, forKey: .codigoDeEntrada)
+        configuracoes = try container.decodeIfPresent(
+            ConfiguracoesDaEquipe.self,
+            forKey: .configuracoes
+        ) ?? .init()
     }
 
     static func novoCodigoDeEntrada() -> String {

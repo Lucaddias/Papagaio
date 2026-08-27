@@ -92,6 +92,30 @@ func tempoPorExtenso() {
     #expect(TimeInterval(42).faladoPorExtenso == "42 s")
 }
 
+@Test("Canal confiável permanece na identidade visual e acessível da fala")
+func identidadeDaFalaPreservaCanal() {
+    let fala = FalaDeFalante(
+        id: UUID(),
+        falanteAcustico: "S1",
+        inicio: 42,
+        fim: 45,
+        palavras: [],
+        texto: "Vamos começar",
+        speaker: Speaker.eu,
+        trechoIds: []
+    )
+
+    #expect(LinhaDeFala.rotuloDoCanal(Speaker.eu) == "Eu · microfone")
+    #expect(
+        LinhaDeFala.rotuloDoCanal(Speaker.interlocutor)
+            == "Interlocutor · áudio do sistema"
+    )
+    #expect(
+        LinhaDeFala.identidadeAcessivel(fala, nomesDeVoz: ["S1": "Luca"])
+            == "Eu · microfone, Luca"
+    )
+}
+
 // MARK: - Tema
 
 @Test("Os tokens de cor mudam entre claro e escuro")

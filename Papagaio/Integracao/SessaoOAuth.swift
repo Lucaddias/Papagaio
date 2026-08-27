@@ -231,7 +231,7 @@ final class SessaoOAuth: Sendable {
         if let dados = try? JSONEncoder().encode(cliente) {
             try? cofre.salvar(dados, conta: "client")
         }
-        registro.info("Cliente registrado: \(idCliente, privacy: .public)")
+        registro.info("Cliente OAuth registrado")
         return cliente
     }
 
@@ -252,9 +252,7 @@ final class SessaoOAuth: Sendable {
             itens.append(URLQueryItem(name: "scope", value: escopos.joined(separator: " ")))
         }
         componentes.queryItems = itens
-        registro.info(
-            "URL de autorização pronta: \(componentes.url!.absoluteString, privacy: .public)"
-        )
+        registro.info("URL de autorização preparada")
         return componentes.url!
     }
 

@@ -14,6 +14,10 @@
 		8301D872F0A9835270B0CB3B /* TarefasDaConversaViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D257F87A757A65CDDB068036 /* TarefasDaConversaViewModelTests.swift */; };
 		87CE257E47C2603231D2EE17 /* InvalidacaoVisualTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91696821487350A71C406F6B /* InvalidacaoVisualTests.swift */; };
 		A6E65A012025082500000001 /* LixeiraDeMidiaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E65A012025082500000002 /* LixeiraDeMidiaTests.swift */; };
+		A6E65A012026082600000001 /* EquipesCloudKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E65A012026082600000002 /* EquipesCloudKitTests.swift */; };
+		A6E65A012026082600000003 /* InicializacaoExternaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E65A012026082600000004 /* InicializacaoExternaTests.swift */; };
+		A6E65A012026082700000001 /* OAuthGoogleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E65A012026082700000002 /* OAuthGoogleTests.swift */; };
+		A6E65A012026082700000005 /* GoogleCalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E65A012026082700000006 /* GoogleCalendarTests.swift */; };
 		CB019BDFCF1ABB55BD10DF7F /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F978E98D2CF3C2643BF64AF8 /* Cocoa.framework */; };
 		D9410AC0210BDA7A911687A9 /* PastasDaBibliotecaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFC95792D15A8E5CF5FEE225 /* PastasDaBibliotecaTests.swift */; };
 		DD7A6AC074A5C8B7522B5B49 /* InterfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 337EA963DA385E396F282BA3 /* InterfaceTests.swift */; };
@@ -65,6 +69,10 @@
 		337EA963DA385E396F282BA3 /* InterfaceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InterfaceTests.swift; sourceTree = "<group>"; };
 		91696821487350A71C406F6B /* InvalidacaoVisualTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InvalidacaoVisualTests.swift; sourceTree = "<group>"; };
 		A6E65A012025082500000002 /* LixeiraDeMidiaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LixeiraDeMidiaTests.swift; sourceTree = "<group>"; };
+		A6E65A012026082600000002 /* EquipesCloudKitTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EquipesCloudKitTests.swift; sourceTree = "<group>"; };
+		A6E65A012026082600000004 /* InicializacaoExternaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InicializacaoExternaTests.swift; sourceTree = "<group>"; };
+		A6E65A012026082700000002 /* OAuthGoogleTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OAuthGoogleTests.swift; sourceTree = "<group>"; };
+		A6E65A012026082700000006 /* GoogleCalendarTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = GoogleCalendarTests.swift; sourceTree = "<group>"; };
 		BD94486E5CC83E9CE8280CE8 /* OrdenacaoDeTarefasTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OrdenacaoDeTarefasTests.swift; sourceTree = "<group>"; };
 		C97E9FB058DA75D07956D7FC /* TarefasDoPainelViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TarefasDoPainelViewModelTests.swift; sourceTree = "<group>"; };
 		D2201F34A428D43BED043C68 /* BibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibliotecaTests.swift; sourceTree = "<group>"; };
@@ -120,6 +128,10 @@
 			isa = PBXGroup;
 			children = (
 				D2201F34A428D43BED043C68 /* BibliotecaTests.swift */,
+				A6E65A012026082600000002 /* EquipesCloudKitTests.swift */,
+				A6E65A012026082700000006 /* GoogleCalendarTests.swift */,
+				A6E65A012026082600000004 /* InicializacaoExternaTests.swift */,
+				A6E65A012026082700000002 /* OAuthGoogleTests.swift */,
 				337EA963DA385E396F282BA3 /* InterfaceTests.swift */,
 				91696821487350A71C406F6B /* InvalidacaoVisualTests.swift */,
 				A6E65A012025082500000002 /* LixeiraDeMidiaTests.swift */,
@@ -295,6 +307,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				6B4091D111D7E29F3933614D /* BibliotecaTests.swift in Sources */,
+				A6E65A012026082600000001 /* EquipesCloudKitTests.swift in Sources */,
+				A6E65A012026082700000005 /* GoogleCalendarTests.swift in Sources */,
+				A6E65A012026082600000003 /* InicializacaoExternaTests.swift in Sources */,
+				A6E65A012026082700000001 /* OAuthGoogleTests.swift in Sources */,
 				DD7A6AC074A5C8B7522B5B49 /* InterfaceTests.swift in Sources */,
 				87CE257E47C2603231D2EE17 /* InvalidacaoVisualTests.swift in Sources */,
 				A6E65A012025082500000001 /* LixeiraDeMidiaTests.swift in Sources */,

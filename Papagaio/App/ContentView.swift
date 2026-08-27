@@ -35,9 +35,14 @@ struct ContentView: View {
     /// A gravação é criada no `App` e passada para cá: o item da barra de menus
     /// precisa observar exatamente o mesmo objeto que a janela.
     let modelo: GravadorViewModel
+    private let politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna
 
-    init(gravador: GravadorViewModel) {
+    init(
+        gravador: GravadorViewModel,
+        politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna = .init()
+    ) {
         modelo = gravador
+        self.politicaDeInicializacaoExterna = politicaDeInicializacaoExterna
     }
 
     @State private var biblioteca: Biblioteca?
@@ -68,7 +73,12 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
-    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
+    /// Criado somente quando uma ação de equipe realmente pede CloudKit.
+    /// Construir `CKContainer` junto com a view derruba o host unsigned dos
+    /// testes antes mesmo de a primeira asserção executar.
+    private var servicoDeEquipesCloudKit: ServicoDeEquipesCloudKit {
+        ServicoDeEquipesCloudKit()
+    }
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -152,6 +162,7 @@ struct ContentView: View {
                         audio: audio,
                         audioSecundario: audioSecundario,
                         importado: importado,
+                        midiaNaoDisponivelNesteMac: arquivo.semAudio && equipeAtiva != nil,
                         estado: estado,
                         processando: processando,
                         naFila: naFila,
@@ -224,15 +235,22 @@ struct ContentView: View {
             equipes = EquipesDoUsuario.carregar()
             usarEquipe(equipe)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitFalhou)) { notificacao in
+            guard let mensagem = notificacao.object as? String else { return }
+            falhaDeAbertura = "Não foi possível aceitar o convite do iCloud: \(mensagem)"
+        }
         .task {
-            notificacoes.preparar()
-            perfil.iniciar()
             await abrir()
+            await politicaDeInicializacaoExterna.executar {
+                notificacoes.preparar()
+                perfil.iniciar()
+                await conectarGoogleCalendarSeAutorizado()
+            }
         }
         // Retorno do navegador quando a autorização do Granola roda no
         // navegador padrão do sistema.
         .onOpenURL { url in
-            GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
+            _ = GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
         }
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor
@@ -371,7 +389,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                 aoIgnorarReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                     Task { @MainActor in
                                         googleCalendar?.ignorarPendente(pendente)
-                                        biblioteca?.moverPendenteParaLixeira(pendente)
                                     }
                                 },
                                focoNaGravacao: $focoNaGravacao,
@@ -390,7 +407,10 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
                                 aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
-                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe)
+                                estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
+                                aoRetomarSincronizacao: {
+                                    Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
+                                })
         }
     }
 
@@ -425,13 +445,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             }
             googleCalendar = conexaoGoogle
 
-            // Conecta automaticamente se houver credenciais salvas
-            if CredenciaisGoogle.estaConfigurado {
-                Task {
-                    await conexaoGoogle.conectar(biblioteca: nova)
-                }
-            }
-
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos
             )
@@ -453,7 +466,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                     let audioURL = nova.armazenamento.resolver(relativo: pasta)
                         .appendingPathComponent(Armazenamento.Nome.microfone)
                     _ = await gcalCapturado?.importarAudioParaReuniao(
-                        pendente, audioURL: audioURL, biblioteca: nova
+                        pendente,
+                        audioURL: audioURL,
+                        biblioteca: nova,
+                        duracao: duracao,
+                        notas: notas
                     )
                     await MainActor.run { caixaPendente.pendente = nil }
                     await MainActor.run { focoNaGravacao = false }
@@ -485,6 +502,14 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
+    }
+
+    private func conectarGoogleCalendarSeAutorizado() async {
+        guard let googleCalendar, let biblioteca,
+              CredenciaisGoogle.estaConfigurado,
+              googleCalendar.temAutorizacaoPersistida
+        else { return }
+        await googleCalendar.conectar(biblioteca: biblioteca)
     }
 
     private func abrirFichaDaEntrevista(para arquivo: Arquivo) {
@@ -678,20 +703,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         }
     }
 
-    private func atualizarConfiguracoesDaEquipe(_ equipe: EquipeDisponivel, configuracoes: ConfiguracoesDaEquipe) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
-        equipes[indice].configuracoes = configuracoes
-        EquipesDoUsuario.salvar(equipes)
-        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else { return }
-        Task { @MainActor in
-            do {
-                try await servicoDeEquipesCloudKit.atualizarConfiguracoes(configuracoes, da: equipes[indice])
-            } catch {
-                falhaDeAbertura = "As configurações foram salvas neste Mac, mas não puderam ser sincronizadas: \(error.localizedDescription)"
-            }
-        }
-    }
-
     private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
         guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
         equipes[indice].quantidadeDeMembros = quantidade
@@ -737,11 +748,20 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             await modelo.cancelar()
         }
 
-        try await biblioteca?.excluirDadosDaConta()
+        await googleCalendar?.encerrarLocalmenteParaExclusaoDoPerfil()
+        await granola?.encerrarLocalmenteParaExclusaoDoPerfil()
 
-        // Todos os stores de dados da conta num caminho só — store novo se
-        // registra lá, não aqui.
-        LimpezaDeConta.executar()
+        // Excluir o perfil pessoal não pode apagar a equipe que por acaso
+        // esteja aberta. O identificador pessoal é capturado antes de remover
+        // sua chave, e a biblioteca devolve exatamente os arquivos do espaço.
+        let espacoPessoalExcluido = Biblioteca.espacoPessoal()
+        let arquivosExcluidos = try await biblioteca?.excluirDadosDaConta(
+            espaco: espacoPessoalExcluido
+        ) ?? []
+
+        LimpezaDeConta.executar(arquivos: arquivosExcluidos)
+        LimpezaDeCredenciaisDaConta.executar()
+        LimpezaDeVinculosDeEquipe.executar(equipes: equipes)
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()
@@ -754,6 +774,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         secaoDaBiblioteca = .todos
         focoNaGravacao = false
         telaSelecionada = .biblioteca
+
+        // A chave do espaço pessoal foi removida pela cascata. Abrir um novo
+        // espaço vazio impede que a interface continue exibindo a equipe que
+        // estava ativa e simula corretamente o próximo relançamento do app.
+        await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
     }
 
     /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da

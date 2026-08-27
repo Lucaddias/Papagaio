@@ -15,17 +15,17 @@ struct CartaoDeConversa: View {
     let fichaPendente: Bool
     let seloDeConclusaoRevelado: Bool
     let aoAbrirFicha: () -> Void
-    let aoReprocessar: () -> Void
-    let aoDiarizar: () -> Void
+    let aoReprocessar: @MainActor @Sendable () -> Void
+    let aoDiarizar: @MainActor @Sendable () -> Void
     let aoRenomear: (String) -> Void
     let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void
-    let aoDuplicar: () -> Void
+    let aoDuplicar: @MainActor @Sendable () -> Void
     let urlDeAudio: URL
     let menuAberto: Bool
     let aoAlternarMenu: () -> Void
-    let aoFecharMenu: () -> Void
+    let aoFecharMenu: @MainActor @Sendable () -> Void
     let aoAlterarPreferenciasVisuais: () -> Void
-    let aoMoverParaLixeira: () -> Void
+    let aoMoverParaLixeira: @MainActor @Sendable () -> Void
     let aoAbrirPasta: (String) -> Void
 
     /// Preferência da grade inteira. `@AppStorage` porque um inteiro em
@@ -75,17 +75,17 @@ struct CartaoDeConversa: View {
         fichaPendente: Bool,
         seloDeConclusaoRevelado: Bool,
         aoAbrirFicha: @escaping () -> Void,
-        aoReprocessar: @escaping () -> Void,
-        aoDiarizar: @escaping () -> Void,
+        aoReprocessar: @escaping @MainActor @Sendable () -> Void,
+        aoDiarizar: @escaping @MainActor @Sendable () -> Void,
         aoRenomear: @escaping (String) -> Void,
         aoAtualizarMetadados: @escaping (String, Date, TimeInterval) -> Void,
-        aoDuplicar: @escaping () -> Void,
+        aoDuplicar: @escaping @MainActor @Sendable () -> Void,
         urlDeAudio: URL,
         menuAberto: Bool,
         aoAlternarMenu: @escaping () -> Void,
-        aoFecharMenu: @escaping () -> Void,
+        aoFecharMenu: @escaping @MainActor @Sendable () -> Void,
         aoAlterarPreferenciasVisuais: @escaping () -> Void,
-        aoMoverParaLixeira: @escaping () -> Void,
+        aoMoverParaLixeira: @escaping @MainActor @Sendable () -> Void,
         aoAbrirPasta: @escaping (String) -> Void
     ) {
         self.arquivo = arquivo
@@ -1226,7 +1226,9 @@ struct CartaoDeConversa: View {
         )
     }
 
-    private func executarMenu(_ acao: @escaping () -> Void) -> () -> Void {
+    private func executarMenu(
+        _ acao: @escaping @MainActor @Sendable () -> Void
+    ) -> @MainActor @Sendable () -> Void {
         {
             aoFecharMenu()
             // Um salto de runloop antes de agir: apresentar uma folha ou um

@@ -3,6 +3,53 @@ import PapagaioCore
 import Testing
 @testable import Papagaio
 
+@Test("Cleanup estruturado executa em sucesso, erro e cancelamento")
+func cleanupDeModelosEhGarantido() async {
+    let contador = ContadorDeCleanup()
+
+    let valor = await OperacaoComLimpeza.executar {
+        42
+    } limpar: {
+        await contador.registrar()
+    }
+    #expect(valor == 42)
+
+    do {
+        _ = try await OperacaoComLimpeza.executar {
+            throw FalhaDeCleanupTeste()
+        } limpar: {
+            await contador.registrar()
+        }
+    } catch {
+        #expect(error is FalhaDeCleanupTeste)
+    }
+
+    let cancelada = Task {
+        try await OperacaoComLimpeza.executar {
+            try await Task.sleep(for: .seconds(30))
+        } limpar: {
+            await contador.registrar()
+        }
+    }
+    cancelada.cancel()
+    do {
+        try await cancelada.value
+    } catch {
+        #expect(error is CancellationError)
+    }
+
+    #expect(await contador.valor() == 3)
+}
+
+private struct FalhaDeCleanupTeste: Error {}
+
+private actor ContadorDeCleanup {
+    private var quantidade = 0
+
+    func registrar() { quantidade += 1 }
+    func valor() -> Int { quantidade }
+}
+
 // A fila serial da `Biblioteca` é a invariante que impede o Whisper (3 GB) e o
 // Qwen (10,7 GB) de carregarem ao mesmo tempo num Mac cujo piso é 18 GB. Até
 // agora ela não tinha teste nenhum: o `.xcodeproj` tinha um único target.
@@ -350,39 +397,127 @@ func erroDeCarregamentoEhObservavel() async throws {
 }
 
 @MainActor
-@Test("Excluir a conta limpa todos os stores locais sem apagar preferências globais")
-func exclusaoDaContaLimpaStoresLocais() throws {
+@Test("Excluir o perfil limpa só auxiliares dos arquivos pessoais e é idempotente")
+func exclusaoDaContaLimpaStoresDoEspacoPessoal() throws {
     let suite = "LimpezaDeContaTests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
 
-    let chavesDaConta = [
-        "tarefasDaConversa.arquivo", "midiasDaConversa.arquivo",
-        "arquivoFavorito.id", "arquivoPasta.id", "arquivoCapa.id",
-        "arquivoMetadados.id", "arquivoNomesDeVoz.id", "pastasDaBiblioteca",
-        "corDaFaixaDoCartao.id", "bannerDoCartao.id", "ajusteDoBannerDoCartao.id",
-        "faixaSemCorDoCartao.id", "corDaPasta.Cliente", "capaDaPasta.Cliente",
-        "ajusteDaCapaDaPasta.Cliente", "pastaFavorita.Cliente",
-        "pastaCriadaEm.Cliente", "corLivreDaPasta.Cliente", "pastaSemCor.Cliente",
-        "fotoDaPessoa.ana", "midiaNaLixeira", "tarefasNaLixeira",
-        "pastasNaLixeira", "espacoIndividual",
+    let pessoal = ArquivoID()
+    let equipe = ArquivoID()
+    let sufixoPessoal = pessoal.rawValue.uuidString
+    let sufixoEquipe = equipe.rawValue.uuidString
+    let prefixosPorArquivo = [
+        "tarefasDaConversa.", "midiasDaConversa.", "arquivoFavorito.",
+        "arquivoPasta.", "arquivoCapa.", "arquivoMetadados.",
+        "arquivoNomesDeVoz.", "corDaFaixaDoCartao.", "bannerDoCartao.",
+        "ajusteDoBannerDoCartao.", "faixaSemCorDoCartao.",
     ]
-    for chave in chavesDaConta { defaults.set(Data([1]), forKey: chave) }
+    for prefixo in prefixosPorArquivo {
+        defaults.set(Data([1]), forKey: prefixo + sufixoPessoal)
+        defaults.set(Data([2]), forKey: prefixo + sufixoEquipe)
+    }
 
+    // Estes stores não têm dono por espaço. A opção A os preserva porque
+    // podem continuar servindo às conversas da equipe.
+    defaults.set(["Cliente"], forKey: "pastasDaBiblioteca")
+    defaults.set(Data([3]), forKey: "corDaPasta.Cliente")
+    defaults.set(Data([4]), forKey: "fotoDaPessoa.ana")
     defaults.set("escuro", forKey: "aparenciaDoApp")
     defaults.set(false, forKey: "processamentoAutomatico")
+    defaults.set(UUID().uuidString, forKey: "espacoIndividual")
 
-    LimpezaDeConta.executar(em: defaults)
+    LimpezaDeConta.executar(arquivos: [pessoal], em: defaults)
+    LimpezaDeConta.executar(arquivos: [pessoal], em: defaults)
 
-    for chave in chavesDaConta {
-        #expect(defaults.object(forKey: chave) == nil, "sobrou \(chave)")
+    for prefixo in prefixosPorArquivo {
+        #expect(defaults.object(forKey: prefixo + sufixoPessoal) == nil)
+        #expect(defaults.object(forKey: prefixo + sufixoEquipe) != nil)
     }
+    #expect(defaults.stringArray(forKey: "pastasDaBiblioteca") == ["Cliente"])
+    #expect(defaults.object(forKey: "corDaPasta.Cliente") != nil)
+    #expect(defaults.object(forKey: "fotoDaPessoa.ana") != nil)
     #expect(defaults.string(forKey: "aparenciaDoApp") == "escuro")
     #expect(defaults.object(forKey: "processamentoAutomatico") != nil)
+    #expect(defaults.object(forKey: "espacoIndividual") == nil)
 }
 
 @MainActor
-@Test("Excluir a conta não apaga a mídia de outro espaço")
+@Test("Excluir o perfil cria um novo espaço pessoal estável no relançamento")
+func exclusaoDaContaRenovaEspacoPessoalNoRelancamento() throws {
+    let suite = "EspacoAposExclusaoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let anterior = Biblioteca.espacoPessoal(em: defaults)
+    LimpezaDeConta.executar(arquivos: [], em: defaults)
+    let novo = Biblioteca.espacoPessoal(em: defaults)
+    let restauradoNoRelancamento = Biblioteca.espacoPessoal(em: defaults)
+
+    #expect(novo != anterior)
+    #expect(restauradoNoRelancamento == novo)
+}
+
+private final class CofreDeCredenciaisFake: CofreDeCredenciaisDaConta, @unchecked Sendable {
+    var contas: Set<String>
+
+    init(_ contas: Set<String>) {
+        self.contas = contas
+    }
+
+    func apagar(conta: String) {
+        contas.remove(conta)
+    }
+}
+
+@Test("Excluir o perfil apaga credenciais Google e Granola sem herança")
+func exclusaoDaContaLimpaCredenciaisDasIntegracoes() {
+    let google = CofreDeCredenciaisFake([
+        "access_token", "access_token_expires", "refresh_token", "pkce", "outra",
+    ])
+    let granola = CofreDeCredenciaisFake([
+        "access_token", "access_token_expires", "refresh_token", "client", "pkce", "outra",
+    ])
+
+    LimpezaDeCredenciaisDaConta.executar(google: google, granola: granola)
+    LimpezaDeCredenciaisDaConta.executar(google: google, granola: granola)
+
+    #expect(google.contas == ["outra"])
+    #expect(granola.contas == ["outra"])
+}
+
+@Test("Excluir o perfil persiste a remoção dos vínculos de equipe")
+func exclusaoDaContaRemoveEquipesNoRelancamento() throws {
+    let suite = "EquipesAposExclusaoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let equipe = EquipeDisponivel(
+        id: "produto", nome: "Produto", papel: "Administrador",
+        quantidadeDeMembros: 1, espacoID: UUID().uuidString
+    )
+    let membro = MembroDaEquipe(
+        nome: "Ana", email: "ana@example.com", cargo: "Design",
+        status: .ativo
+    )
+    EquipesDoUsuario.salvar([equipe], em: defaults)
+    MembrosDasEquipes.salvar([membro], equipeID: equipe.id, em: defaults)
+    defaults.set(equipe.id, forKey: "equipeAtiva")
+    defaults.set("equipe", forKey: "contextoDaConta")
+    defaults.set("preservar", forKey: "preferenciaGlobal")
+
+    LimpezaDeVinculosDeEquipe.executar(equipes: [equipe], em: defaults)
+    LimpezaDeVinculosDeEquipe.executar(equipes: [equipe], em: defaults)
+
+    #expect(EquipesDoUsuario.carregar(em: defaults).isEmpty)
+    #expect(MembrosDasEquipes.carregar(equipeID: equipe.id, em: defaults).isEmpty)
+    #expect(defaults.object(forKey: "equipeAtiva") == nil)
+    #expect(defaults.object(forKey: "contextoDaConta") == nil)
+    #expect(defaults.string(forKey: "preferenciaGlobal") == "preservar")
+}
+
+@MainActor
+@Test("Excluir o perfil pessoal com equipe ativa preserva o espaço da equipe")
 func exclusaoDaContaPreservaMidiaDeOutroEspaco() async throws {
     let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
@@ -428,11 +563,51 @@ func exclusaoDaContaPreservaMidiaDeOutroEspaco() async throws {
     )
     try Data("preservar".utf8).write(to: audioDoOutroEspaco)
 
-    try await bibliotecaAtual.excluirDadosDaConta()
+    let idsExcluidos = try await bibliotecaDoOutroEspaco.excluirDadosDaConta(
+        espaco: espacoAtual
+    )
 
-    #expect(bibliotecaAtual.arquivos.isEmpty)
+    #expect(idsExcluidos == [arquivoAtual.id])
+    #expect(try await repositorio.listar(espaco: espacoAtual).isEmpty)
+    #expect(bibliotecaDoOutroEspaco.arquivos.map(\.id) == [arquivoDoOutroEspaco.id])
     #expect(FileManager.default.fileExists(atPath: audioDoOutroEspaco.path))
     #expect(try await repositorio.listar(espaco: outroEspaco).map(\.id) == [arquivoDoOutroEspaco.id])
+}
+
+@MainActor
+@Test("Callback tardio não recria conversa nem deixa mídia após excluir o perfil")
+func exclusaoDaContaBloqueiaRegistroTardio() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let espaco = EspacoID()
+    let armazenamento = Armazenamento(raiz: raiz)
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
+    )
+    let biblioteca = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: espaco
+    )
+
+    _ = try await biblioteca.excluirDadosDaConta()
+
+    let pastaRelativa = Armazenamento.caminhoRelativo(id: UUID())
+    let pasta = armazenamento.resolver(relativo: pastaRelativa)
+    try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+    try Data("tardio".utf8).write(
+        to: pasta.appendingPathComponent(Armazenamento.Nome.microfone)
+    )
+
+    let recriado = await biblioteca.registrar(
+        titulo: "Não deve voltar", pastaRelativa: pastaRelativa, duracao: 10
+    )
+
+    #expect(recriado == nil)
+    #expect(try await repositorio.listar(espaco: espaco).isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: pasta.path))
 }
 
 @MainActor

@@ -284,8 +284,7 @@ struct BibliotecaHomeView: View {
 /// Reuniões pendentes do Google Calendar (próximas 24h, não expiradas).
     /// Exibidas no topo da biblioteca com scroll horizontal.
     private var reunioesDoCalendar: some View {
-        guard let biblioteca,
-              let googleCalendar,
+        guard let googleCalendar,
               !googleCalendar.reunioesPendentes.isEmpty,
               secaoSelecionada == .todos,
               !emCaptura
@@ -1098,7 +1097,7 @@ CartaoReuniaoPendente(
             }
 
         case .lixeira:
-            let temPendentesIgnoradas = !(biblioteca?.reunioesPendentesNaLixeira.isEmpty ?? true)
+            let temPendentesIgnoradas = !(googleCalendar?.reunioesIgnoradas.isEmpty ?? true)
             if (biblioteca?.arquivosNaLixeira.isEmpty ?? true) && !temPendentesIgnoradas && tarefasNaLixeira.isEmpty && midiasNaLixeira.isEmpty && pastasNaLixeira.isEmpty {
                 CartaoDeEstadoVazio(
                     simbolo: "trash",
@@ -1120,7 +1119,7 @@ CartaoReuniaoPendente(
                 // Pendentes ignoradas primeiro: são o que a pessoa acabou de
                 // descartar por engano com mais frequência — restauração a um
                 // clique de distância, sem rolar a lixeira inteira.
-                if let biblioteca, !biblioteca.reunioesPendentesNaLixeira.isEmpty {
+                if let googleCalendar, !googleCalendar.reunioesIgnoradas.isEmpty {
                     VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         Label("Reuniões pendentes ignoradas", systemImage: "calendar.badge.exclamationmark")
                             .font(PapagaioTema.Tipo.tituloDeSecao)
@@ -1128,11 +1127,13 @@ CartaoReuniaoPendente(
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: PapagaioTema.Espaco.medio) {
-                                ForEach(biblioteca.reunioesPendentesNaLixeira) { pendente in
+                                ForEach(googleCalendar.reunioesIgnoradas) { pendente in
                                     CartaoReuniaoPendenteLixeira(
                                         pendente: pendente,
-                                        aoRestaurar: { biblioteca.restaurarPendenteDaLixeira(pendente) },
-                                        aoApagarDefinitivamente: { biblioteca.apagarPendenteDefinitivamente(pendente) }
+                                        aoRestaurar: { googleCalendar.restaurarPendente(pendente) },
+                                        aoApagarDefinitivamente: {
+                                            googleCalendar.apagarPendenteDefinitivamente(pendente)
+                                        }
                                     )
                                 }
                             }

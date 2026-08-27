@@ -94,13 +94,13 @@ struct PerfilPessoalView: View {
         } message: {
             Text("A senha é gerenciada pelo seu ID Apple. Para alterar, use os ajustes da sua conta Apple.")
         }
-        .alert("Excluir conta permanentemente?", isPresented: $mostrandoConfirmacaoDeExclusao) {
+        .alert("Excluir perfil deste Mac?", isPresented: $mostrandoConfirmacaoDeExclusao) {
             Button("Cancelar", role: .cancel) {}
-            Button("Excluir conta e arquivos", role: .destructive) {
+            Button("Excluir perfil e dados pessoais", role: .destructive) {
                 Task { await excluirConta() }
             }
         } message: {
-            Text("Esta ação não pode ser desfeita. Seu perfil, conversas, áudios, transcrições, notas, tarefas e equipes deste Mac serão removidos.")
+            Text("Esta ação não pode ser desfeita. Seu perfil, conversas pessoais, áudios, transcrições, notas, tarefas, vínculos de equipe e conexões com Google Calendar e Granola serão removidos deste Mac. Os dados dos espaços de equipe, as preferências do app e os compartilhamentos do iCloud serão preservados.")
         }
         .alert("Não foi possível excluir a conta", isPresented: Binding(
             get: { erroDeExclusao != nil },
