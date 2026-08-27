@@ -74,7 +74,10 @@ func mapeamentoCloudKitRespeitaEspaco() async throws {
     let enviado = try #require(await transporte.ultimoArquivoSalvo())
     let baixados = try await sincronizador.baixar(da: equipe)
 
-    #expect(try JSONDecoder().decode(Arquivo.self, from: enviado) == esperado)
+    #expect(
+        try JSONDecoder().decode(PayloadDeConversaCloudKit.self, from: enviado).arquivo
+            == esperado
+    )
     #expect(baixados == [esperado])
 }
 
@@ -173,6 +176,80 @@ func permissoesDeMembroSeguemRespostaRemota() async throws {
     )
 }
 
+@Test("Falha transitória sobrevive ao relançamento e respeita backoff limitado")
+func filaCloudKitEhPersistente() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+    let url = raiz.appendingPathComponent("fila.json")
+    let agora = Date(timeIntervalSince1970: 1_000)
+    let espaco = EspacoID()
+    let equipe = equipeCloudKitDeTeste(espaco: espaco)
+    let arquivo = Arquivo(titulo: "Local", pastaRelativa: "", espaco: espaco)
+    let transporte = TransporteDeConversasFake(
+        paginas: [],
+        falharAoSalvar: true
+    )
+    let sincronizador = SincronizadorDaBibliotecaCloudKit(transporte: transporte)
+    let primeiraExecucao = FilaPersistenteCloudKit(url: url)
+
+    try await primeiraExecucao.agendarEnvio(
+        arquivo,
+        para: equipe,
+        revisao: agora
+    )
+    let falha = try await primeiraExecucao.processar(
+        com: sincronizador,
+        agora: agora
+    )
+
+    #expect(falha.pendentes == 1)
+    #expect(falha.proximaTentativa == agora.addingTimeInterval(5))
+
+    let aposRelancamento = FilaPersistenteCloudKit(url: url)
+    #expect(try await aposRelancamento.operacoesPendentes().first?.tentativas == 1)
+    await transporte.definirFalhaAoSalvar(false)
+
+    let cedo = try await aposRelancamento.processar(
+        com: sincronizador,
+        agora: agora.addingTimeInterval(4)
+    )
+    #expect(cedo.concluidas == 0)
+    #expect(cedo.pendentes == 1)
+
+    let retomada = try await aposRelancamento.processar(
+        com: sincronizador,
+        agora: agora.addingTimeInterval(5)
+    )
+    #expect(retomada.concluidas == 1)
+    #expect(retomada.pendentes == 0)
+    #expect(FilaPersistenteCloudKit.atraso(para: 20) == 15 * 60)
+}
+
+@Test("Download antigo não sobrescreve uma edição local pendente")
+func conflitoCloudKitPreservaEdicaoLocal() {
+    let revisaoRemota = Date(timeIntervalSince1970: 1_000)
+    let revisaoLocal = Date(timeIntervalSince1970: 2_000)
+
+    #expect(
+        PoliticaDeConflitoCloudKit.decidir(
+            revisaoRemota: revisaoRemota,
+            revisaoLocalPendente: revisaoLocal
+        ) == .preservarLocalPendente
+    )
+    #expect(
+        PoliticaDeConflitoCloudKit.decidir(
+            revisaoRemota: revisaoRemota,
+            revisaoLocalPendente: nil
+        ) == .aplicarRemoto
+    )
+    #expect(
+        PoliticaDeConflitoCloudKit.decidir(
+            revisaoRemota: revisaoRemota,
+            revisaoLocalPendente: revisaoRemota
+        ) == .aplicarRemoto
+    )
+}
+
 private func equipeCloudKitDeTeste(espaco: EspacoID) -> EquipeDisponivel {
     EquipeDisponivel(
         id: "produto",
@@ -193,15 +270,22 @@ private struct FalhaCloudKitFake: LocalizedError {
 private actor TransporteDeConversasFake: TransporteDeConversasCloudKit {
     private let paginas: [[Data]]
     private let falharAoPaginar: Bool
+    private var falharAoSalvar: Bool
     private var indiceDaPagina = 0
     private var arquivoSalvo: Data?
 
-    init(paginas: [[Data]], falharAoPaginar: Bool = false) {
+    init(
+        paginas: [[Data]],
+        falharAoPaginar: Bool = false,
+        falharAoSalvar: Bool = false
+    ) {
         self.paginas = paginas
         self.falharAoPaginar = falharAoPaginar
+        self.falharAoSalvar = falharAoSalvar
     }
 
-    func salvar(_ dados: Data, id: String, equipe: EquipeDisponivel) {
+    func salvar(_ dados: Data, id: String, equipe: EquipeDisponivel) throws {
+        if falharAoSalvar { throw FalhaCloudKitFake() }
         arquivoSalvo = dados
     }
 
@@ -225,6 +309,7 @@ private actor TransporteDeConversasFake: TransporteDeConversasCloudKit {
 
     func quantidadeDePaginasLidas() -> Int { indiceDaPagina }
     func ultimoArquivoSalvo() -> Data? { arquivoSalvo }
+    func definirFalhaAoSalvar(_ falhar: Bool) { falharAoSalvar = falhar }
 }
 
 private actor ServicoDeMembrosFake: ServicoDeMembrosDaEquipe {

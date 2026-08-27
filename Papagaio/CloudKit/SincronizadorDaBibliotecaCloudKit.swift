@@ -17,6 +17,40 @@ struct PaginaDeConversasCloudKit: Sendable {
     let proxima: CursorDeConversasCloudKit?
 }
 
+struct PayloadDeConversaCloudKit: Codable, Sendable, Equatable {
+    let versao: Int
+    let atualizadoEm: Date
+    let arquivo: Arquivo
+
+    init(arquivo: Arquivo, atualizadoEm: Date) {
+        versao = 1
+        self.atualizadoEm = atualizadoEm
+        self.arquivo = arquivo
+    }
+}
+
+struct ConversaRecebidaCloudKit: Sendable, Equatable {
+    let arquivo: Arquivo
+    let atualizadoEm: Date
+}
+
+enum PoliticaDeConflitoCloudKit {
+    enum Decisao: Equatable {
+        case aplicarRemoto
+        case preservarLocalPendente
+    }
+
+    static func decidir(
+        revisaoRemota: Date,
+        revisaoLocalPendente: Date?
+    ) -> Decisao {
+        guard let revisaoLocalPendente,
+              revisaoLocalPendente != revisaoRemota
+        else { return .aplicarRemoto }
+        return .preservarLocalPendente
+    }
+}
+
 /// Limite testável entre regras de sincronização e as APIs concretas do
 /// CloudKit. Nenhum double precisa construir `CKContainer` ou acessar iCloud.
 protocol TransporteDeConversasCloudKit: Sendable {
@@ -164,8 +198,14 @@ actor SincronizadorDaBibliotecaCloudKit {
         self.transporte = transporte
     }
 
-    func enviar(_ arquivo: Arquivo, para equipe: EquipeDisponivel) async throws {
-        let dados = try JSONEncoder().encode(arquivo)
+    func enviar(
+        _ arquivo: Arquivo,
+        para equipe: EquipeDisponivel,
+        revisao: Date = Date()
+    ) async throws {
+        let dados = try JSONEncoder().encode(
+            PayloadDeConversaCloudKit(arquivo: arquivo, atualizadoEm: revisao)
+        )
         try await transporte.salvar(
             dados,
             id: arquivo.id.rawValue.uuidString,
@@ -174,27 +214,53 @@ actor SincronizadorDaBibliotecaCloudKit {
     }
 
     func baixar(da equipe: EquipeDisponivel) async throws -> [Arquivo] {
+        try await baixarComVersoes(da: equipe).map(\.arquivo)
+    }
+
+    func baixarComVersoes(
+        da equipe: EquipeDisponivel
+    ) async throws -> [ConversaRecebidaCloudKit] {
         let espacoEsperado = try espacoDaEquipe(equipe)
         var cursor: CursorDeConversasCloudKit?
-        var arquivos: [Arquivo] = []
+        var conversas: [ConversaRecebidaCloudKit] = []
 
         repeat {
             let pagina = try await transporte.pagina(da: equipe, continuando: cursor)
             for dados in pagina.registros {
-                let arquivo = try JSONDecoder().decode(Arquivo.self, from: dados)
+                let conversa = try Self.decodificar(dados)
+                let arquivo = conversa.arquivo
                 guard arquivo.espaco == espacoEsperado else { continue }
-                arquivos.append(arquivo)
+                conversas.append(conversa)
             }
             cursor = pagina.proxima
         } while cursor != nil
 
-        return arquivos
+        return conversas
     }
 
     func remover(_ arquivo: Arquivo, da equipe: EquipeDisponivel) async throws {
+        try await remover(id: arquivo.id, da: equipe)
+    }
+
+    func remover(id: ArquivoID, da equipe: EquipeDisponivel) async throws {
         try await transporte.remover(
-            id: arquivo.id.rawValue.uuidString,
+            id: id.rawValue.uuidString,
             equipe: equipe
+        )
+    }
+
+    private static func decodificar(_ dados: Data) throws -> ConversaRecebidaCloudKit {
+        let decodificador = JSONDecoder()
+        if let payload = try? decodificador.decode(PayloadDeConversaCloudKit.self, from: dados) {
+            return ConversaRecebidaCloudKit(
+                arquivo: payload.arquivo,
+                atualizadoEm: payload.atualizadoEm
+            )
+        }
+        let legado = try decodificador.decode(Arquivo.self, from: dados)
+        return ConversaRecebidaCloudKit(
+            arquivo: legado,
+            atualizadoEm: legado.entradaNaBiblioteca
         )
     }
 

@@ -6,6 +6,8 @@ struct GestaoDeEquipeView: View {
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
     let aoAtualizarConfiguracoes: (EquipeDisponivel, ConfiguracoesDaEquipe) -> Void
+    let estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit
+    let aoRetomarSincronizacao: () -> Void
 
     @State private var gestor: GestorDeMembrosDaEquipe
     @State private var pagina = 0
@@ -21,6 +23,8 @@ struct GestaoDeEquipeView: View {
         aoSelecionarEquipe: @escaping (EquipeDisponivel) -> Void,
         aoAtualizarQuantidadeDeMembros: @escaping (String, Int) -> Void,
         aoAtualizarConfiguracoes: @escaping (EquipeDisponivel, ConfiguracoesDaEquipe) -> Void,
+        estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit = .local,
+        aoRetomarSincronizacao: @escaping () -> Void = {},
         servicoDeMembros: any ServicoDeMembrosDaEquipe = ServicoDeEquipesCloudKit()
     ) {
         self.equipeAtiva = equipeAtiva
@@ -28,6 +32,8 @@ struct GestaoDeEquipeView: View {
         self.aoSelecionarEquipe = aoSelecionarEquipe
         self.aoAtualizarQuantidadeDeMembros = aoAtualizarQuantidadeDeMembros
         self.aoAtualizarConfiguracoes = aoAtualizarConfiguracoes
+        self.estadoDaSincronizacao = estadoDaSincronizacao
+        self.aoRetomarSincronizacao = aoRetomarSincronizacao
         _gestor = State(initialValue: GestorDeMembrosDaEquipe(servico: servicoDeMembros))
     }
 
@@ -36,6 +42,7 @@ struct GestaoDeEquipeView: View {
             if let equipeAtiva {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                     cabecalho(equipeAtiva)
+                    estadoDoICloud
                     codigoDaEquipe(equipeAtiva)
                     configuracoesDaEquipe(equipeAtiva)
 
@@ -137,6 +144,38 @@ struct GestaoDeEquipeView: View {
             }
             .buttonStyle(BotaoDeContornoPapagaio())
         }
+    }
+
+    private var estadoDoICloud: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            switch estadoDaSincronizacao {
+            case .local:
+                Label("Espaço local", systemImage: "internaldrive")
+            case .enviando:
+                ProgressView()
+                Text("Sincronizando com o iCloud…")
+            case .sincronizado:
+                Label("Sincronizado com o iCloud", systemImage: "checkmark.icloud")
+                    .foregroundStyle(PapagaioTema.sucesso)
+            case let .falhou(mensagem):
+                Label(mensagem, systemImage: "exclamationmark.icloud")
+                    .foregroundStyle(PapagaioTema.perigo)
+                Spacer()
+                Button("Tentar agora", action: aoRetomarSincronizacao)
+                    .buttonStyle(BotaoDeContornoPapagaio())
+            }
+            if !sincronizacaoFalhou {
+                Spacer()
+            }
+        }
+        .font(.callout)
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
+
+    private var sincronizacaoFalhou: Bool {
+        if case .falhou = estadoDaSincronizacao { return true }
+        return false
     }
 
     private func codigoDaEquipe(_ equipe: EquipeDisponivel) -> some View {

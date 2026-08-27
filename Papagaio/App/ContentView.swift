@@ -406,7 +406,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
                                 aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
-                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe)
+                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe,
+                                estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
+                                aoRetomarSincronizacao: {
+                                    Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
+                                })
         }
     }
 
