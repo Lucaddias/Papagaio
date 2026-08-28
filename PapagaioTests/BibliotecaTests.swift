@@ -259,11 +259,14 @@ func duplicacaoMantemTarefasIndependentes() async throws {
     let tarefaOriginal = TarefaDaConversa(
         titulo: "Enviar ata",
         origem: original.titulo,
-        prioridade: .alta,
+        prioridade: .baixa,
         status: .emAndamento,
         responsavel: "Ana",
         prazo: prazo,
-        descricao: "Incluir os encaminhamentos."
+        descricao: "Incluir os encaminhamentos.",
+        sugestaoPendente: true,
+        prioridadeDefinidaManualmente: true,
+        atrasoReconhecido: true
     )
     TarefasGeraisStore.salvar([tarefaOriginal], para: original.id)
 
@@ -281,6 +284,9 @@ func duplicacaoMantemTarefasIndependentes() async throws {
     #expect(tarefaDaCopia.responsavel == tarefaOriginal.responsavel)
     #expect(tarefaDaCopia.prazo == prazo)
     #expect(tarefaDaCopia.descricao == tarefaOriginal.descricao)
+    #expect(tarefaDaCopia.pendenteDeRevisao)
+    #expect(tarefaDaCopia.prioridadeEhManual)
+    #expect(tarefaDaCopia.atrasoFoiReconhecido)
 }
 
 @MainActor

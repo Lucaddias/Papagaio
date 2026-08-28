@@ -2,9 +2,9 @@ import Foundation
 
 /// Impede que o host dos testes alcance integrações reais durante o lançamento.
 ///
-/// O app continua abrindo a biblioteca local nos testes; somente efeitos que
-/// dependem de conta, Keychain, navegador, rede ou permissões do sistema ficam
-/// desativados. O sinal explícito do scheme deixa a regra reproduzível na CI,
+/// O host dos testes não constrói a cena de produção: nem biblioteca local,
+/// migrações, conta, Keychain, navegador, rede ou permissões do sistema.
+/// O sinal explícito do scheme deixa a regra reproduzível na CI,
 /// enquanto `XCTestConfigurationFilePath` protege execuções iniciadas fora dele.
 @MainActor
 struct PoliticaDeInicializacaoExterna {

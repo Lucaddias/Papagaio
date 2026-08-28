@@ -14,6 +14,7 @@ final class DelegadoDeConvitesCloudKit: NSObject, NSApplicationDelegate {
         _ application: NSApplication,
         userDidAcceptCloudKitShareWith metadados: CKShare.Metadata
     ) {
+        guard PoliticaDeInicializacaoExterna().permiteServicosExternos else { return }
         Task {
             do {
                 let equipe = try await ServicoDeEquipesCloudKit().aceitar(metadados)

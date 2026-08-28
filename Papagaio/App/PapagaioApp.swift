@@ -1,7 +1,25 @@
 import AppKit
 import SwiftUI
 
+/// Escolhe o host antes de construir qualquer estado ou cena de produção.
 @main
+enum InicializacaoDoPapagaio {
+    @MainActor
+    static func main() {
+        if PoliticaDeInicializacaoExterna().permiteServicosExternos {
+            PapagaioApp.main()
+        } else {
+            HostDeTestesDoPapagaio.main()
+        }
+    }
+}
+
+private struct HostDeTestesDoPapagaio: App {
+    var body: some Scene {
+        WindowGroup { Color.clear }
+    }
+}
+
 struct PapagaioApp: App {
     @NSApplicationDelegateAdaptor(DelegadoDeConvitesCloudKit.self) private var delegadoDeConvites
 

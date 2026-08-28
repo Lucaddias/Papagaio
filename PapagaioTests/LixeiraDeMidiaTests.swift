@@ -185,6 +185,48 @@ func lixeiraDeMidiaRecusaCaminhoExterno() throws {
 }
 
 @MainActor
+@Test("Restaurar com nome ocupado preserva os dois arquivos e o registro na lixeira")
+func restaurarMidiaComColisaoNaoApagaConteudo() throws {
+    let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()
+    let arquivoID = ArquivoID()
+    defer {
+        try? FileManager.default.removeItem(at: raiz)
+        defaults.removePersistentDomain(forName: suite)
+        MidiasDaConversa.remover(arquivoID)
+    }
+
+    let conversa = armazenamento.raiz
+        .appendingPathComponent(Armazenamento.pastaGravacoes, isDirectory: true)
+        .appendingPathComponent("Conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    let origem = conversa.appendingPathComponent("anexo.txt")
+    let conteudoOriginal = Data("primeiro anexo".utf8)
+    let conteudoNovo = Data("outro anexo com o mesmo nome".utf8)
+    try conteudoOriginal.write(to: origem)
+    try LixeiraDeMidia.mover(
+        url: origem,
+        nome: "anexo.txt",
+        tamanho: Int64(conteudoOriginal.count),
+        tipo: "Documento",
+        daGravacao: false,
+        arquivoID: arquivoID,
+        conversaTitulo: "Conversa",
+        pastaDaConversa: conversa,
+        em: defaults
+    )
+    let item = try #require(LixeiraDeMidia.itens(em: defaults).first)
+    try conteudoNovo.write(to: origem)
+
+    #expect(!LixeiraDeMidia.restaurar(item, em: defaults, armazenamento: armazenamento))
+
+    #expect(try Data(contentsOf: origem) == conteudoNovo)
+    let naLixeira = URL(fileURLWithPath: item.caminhoNaLixeira)
+    #expect(try Data(contentsOf: naLixeira) == conteudoOriginal)
+    #expect(LixeiraDeMidia.itens(em: defaults).map(\.id) == [item.id])
+    #expect(MidiasDaConversa.carregar(arquivoID).isEmpty)
+}
+
+@MainActor
 @Test("Restauração recusa registro que aponta a origem para a própria lixeira")
 func lixeiraDeMidiaNaoApagaArquivoQuandoOrigemCorrompidaApontaParaLixeira() throws {
     let (armazenamento, raiz, defaults, suite) = try cenarioDeLixeiraDeMidia()

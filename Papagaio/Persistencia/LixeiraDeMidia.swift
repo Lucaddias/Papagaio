@@ -114,28 +114,24 @@ enum LixeiraDeMidia {
             return false
         }
 
+        // O mesmo nome pode pertencer a outro arquivo adicionado depois da
+        // remoção. Restaurar não autoriza apagar nenhuma das duas cópias.
+        guard !FileManager.default.fileExists(atPath: destino.path) else { return false }
+
         do {
-            // Já existe um arquivo com o nome de destino: o que vale é o que
-            // está na conversa. Antes de descartar o da lixeira, porém,
-            // garantimos que a lista de anexos também aponta para ele.
-            if FileManager.default.fileExists(atPath: destino.path) {
+            try FileManager.default.createDirectory(
+                at: destino.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.moveItem(at: origem, to: destino)
+            do {
                 try registrarAnexoRestaurado(item, em: destino)
-                try FileManager.default.removeItem(at: origem)
-            } else {
-                try FileManager.default.createDirectory(
-                    at: destino.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                try FileManager.default.moveItem(at: origem, to: destino)
-                do {
-                    try registrarAnexoRestaurado(item, em: destino)
-                } catch {
-                    // O arquivo voltou para a conversa, mas o bookmark não
-                    // pôde ser salvo. Reverte o move para a lixeira, que é o
-                    // único estado em que o item segue recuperável.
-                    try? FileManager.default.moveItem(at: destino, to: origem)
-                    throw error
-                }
+            } catch {
+                // O arquivo voltou para a conversa, mas o bookmark não
+                // pôde ser salvo. Reverte o move para a lixeira, que é o
+                // único estado em que o item segue recuperável.
+                try? FileManager.default.moveItem(at: destino, to: origem)
+                throw error
             }
         } catch {
             return false
@@ -293,10 +289,9 @@ enum LixeiraDeMidia {
               componentesDoOriginal.count > componentesDaConversa.count,
               Array(componentesDoOriginal.prefix(componentesDaConversa.count)) == componentesDaConversa,
               // O destino restaurado pode viver em qualquer lugar legítimo da
-              // conversa, mas nunca dentro da própria pasta de lixeira. Sem
-              // esta condição, um registro corrompido poderia apontar a
-              // origem para o mesmo arquivo que está sendo restaurado: o
-              // ramo de colisão o apagaria e depois removeria o registro.
+              // conversa, mas nunca dentro da própria pasta de lixeira.
+              // Um registro corrompido não pode tratar um arquivo ainda
+              // excluído como destino legítimo de restauração.
               !componentesDoOriginal.starts(with: componentesDaPastaDaLixeira)
         else { throw Erro.caminhoForaDasGravacoes }
 
