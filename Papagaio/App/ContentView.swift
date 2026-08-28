@@ -323,16 +323,18 @@ struct ContentView: View {
     private var barraSuperior: some View {
         BarraSuperiorPapagaioView(
             consulta: $consulta, legendaAtiva: $legendaDaBarra,
-            // Sem o chevron nas Tarefas nem na Lixeira: as duas já têm um
-            // atalho próprio na barra ("Biblioteca" e "Lixeira", ao lado da
-            // busca), então o botão de voltar virava um segundo caminho
-            // para o mesmo lugar — redundante, e não obrigatório como é
-            // numa conversa aberta ou na captura.
+            // Sem o chevron nas telas que já têm atalho próprio na barra:
+            // Tarefas, Mídias, Configurações e Lixeira. Ali o botão de voltar
+            // seria um segundo caminho para a Biblioteca, redundante e não
+            // obrigatório como é numa conversa aberta ou na captura.
             exibindoBotaoVoltar: !naTelaInicial
                 && telaSelecionada != .tarefas
+                && telaSelecionada != .midias
+                && telaSelecionada != .configuracoes
                 && !(telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira),
             bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
             tarefasSelecionada: telaSelecionada == .tarefas,
+            midiasSelecionada: telaSelecionada == .midias,
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
@@ -342,6 +344,7 @@ struct ContentView: View {
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
             aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas, aoLimparNotificacoes: notificacoes.limpar,
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
+            aoAbrirMidias: abrirMidias,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
             aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
             aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
@@ -395,6 +398,8 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                aoAbrirFicha: abrirFichaDaEntrevista)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
+        case .midias:
+            MidiasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia,
                               granola: granola, googleCalendar: googleCalendar, biblioteca: biblioteca)
@@ -625,6 +630,11 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
 
     private func abrirTarefas() {
         telaSelecionada = .tarefas
+        secaoDaBiblioteca = .todos
+    }
+
+    private func abrirMidias() {
+        telaSelecionada = .midias
         secaoDaBiblioteca = .todos
     }
 
