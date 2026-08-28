@@ -336,15 +336,6 @@ struct BarraSuperiorPapagaioView: View {
     private var menuDePerfil: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             if perfilConectado {
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    Text("Conta ativa")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                    Text(tituloDaContaAtiva)
-                        .font(.headline)
-                        .foregroundStyle(PapagaioTema.texto)
-                }
-
                 SeletorDeContextoDaConta(
                     contexto: contextoDaConta,
                     equipeAtiva: equipeAtiva,
@@ -370,11 +361,6 @@ struct BarraSuperiorPapagaioView: View {
                     exibindoMenuDePerfil = false
                     aoGerenciarEquipe()
                 }
-
-                Button("Sair", role: .destructive) {
-                    exibindoMenuDePerfil = false
-                    aoSair()
-                }
             } else {
                 Button("Entrar com Apple") {
                     exibindoMenuDePerfil = false
@@ -384,12 +370,10 @@ struct BarraSuperiorPapagaioView: View {
             }
         }
         .padding(PapagaioTema.Espaco.medio)
-        // Mais largo quando há equipes pra mostrar: é o que dá espaço para
-        // as duas colunas lado a lado do `SeletorDeContextoDaConta`
-        // (Pessoal à esquerda, Equipes à direita) — sem equipe nenhuma essa
-        // segunda coluna nem aparece, e o menu volta ao tamanho estreito de
-        // sempre.
-        .frame(width: equipes.isEmpty ? 280 : 460, alignment: .leading)
+        // Largura fixa: o `SeletorDeContextoDaConta` agora é uma coluna só
+        // (Perfil pessoal + uma linha "Equipe" com um pulldown), então não
+        // precisa mais alargar o menu quando há equipes.
+        .frame(width: 280, alignment: .leading)
     }
 
     private var campoDeBusca: some View {

@@ -11,86 +11,123 @@ struct SeletorDeContextoDaConta: View {
     let equipes: [EquipeDisponivel]
     let aoUsarPerfil: () -> Void
     let aoUsarEquipe: (EquipeDisponivel) -> Void
+    /// Um `Menu` nativo do SwiftUI renderiza os itens como `NSMenuItem` de
+    /// verdade — sem jeito de colorir o fundo ou destacar qual equipe está
+    /// selecionada, só o texto puro. E abrir a lista "inline" (empurrando o
+    /// resto do menu pra baixo) duplicava a equipe ativa na tela: uma vez na
+    /// linha resumo, outra dentro da lista. Por isso a lista vira um
+    /// popover flutuante — como o seletor do Codex — que abre por cima sem
+    /// mexer no resto do menu, e a linha resumo some enquanto ele está
+    /// aberto.
+    @State private var mostrandoEquipes = false
 
     var body: some View {
-        // Duas colunas, não uma lista só: Pessoal à esquerda (sempre uma
-        // linha só, o próprio perfil) e Equipes à direita — separadas de
-        // verdade, em vez de "Perfil pessoal" e nove equipes competindo pela
-        // mesma lista vertical. Sem equipe nenhuma a coluna da direita nem
-        // aparece (ver `BarraSuperiorPapagaio.menuDePerfil`, que também
-        // encolhe o menu de volta para o tamanho estreito de sempre nesse
-        // caso).
-        HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                Text("Pessoal")
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            Text("Pessoal")
+                .font(.caption.weight(.bold))
+                .textCase(.uppercase)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+
+            BotaoDeContextoDaConta(
+                titulo: "Perfil pessoal",
+                subtitulo: "Conta pessoal",
+                simbolo: "person.crop.circle",
+                selecionado: contexto == .perfil,
+                acao: aoUsarPerfil
+            )
+
+            if !equipes.isEmpty {
+                Text("Equipe")
                     .font(.caption.weight(.bold))
                     .textCase(.uppercase)
                     .foregroundStyle(PapagaioTema.textoSecundario)
+                    .padding(.top, PapagaioTema.Espaco.curto)
 
-                BotaoDeContextoDaConta(
-                    titulo: "Perfil pessoal",
-                    subtitulo: "Conta pessoal",
-                    simbolo: "person.crop.circle",
-                    selecionado: contexto == .perfil,
-                    acao: aoUsarPerfil
-                )
+                linhaDeEquipeAtiva
             }
-            .frame(width: equipes.isEmpty ? nil : 170, alignment: .leading)
+        }
+        .frame(width: 260, alignment: .leading)
+    }
 
-            if !equipes.isEmpty {
-                Divider()
+    /// A linha que fica sempre visível: nome da equipe ativa e um "v" que
+    /// abre o popover flutuante com a lista completa.
+    private var linhaDeEquipeAtiva: some View {
+        Button {
+            mostrandoEquipes = true
+        } label: {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Image(systemName: "person.3")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(contexto == .equipe ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                    .frame(width: 28, height: 28)
 
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                    Text("Equipes")
-                        .font(.caption.weight(.bold))
-                        .textCase(.uppercase)
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-
-                    if equipes.count <= Self.maximoSemRolagem {
-                        VStack(spacing: PapagaioTema.Espaco.minimo) {
-                            ForEach(equipes) { equipe in
-                                linhaDaEquipe(equipe)
-                            }
-                        }
-                    } else {
-                        // Com muitas equipes, listar todas sem limite (o que
-                        // aconteceu antes disto) vira um menu do tamanho da
-                        // tela inteira — nada "legal" de ver, e ainda
-                        // empurra "Gerenciar perfil"/"Sair" para bem longe
-                        // do clique. Uma altura travada com rolagem mantém o
-                        // popover num tamanho razoável em qualquer
-                        // quantidade de equipes.
-                        ScrollView {
-                            VStack(spacing: PapagaioTema.Espaco.minimo) {
-                                ForEach(equipes) { equipe in
-                                    linhaDaEquipe(equipe)
-                                }
-                            }
-                        }
-                        .frame(maxHeight: Self.alturaDaRolagem)
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(equipeAtiva?.nome ?? "Selecionar equipe")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+                    if let ativa = equipeAtiva {
+                        Text("\(ativa.papel) • \(ativa.quantidadeDeMembros) membros")
+                            .font(.caption)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                            .lineLimit(1)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
             }
+            .padding(PapagaioTema.Espaco.curto)
+            .background(
+                contexto == .equipe ? PapagaioTema.destaqueSuave.opacity(0.7) : Color.clear,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $mostrandoEquipes, arrowEdge: .bottom) {
+            listaFlutuanteDeEquipes
         }
     }
 
-    /// Acima disso, a lista de equipes vira rolagem — ver o comentário no
-    /// `body`.
-    private static let maximoSemRolagem = 5
-    /// Cabe pouco mais de 4 linhas (cada `BotaoDeContextoDaConta` tem ~50pt)
-    /// antes de rolar — dá pra ver que a lista continua sem precisar abrir
-    /// o menu inteiro do tamanho da tela.
-    private static let alturaDaRolagem: CGFloat = 220
+    /// Até `maximoVisivel` equipes cabem sem rolagem — acima disso, uma
+    /// altura travada com `ScrollView` mantém o popover num tamanho
+    /// razoável em vez de crescer com a lista inteira.
+    private static let maximoVisivel = 5
+    private static let alturaDeCadaLinha: CGFloat = 56
+    private static let alturaDaRolagem = alturaDeCadaLinha * CGFloat(maximoVisivel)
 
-    private func linhaDaEquipe(_ equipe: EquipeDisponivel) -> some View {
-        BotaoDeContextoDaConta(
-            titulo: equipe.nome,
-            subtitulo: "\(equipe.papel) • \(equipe.quantidadeDeMembros) membros",
-            simbolo: "person.3",
-            selecionado: contexto == .equipe && equipe.id == equipeAtiva?.id,
-            acao: { aoUsarEquipe(equipe) }
-        )
+    private var listaFlutuanteDeEquipes: some View {
+        Group {
+            if equipes.count <= Self.maximoVisivel {
+                conteudoDaLista
+            } else {
+                ScrollView {
+                    conteudoDaLista
+                }
+                .frame(maxHeight: Self.alturaDaRolagem)
+            }
+        }
+        .frame(width: 260)
+        .padding(PapagaioTema.Espaco.curto)
+    }
+
+    private var conteudoDaLista: some View {
+        VStack(spacing: PapagaioTema.Espaco.minimo) {
+            ForEach(equipes) { equipe in
+                BotaoDeContextoDaConta(
+                    titulo: equipe.nome,
+                    subtitulo: "\(equipe.papel) • \(equipe.quantidadeDeMembros) membros",
+                    simbolo: "person.3",
+                    selecionado: contexto == .equipe && equipe.id == equipeAtiva?.id,
+                    acao: {
+                        aoUsarEquipe(equipe)
+                        mostrandoEquipes = false
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -120,12 +157,6 @@ struct BotaoDeContextoDaConta: View {
                 }
 
                 Spacer()
-
-                if selecionado {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                }
             }
             .padding(PapagaioTema.Espaco.curto)
             .background(
