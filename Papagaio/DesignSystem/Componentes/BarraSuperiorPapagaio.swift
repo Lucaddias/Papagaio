@@ -17,6 +17,10 @@ struct BarraSuperiorPapagaioView: View {
     let avatarURL: URL?
     let contextoDaConta: ContextoDaConta
     let equipeAtiva: EquipeDisponivel?
+    /// Todas as equipes da pessoa — não só a ativa. É o que permite trocar
+    /// direto por aqui em vez de precisar ir em "Gerenciar equipe" só para
+    /// mudar de equipe (ver `SeletorDeContextoDaConta`).
+    let equipes: [EquipeDisponivel]
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -32,7 +36,7 @@ struct BarraSuperiorPapagaioView: View {
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
     let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
+    let aoUsarEquipe: (EquipeDisponivel) -> Void
     let aoGerenciarPerfil: () -> Void
     let aoGerenciarEquipe: () -> Void
 
@@ -344,13 +348,14 @@ struct BarraSuperiorPapagaioView: View {
                 SeletorDeContextoDaConta(
                     contexto: contextoDaConta,
                     equipeAtiva: equipeAtiva,
+                    equipes: equipes,
                     aoUsarPerfil: {
                         exibindoMenuDePerfil = false
                         aoUsarPerfil()
                     },
-                    aoUsarEquipe: {
+                    aoUsarEquipe: { equipe in
                         exibindoMenuDePerfil = false
-                        aoUsarEquipe()
+                        aoUsarEquipe(equipe)
                     }
                 )
 
@@ -379,7 +384,12 @@ struct BarraSuperiorPapagaioView: View {
             }
         }
         .padding(PapagaioTema.Espaco.medio)
-        .frame(width: 280, alignment: .leading)
+        // Mais largo quando há equipes pra mostrar: é o que dá espaço para
+        // as duas colunas lado a lado do `SeletorDeContextoDaConta`
+        // (Pessoal à esquerda, Equipes à direita) — sem equipe nenhuma essa
+        // segunda coluna nem aparece, e o menu volta ao tamanho estreito de
+        // sempre.
+        .frame(width: equipes.isEmpty ? 280 : 460, alignment: .leading)
     }
 
     private var campoDeBusca: some View {

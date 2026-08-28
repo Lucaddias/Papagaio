@@ -4,43 +4,46 @@ struct EquipesDoPerfil: View {
     let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionar: (EquipeDisponivel) -> Void
-    let aoAdicionarEquipe: (String) -> Void
-    @State private var mostrandoNovaEquipe = false
-    @State private var nomeDaNovaEquipe = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            HStack {
-                Text("Equipes")
-                    .font(.title3)
-                    .foregroundStyle(PapagaioTema.texto)
-
-                Spacer()
-
-                Button {
-                    mostrandoNovaEquipe = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .bold))
-                        .frame(width: 32, height: 32)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(PapagaioTema.destaqueEscuro)
-                .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-                .help("Adicionar nova equipe")
-            }
+            // Sem botão de "+": este cartão só mostra as equipes que a
+            // pessoa já tem e deixa trocar qual está ativa — criar uma nova
+            // é coisa de "Gerenciar equipe" (ver `GestaoDeEquipeView`), não
+            // daqui. Duas telas oferecendo o mesmo "criar" confundia mais do
+            // que ajudava.
+            Text("Equipes")
+                .font(.title3)
+                .foregroundStyle(PapagaioTema.texto)
 
             SeparadorPapagaio()
 
             if equipes.isEmpty {
-                Text("Você ainda não tem equipes. Use o + para criar a primeira e convidar pessoas.")
+                Text("Você ainda não tem equipes. Crie a primeira em \"Gerenciar equipe\".")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            // Grade, e não uma lista de uma coluna só: o cartão de Equipes
+            // agora ocupa o mesmo espaço vertical da coluna inteira à
+            // esquerda (identidade + Informações Pessoais + Segurança — ver
+            // `PerfilPessoalView.colunaEsquerdaDoPerfil`), então sobrava uma
+            // faixa enorme de espaço vazio à direita de cada linha. Três
+            // colunas (`.adaptive(minimum: 220)`, sem teto: encolhe para 2 ou
+            // 1 coluna sozinha numa janela estreita, nunca corta) aproveitam
+            // essa largura em vez de deixá-la parada.
+            // Espaço horizontal maior que o vertical (`secao`, não `curto`):
+            // com as colunas quase coladas, a linha divisória do meio ficava
+            // espremida entre os textos dos dois lados, sem respiro nenhum
+            // — mais parecendo sujeira na tela do que uma divisão de
+            // verdade. Com folga de sobra dos dois lados, ela lê como algo
+            // desenhado de propósito.
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 220), spacing: PapagaioTema.Espaco.secao, alignment: .top)],
+                spacing: PapagaioTema.Espaco.curto
+            ) {
                 ForEach(equipes) { equipe in
                     Button {
                         aoSelecionar(equipe)
@@ -74,28 +77,26 @@ struct EquipesDoPerfil: View {
                     )
                 }
             }
+            // Linha vertical no meio, só quando a grade de fato tem duas
+            // colunas lado a lado — medida pela própria largura da grade
+            // (`.adaptive` não avisa quantas colunas escolheu, então a conta
+            // aqui refaz a mesma regra do `GridItem` acima: cabe uma segunda
+            // coluna de 220pt, mais o espaçamento entre elas). Numa janela
+            // estreita, onde a grade vira uma coluna só, a linha some — não
+            // faria sentido dividir ao meio o que já é uma lista única.
+            .background {
+                GeometryReader { geometria in
+                    if geometria.size.width >= 220 * 2 + PapagaioTema.Espaco.secao {
+                        Rectangle()
+                            .fill(PapagaioTema.borda)
+                            .frame(width: 1)
+                            .position(x: geometria.size.width / 2, y: geometria.size.height / 2)
+                    }
+                }
+            }
         }
         .padding(PapagaioTema.Espaco.secao)
         .frame(maxWidth: .infinity, minHeight: 226, alignment: .topLeading)
         .cartaoPapagaio()
-        .alert("Nova equipe", isPresented: $mostrandoNovaEquipe) {
-            TextField("Nome da equipe", text: $nomeDaNovaEquipe)
-            Button("Cancelar", role: .cancel) {
-                nomeDaNovaEquipe = ""
-            }
-            Button("Adicionar") {
-                adicionarEquipe()
-            }
-            .disabled(nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        } message: {
-            Text("Crie uma equipe para vincular ao seu perfil.")
-        }
-    }
-
-    private func adicionarEquipe() {
-        let nome = nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !nome.isEmpty else { return }
-        aoAdicionarEquipe(nome)
-        nomeDaNovaEquipe = ""
     }
 }

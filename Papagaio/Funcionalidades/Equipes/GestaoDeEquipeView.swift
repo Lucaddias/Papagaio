@@ -5,22 +5,34 @@ struct GestaoDeEquipeView: View {
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
+    /// Criar equipe é coisa desta tela, não do Perfil — lá só aparece quais
+    /// equipes a pessoa já tem, com o `+` que existia antes movido pra cá.
+    let aoAdicionarEquipe: (String) -> Void
     @State private var membros: [MembroDaEquipe] = []
     @State private var pagina = 0
     @State private var membroEditando: MembroDaEquipe?
     @State private var mostrandoAdicionar = false
     @State private var mostrandoTrocarEquipe = false
+    @State private var mostrandoNovaEquipe = false
+    @State private var nomeDaNovaEquipe = ""
 
     var body: some View {
         ScrollView {
-            // Sem equipe não há membro para listar nem nome para exibir: a tela
-            // inteira vira o convite para criar a primeira, no perfil.
+            // Sem equipe não há membro para listar nem nome para exibir: a
+            // tela inteira vira o convite para criar a primeira, aqui mesmo.
             if equipeAtiva == nil {
-                CartaoDeEstadoVazio(
-                    simbolo: "person.3",
-                    titulo: "Nenhuma equipe ainda",
-                    mensagem: "Crie uma equipe no seu perfil para convidar pessoas e distribuir as tarefas das conversas."
-                )
+                VStack(spacing: PapagaioTema.Espaco.largo) {
+                    CartaoDeEstadoVazio(
+                        simbolo: "person.3",
+                        titulo: "Nenhuma equipe ainda",
+                        mensagem: "Crie uma equipe para convidar pessoas e distribuir as tarefas das conversas."
+                    )
+
+                    Button("Criar equipe", systemImage: "plus") {
+                        mostrandoNovaEquipe = true
+                    }
+                    .buttonStyle(BotaoPrincipalPapagaio())
+                }
                 .padding(.vertical, PapagaioTema.espacamentoDePagina)
             } else {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
@@ -91,6 +103,25 @@ struct GestaoDeEquipeView: View {
                 }
             )
         }
+        .alert("Nova equipe", isPresented: $mostrandoNovaEquipe) {
+            TextField("Nome da equipe", text: $nomeDaNovaEquipe)
+            Button("Cancelar", role: .cancel) {
+                nomeDaNovaEquipe = ""
+            }
+            Button("Criar") {
+                criarEquipe()
+            }
+            .disabled(nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Dá pra convidar pessoas e distribuir tarefas assim que ela existir.")
+        }
+    }
+
+    private func criarEquipe() {
+        let nome = nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nome.isEmpty else { return }
+        aoAdicionarEquipe(nome)
+        nomeDaNovaEquipe = ""
     }
 
     private var cabecalho: some View {
@@ -110,6 +141,11 @@ struct GestaoDeEquipeView: View {
 
                     Button("Mudar Equipe: \(nomeDaEquipe)", systemImage: "arrow.triangle.2.circlepath") {
                         mostrandoTrocarEquipe = true
+                    }
+                    .buttonStyle(BotaoDeContornoPapagaio())
+
+                    Button("Nova Equipe", systemImage: "plus") {
+                        mostrandoNovaEquipe = true
                     }
                     .buttonStyle(BotaoDeContornoPapagaio())
 

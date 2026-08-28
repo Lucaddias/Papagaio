@@ -158,15 +158,21 @@ struct MidiasView: View {
 
     private var cabecalhoDaPagina: some View {
         HStack(alignment: .center, spacing: PapagaioTema.Espaco.curto) {
-            Text("Painel de mídias")
+            Text("Painel de Mídias")
                 .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
 
+            // Nudge de +3pt: mesmo ajuste de
+            // `BibliotecaHomeView.cabecalhoDaBiblioteca` e
+            // `TarefasView.cabecalhoDoPainel` — o círculo do "i" ficava
+            // acima do centro óptico da letra bold de 30pt mesmo com
+            // `alignment: .center`.
             BotaoDeAjudaPapagaio(
                 texto: "Fotos, vídeos, áudios e outros anexos de todas as conversas, reunidos num só lugar.",
                 ajuda: "Sobre a página de mídias",
                 largura: 280
             )
+            .offset(y: 3)
 
             Spacer(minLength: 0)
         }

@@ -90,16 +90,24 @@ struct ConfiguracoesView: View {
     /// — em vez do subtítulo fixo, texto que se lê uma vez e depois só
     /// ocupa espaço — dentro de um cartão com borda e sombra.
     private var cabecalhoDeConfiguracoes: some View {
-        HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+        HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
             Text("Configurações")
-                .font(.title2.weight(.semibold))
+                .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .layoutPriority(1)
 
+            // Nudge de +3pt: mesmo ajuste de
+            // `BibliotecaHomeView.cabecalhoDaBiblioteca` — o círculo do "i"
+            // ficava acima do centro óptico da letra bold de 30pt mesmo com
+            // `alignment: .center`.
             BotaoDeAjudaPapagaio(
                 texto: "Aparência do app, os cartões da biblioteca e quando as transcrições começam.",
                 ajuda: "Sobre Configurações",
                 largura: 300
             )
+            .offset(y: 3)
 
             Spacer(minLength: 0)
         }

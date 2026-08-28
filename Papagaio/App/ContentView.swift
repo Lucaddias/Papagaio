@@ -291,7 +291,7 @@ struct ContentView: View {
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
-            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva,
+            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva, equipes: equipes,
             gravando: modelo.gravando && focoNaGravacao, processandoBiblioteca: biblioteca?.processando ?? false,
             quantidadeDeAvisos: notificacoes.naoLidas, notificacoes: notificacoes.itens,
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
@@ -299,7 +299,7 @@ struct ContentView: View {
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
             aoAbrirMidias: abrirMidias,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
-            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
+            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: usarEquipe,
             aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
         )
     }
@@ -324,12 +324,13 @@ struct ContentView: View {
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, aparencia: aparencia, consulta: consulta)
         case .perfil:
             PerfilPessoalView(perfil: perfil, equipeAtiva: equipeAtiva, equipes: equipes,
-                               aoSelecionarEquipe: usarEquipe, aoAdicionarEquipe: adicionarEquipe,
+                               aoSelecionarEquipe: usarEquipe,
                                aoSair: sairDoPerfil, aoExcluirConta: excluirConta)
         case .equipe:
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
-                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros)
+                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
+                                aoAdicionarEquipe: adicionarEquipe)
         }
     }
 
@@ -524,17 +525,6 @@ struct ContentView: View {
     private func selecionarPerfilPessoal() {
         contextoDaConta = .perfil
         atualizarEspacoDaBiblioteca()
-    }
-
-    /// Entra no contexto de equipe mesmo sem equipe alguma — é lá que mora o
-    /// estado vazio que convida a criar a primeira.
-    private func selecionarEquipe() {
-        contextoDaConta = .equipe
-        if let equipeAtiva {
-            equipeAtivaID = equipeAtiva.id
-            garantirEspacoParaEquipe(id: equipeAtiva.id)
-            atualizarEspacoDaBiblioteca()
-        }
     }
 
     private func usarEquipe(_ equipe: EquipeDisponivel) {
