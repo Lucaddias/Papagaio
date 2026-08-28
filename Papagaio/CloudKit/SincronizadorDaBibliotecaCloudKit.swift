@@ -110,8 +110,8 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
     }
 
     func salvar(_ dados: Data, id: String, equipe: EquipeDisponivel) async throws {
-        let zona = try zonaDaEquipe(equipe)
         let banco = try bancoDaEquipe(equipe)
+        let zona = try await zonaDaEquipe(equipe, no: banco)
         let recordID = CKRecord.ID(recordName: id, zoneID: zona)
         let registro = try await registroExistente(ouNovo: recordID, no: banco)
         let payload = try JSONDecoder().decode(PayloadDeConversaCloudKit.self, from: dados)
@@ -135,8 +135,8 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         da equipe: EquipeDisponivel,
         continuando cursor: CursorDeConversasCloudKit?
     ) async throws -> PaginaDeConversasCloudKit {
-        let zona = try zonaDaEquipe(equipe)
         let banco = try bancoDaEquipe(equipe)
+        let zona = try await zonaDaEquipe(equipe, no: banco)
 
         if let cursor {
             guard let cursorCloudKit = cursor.valor as? CKQueryOperation.Cursor else {
@@ -170,8 +170,8 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
     }
 
     func remover(id: String, equipe: EquipeDisponivel) async throws {
-        let zona = try zonaDaEquipe(equipe)
         let banco = try bancoDaEquipe(equipe)
+        let zona = try await zonaDaEquipe(equipe, no: banco)
         let recordID = CKRecord.ID(recordName: id, zoneID: zona)
         _ = try await banco.modifyRecords(
             saving: [],
@@ -220,11 +220,29 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         }
     }
 
-    private func zonaDaEquipe(_ equipe: EquipeDisponivel) throws -> CKRecordZone.ID {
+    private func zonaDaEquipe(
+        _ equipe: EquipeDisponivel,
+        no banco: CKDatabase
+    ) async throws -> CKRecordZone.ID {
         guard let nome = equipe.zonaCloudKit else {
             throw ErroDeEquipeCloudKit.equipeAindaLocal
         }
-        return CKRecordZone.ID(zoneName: nome)
+        if let dono = equipe.donoDaZonaCloudKit {
+            return CKRecordZone.ID(zoneName: nome, ownerName: dono)
+        }
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.compartilhado.rawValue else {
+            return CKRecordZone.ID(zoneName: nome)
+        }
+
+        // Operações que ficaram na fila antes de guardarmos o ownerName ainda
+        // carregam a equipe antiga. Recuperamos a zona real uma vez no iCloud
+        // para que elas sejam enviadas, sem voltar a consultar __defaultOwner.
+        let zonas = try await banco.allRecordZones()
+        let correspondentes = zonas.filter { $0.zoneID.zoneName == nome }
+        guard correspondentes.count == 1 else {
+            throw ErroDeEquipeCloudKit.zonaCompartilhadaIndisponivel
+        }
+        return correspondentes[0].zoneID
     }
 }
 

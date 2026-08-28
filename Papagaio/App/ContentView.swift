@@ -734,7 +734,26 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
             espaco = Biblioteca.espacoPessoal()
             equipeParaSincronizar = nil
         }
-        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
+        Task { @MainActor in
+            var equipeParaUsar = equipeParaSincronizar
+            if let equipeParaSincronizar {
+                do {
+                    let corrigida = try await servicoDeEquipesCloudKit
+                        .completarReferenciaDaZonaCompartilhada(da: equipeParaSincronizar)
+                    equipeParaUsar = corrigida
+                    if corrigida != equipeParaSincronizar,
+                       let indice = equipes.firstIndex(where: { $0.id == corrigida.id }) {
+                        equipes[indice] = corrigida
+                        EquipesDoUsuario.salvar(equipes)
+                    }
+                } catch {
+                    // A fila ainda tenta recuperar a referência antiga por
+                    // conta própria; o estado de sincronização exibirá uma
+                    // falha acionável se a zona não estiver disponível.
+                }
+            }
+            await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaUsar)
+        }
     }
 
     private func sairDoPerfil() {

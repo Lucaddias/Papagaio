@@ -67,6 +67,7 @@ actor ServicoDeEquipesCloudKit {
             quantidadeDeMembros: equipe.quantidadeDeMembros,
             espacoID: espacoID.uuidString,
             zonaCloudKit: zonaID.zoneName,
+            donoDaZonaCloudKit: zonaID.ownerName,
             compartilhamentoCloudKit: compartilhamento.recordID.recordName,
             bancoCloudKit: BancoCloudKitDaEquipe.privado.rawValue,
             codigoDeEntrada: equipe.codigoDeEntrada,
@@ -90,6 +91,29 @@ actor ServicoDeEquipesCloudKit {
         }
         let metadados = try await container.shareMetadata(for: url)
         return try await aceitar(metadados)
+    }
+
+    /// Completa equipes aceitas por versões que ainda guardavam só o nome da
+    /// zona. Isso recupera o dono real no banco compartilhado e permite que a
+    /// referência seja persistida novamente pelo chamador.
+    func completarReferenciaDaZonaCompartilhada(
+        da equipe: EquipeDisponivel
+    ) async throws -> EquipeDisponivel {
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.compartilhado.rawValue,
+              equipe.donoDaZonaCloudKit == nil,
+              let nomeDaZona = equipe.zonaCloudKit
+        else { return equipe }
+
+        try await garantirContaICloudDisponivel()
+        let zonas = try await container.sharedCloudDatabase.allRecordZones()
+        let correspondentes = zonas.filter { $0.zoneID.zoneName == nomeDaZona }
+        guard correspondentes.count == 1 else {
+            throw ErroDeEquipeCloudKit.zonaCompartilhadaIndisponivel
+        }
+
+        var corrigida = equipe
+        corrigida.donoDaZonaCloudKit = correspondentes[0].zoneID.ownerName
+        return corrigida
     }
 
     /// Somente a conta proprietária altera as preferências compartilhadas.
@@ -148,6 +172,7 @@ actor ServicoDeEquipesCloudKit {
             quantidadeDeMembros: 0,
             espacoID: espacoID,
             zonaCloudKit: zonaID.zoneName,
+            donoDaZonaCloudKit: zonaID.ownerName,
             compartilhamentoCloudKit: compartilhamento.recordID.recordName,
             bancoCloudKit: BancoCloudKitDaEquipe.compartilhado.rawValue,
             codigoDeEntrada: registro[Campo.codigoDeEntrada] as? String,
@@ -212,6 +237,9 @@ actor ServicoDeEquipesCloudKit {
         else {
             throw ErroDeEquipeCloudKit.equipeAindaLocal
         }
+        if let dono = equipe.donoDaZonaCloudKit {
+            return CKRecordZone.ID(zoneName: zona, ownerName: dono)
+        }
         return CKRecordZone.ID(zoneName: zona)
     }
 
@@ -240,6 +268,7 @@ enum ErroDeEquipeCloudKit: LocalizedError {
     case apenasAdministrador
     case compartilhamentoInvalido
     case cursorInvalido
+    case zonaCompartilhadaIndisponivel
     case membroNaoEncontrado
     case proprietarioNaoPodeSerAlterado
     case proprietarioNaoPodeSerRemovido
@@ -252,6 +281,8 @@ enum ErroDeEquipeCloudKit: LocalizedError {
             "Esta equipe ainda não foi publicada no CloudKit."
         case .registroDaEquipeInvalido:
             "O convite não contém uma equipe válida do Papagaio."
+        case .zonaCompartilhadaIndisponivel:
+            "Não encontrei a zona compartilhada desta equipe no iCloud. Entre novamente com o código da equipe."
         case .codigoInvalido:
             "Não encontramos uma equipe com esse código."
         case .conviteIndisponivel:

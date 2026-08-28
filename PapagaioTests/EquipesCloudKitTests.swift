@@ -158,6 +158,47 @@ func codigoDaEquipeLiberaEscrita() {
     #expect(ServicoDeEquipesCloudKit.permissaoDaEntradaPorCodigo == .readWrite)
 }
 
+@Test("Somente equipe legada do proprietário pede reconfiguração do código")
+func reconfiguracaoDaEntradaPorCodigoSoEhExibidaParaEquipeLegada() {
+    let equipeNova = EquipeDisponivel(
+        id: "nova",
+        nome: "Nova",
+        papel: "Administrador",
+        quantidadeDeMembros: 1,
+        bancoCloudKit: BancoCloudKitDaEquipe.privado.rawValue,
+        codigoDeEntrada: "K8CE9H"
+    )
+    let equipeLegada = EquipeDisponivel(
+        id: "legada",
+        nome: "Legada",
+        papel: "Administrador",
+        quantidadeDeMembros: 1,
+        bancoCloudKit: BancoCloudKitDaEquipe.privado.rawValue
+    )
+
+    #expect(!equipeNova.precisaReconfigurarEntradaPorCodigo)
+    #expect(equipeLegada.precisaReconfigurarEntradaPorCodigo)
+}
+
+@Test("Equipe participante preserva o dono da zona compartilhada")
+func equipeParticipantePreservaDonoDaZonaCloudKit() throws {
+    let original = EquipeDisponivel(
+        id: "produto",
+        nome: "Produto",
+        papel: "Membro",
+        quantidadeDeMembros: 1,
+        espacoID: UUID().uuidString,
+        zonaCloudKit: "equipe.produto",
+        donoDaZonaCloudKit: "_dono-real_",
+        bancoCloudKit: BancoCloudKitDaEquipe.compartilhado.rawValue
+    )
+
+    let dados = try JSONEncoder().encode(original)
+    let restaurada = try JSONDecoder().decode(EquipeDisponivel.self, from: dados)
+
+    #expect(restaurada.donoDaZonaCloudKit == "_dono-real_")
+}
+
 @Test("Falha transitória sobrevive ao relançamento e respeita backoff limitado")
 func filaCloudKitEhPersistente() async throws {
     let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -169,7 +169,7 @@ struct GestaoDeEquipeView: View {
     }
 
     private func podeAtualizarEntradaPorCodigo(_ equipe: EquipeDisponivel) -> Bool {
-        equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue
+        equipe.precisaReconfigurarEntradaPorCodigo
     }
 
 }

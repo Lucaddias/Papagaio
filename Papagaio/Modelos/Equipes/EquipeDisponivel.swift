@@ -34,6 +34,10 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
     /// CloudKit continuam locais até serem publicadas explicitamente.
     var espacoID: String?
     var zonaCloudKit: String?
+    /// A zona compartilhada pertence à Apple Account do criador. O nome não
+    /// basta para reconstruir seu `CKRecordZone.ID` no banco compartilhado de
+    /// outro participante.
+    var donoDaZonaCloudKit: String?
     var compartilhamentoCloudKit: String?
     var bancoCloudKit: String?
     /// Código curto compartilhado que libera a entrada na equipe. Quem o
@@ -41,9 +45,17 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
     var codigoDeEntrada: String?
     var configuracoes: ConfiguracoesDaEquipe
 
+    /// Somente equipes do proprietário que já existiam antes do fluxo atual
+    /// precisam reconfigurar o compartilhamento. Equipes novas também usam o
+    /// banco privado do proprietário, mas já nascem com código publicado.
+    var precisaReconfigurarEntradaPorCodigo: Bool {
+        bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue
+            && codigoDeEntrada == nil
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, nome, papel, quantidadeDeMembros
-        case espacoID, zonaCloudKit, compartilhamentoCloudKit, bancoCloudKit
+        case espacoID, zonaCloudKit, donoDaZonaCloudKit, compartilhamentoCloudKit, bancoCloudKit
         case codigoDeEntrada, configuracoes
     }
 
@@ -54,6 +66,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
         quantidadeDeMembros: Int,
         espacoID: String? = nil,
         zonaCloudKit: String? = nil,
+        donoDaZonaCloudKit: String? = nil,
         compartilhamentoCloudKit: String? = nil,
         bancoCloudKit: String? = nil,
         codigoDeEntrada: String? = nil,
@@ -65,6 +78,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
         self.quantidadeDeMembros = quantidadeDeMembros
         self.espacoID = espacoID
         self.zonaCloudKit = zonaCloudKit
+        self.donoDaZonaCloudKit = donoDaZonaCloudKit
         self.compartilhamentoCloudKit = compartilhamentoCloudKit
         self.bancoCloudKit = bancoCloudKit
         self.codigoDeEntrada = codigoDeEntrada
@@ -83,6 +97,7 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
         quantidadeDeMembros = try container.decode(Int.self, forKey: .quantidadeDeMembros)
         espacoID = try container.decodeIfPresent(String.self, forKey: .espacoID)
         zonaCloudKit = try container.decodeIfPresent(String.self, forKey: .zonaCloudKit)
+        donoDaZonaCloudKit = try container.decodeIfPresent(String.self, forKey: .donoDaZonaCloudKit)
         compartilhamentoCloudKit = try container.decodeIfPresent(String.self, forKey: .compartilhamentoCloudKit)
         bancoCloudKit = try container.decodeIfPresent(String.self, forKey: .bancoCloudKit)
         codigoDeEntrada = try container.decodeIfPresent(String.self, forKey: .codigoDeEntrada)
