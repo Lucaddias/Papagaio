@@ -1,3 +1,4 @@
+import PapagaioCore
 import SwiftUI
 
 /// Preferências que mudam a aparência do app e o gatilho do pipeline local,
@@ -5,11 +6,16 @@ import SwiftUI
 struct ConfiguracoesView: View {
     @Binding var processamentoAutomatico: Bool
     @Binding var aparencia: AparenciaDoApp
-    /// O que a pessoa digitou na busca da barra superior — aqui ela não
-    /// filtra uma lista, filtra quais seções da tela ficam visíveis.
-    let consulta: String
+    /// A conexão Granola viva do app. Quem a cria e a observa é a `ContentView`.
+    var granola: GranolaViewModel?
+    /// A conexão Google Calendar viva do app.
+    var googleCalendar: GoogleCalendarViewModel?
+    /// Necessária para importar; `nil` enquanto a biblioteca não abriu.
+    var biblioteca: Biblioteca?
     /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
     @AppStorage("painelFlutuanteDuranteGravacao") private var painelFlutuante = true
+    /// Reuniões marcadas para importar, pelos ids do Granola.
+    @State private var selecionadas: Set<String> = []
 
     private var processamentoPausado: Binding<Bool> {
         Binding(
@@ -18,65 +24,20 @@ struct ConfiguracoesView: View {
         )
     }
 
-    private var termo: String { consulta.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    /// Cada seção declara as próprias palavras-chave (título, o que ela
-    /// controla, sinônimos comuns) — sem termo digitado, todas passam.
-    private func casaComATela(_ palavrasChave: String...) -> Bool {
-        guard !termo.isEmpty else { return true }
-        return palavrasChave.contains { $0.casaComBusca(termo) }
-    }
-
-    private var mostrarAparencia: Bool {
-        casaComATela("Aparência", "Tema", "Claro", "Escuro", "Sistema", "cor")
-    }
-    private var mostrarCartoes: Bool {
-        casaComATela("Cartões da biblioteca", "Modelo do cartão", "Campos do cartão", "grade")
-    }
-    private var mostrarTranscricao: Bool {
-        casaComATela(
-            "Transcrição", "Pausar transcrições e resumos automáticos", "processamento automático",
-            "Painel flutuante durante a gravação", "PiP", "gravação"
-        )
-    }
-    private var mostrarAtalhos: Bool {
-        casaComATela("Atalhos de teclado", "Atalhos", "Teclado", "Gravar", "Voltar")
-    }
-
-    private var nadaEncontrado: Bool {
-        !termo.isEmpty && !mostrarAparencia && !mostrarCartoes && !mostrarTranscricao && !mostrarAtalhos
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
                 cabecalhoDeConfiguracoes
 
-                if nadaEncontrado {
-                    CartaoDeEstadoVazio(
-                        simbolo: "magnifyingglass",
-                        titulo: "Nada encontrado",
-                        mensagem: "Nenhuma configuração bate com \"\(termo)\"."
-                    )
-                    .frame(minHeight: 240)
-                    .cartaoPapagaio()
-                } else {
-                    if mostrarAparencia {
-                        secaoDeAparencia
-                    }
+                secaoDeAparencia
 
-                    if mostrarCartoes {
-                        SecaoDePersonalizacaoDosCartoes()
-                    }
+                SecaoDePersonalizacaoDosCartoes()
 
-                    if mostrarTranscricao {
-                        secaoDeTranscricao
-                    }
+                secaoDeTranscricao
 
-                    if mostrarAtalhos {
-                        secaoDeAtalhos
-                    }
-                }
+                secaoDeGranola
+
+                secaoDeGoogleCalendar
             }
             .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -213,47 +174,386 @@ struct ConfiguracoesView: View {
         .cartaoPapagaio()
     }
 
-    /// Atalhos globais do app — os mesmos botões invisíveis de sempre em
-    /// `ContentView` (⌘R e ⌘[), só que agora com um lugar visível e buscável
-    /// para alguém descobrir que existem.
-    private var secaoDeAtalhos: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            Label("Atalhos de teclado", systemImage: "keyboard")
-                .font(PapagaioTema.Tipo.tituloDeSecao)
-                .foregroundStyle(PapagaioTema.destaqueEscuro)
+    // MARK: - Granola
 
-            SeparadorPapagaio()
+    @ViewBuilder
+    private var secaoDeGranola: some View {
+        if let granola {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Granola", systemImage: "link")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
 
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
-                linhaDeAtalho(tecla: "⌘R", descricao: "Iniciar ou finalizar a gravação")
-                linhaDeAtalho(tecla: "⌘[", descricao: "Voltar para a tela anterior")
-            }
-        }
-        .padding(PapagaioTema.Espaco.secao)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .cartaoPapagaio()
-    }
+                SeparadorPapagaio()
 
-    private func linhaDeAtalho(tecla: String, descricao: String) -> some View {
-        HStack(spacing: PapagaioTema.Espaco.medio) {
-            Text(tecla)
-                .font(.system(.callout, design: .monospaced).weight(.semibold))
-                .foregroundStyle(PapagaioTema.texto)
-                .padding(.horizontal, PapagaioTema.Espaco.medio)
-                .frame(minWidth: 56)
-                .frame(height: PapagaioTema.Altura.compacta)
-                .background(PapagaioTema.superficieSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                estadoDaConexao(granola)
+
+                if granola.estado.conectado {
+                    listaDeReunioes(granola)
                 }
 
-            Text(descricao)
-                .font(PapagaioTema.Tipo.corpo)
+                Text("Conectado, o Papagaio pode ver suas reuniões do Granola e importá-las para a biblioteca — notas e resumo sempre; a transcrição quando o seu plano incluir. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Granola.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        } else {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Granola", systemImage: "link")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                Text("A biblioteca ainda está abrindo — a conexão com o Granola aparece aqui em instantes.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        }
+    }
+
+    @ViewBuilder
+    private var secaoDeGoogleCalendar: some View {
+        if let googleCalendar {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Google Calendar", systemImage: "calendar")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                estadoDaConexaoGoogleCalendar(googleCalendar)
+
+                if googleCalendar.estado.conectado {
+                    listaDeReunioesGoogleCalendar(googleCalendar)
+                }
+
+                Text("Conectado, o Papagaio pode ver suas reuniões futuras do Google Calendar e importá-las para a biblioteca — apenas título, data e participantes. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Google.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        } else {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
+                Label("Google Calendar", systemImage: "calendar")
+                    .font(PapagaioTema.Tipo.tituloDeSecao)
+                    .foregroundStyle(PapagaioTema.destaqueEscuro)
+
+                SeparadorPapagaio()
+
+                Text("A biblioteca ainda está abrindo — a conexão com o Google Calendar aparece aqui em instantes.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            .padding(PapagaioTema.Espaco.secao)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cartaoPapagaio()
+        }
+    }
+
+    @ViewBuilder
+    private func estadoDaConexao(_ granola: GranolaViewModel) -> some View {
+        switch granola.estado {
+        case .desconectado:
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text("Importe reuniões do Granola para a biblioteca, com transcrição quando o plano permitir.")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await granola.conectar() }
+                } label: {
+                    Label("Conectar conta Granola…", systemImage: "person.badge.plus")
+                }
+                .help("Abre o navegador do macOS para autorizar o Papagaio na sua conta do Granola.")
+            }
+
+        case .conectando:
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Autorize no navegador e volte ao Papagaio…")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+        case let .falhou(mensagem):
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Label(mensagem, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await granola.conectar() }
+                } label: {
+                    Label("Tentar novamente", systemImage: "arrow.clockwise")
+                }
+            }
+
+        case let .conectado(conta):
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(conta.email)
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    if let workspace = conta.workspace, !workspace.isEmpty {
+                        Text("Workspace \(workspace)")
+                            .font(PapagaioTema.Tipo.apoio)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                    }
+                }
+
+                Spacer()
+
+                Button("Desconectar") {
+                    selecionadas.removeAll()
+                    Task { await granola.desconectar() }
+                }
+                .buttonStyle(.bordered)
+                .help("Apaga as credenciais do Granola do Keychain.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func listaDeReunioes(_ granola: GranolaViewModel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                Text("Reuniões acessíveis")
+                    .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
+
+                Spacer()
+
+                Button {
+                    Task { await granola.recarregar() }
+                } label: {
+                    Label("Atualizar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.destaque)
+            }
+
+            if granola.carregandoReunioes {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
+                    ProgressView().controlSize(.small)
+                    Text("Carregando reuniões…")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+            } else if granola.reunioes.isEmpty {
+                Text("Nenhuma reunião acessível nesta conta.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            } else {
+                VStack(spacing: PapagaioTema.Espaco.minimo) {
+                    ForEach(granola.reunioes.prefix(20)) { reuniao in
+                        linhaDeReuniao(reuniao)
+                    }
+                }
+            }
+
+            Button {
+                importarSelecionadas(granola)
+            } label: {
+                if granola.importando {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Label(
+                        "Importar selecionadas",
+                        systemImage: "square.and.arrow.down"
+                    )
+                }
+            }
+            .disabled(biblioteca == nil || selecionadas.isEmpty || granola.importando)
+            .help(
+                biblioteca == nil
+                    ? "A biblioteca ainda não abriu."
+                    : "Importa as reuniões marcadas para a biblioteca."
+            )
+
+            if let falha = granola.falhaDeImportacao {
+                Label(falha, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func linhaDeReuniao(_ reuniao: ReuniaoExterna) -> some View {
+        let marcada = Binding(
+            get: { selecionadas.contains(reuniao.id) },
+            set: { marcada in
+                if marcada {
+                    selecionadas.insert(reuniao.id)
+                } else {
+                    selecionadas.remove(reuniao.id)
+                }
+            }
+        )
+
+        return Toggle(isOn: marcada) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                Text(reuniao.titulo)
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(1)
+
+                HStack(spacing: PapagaioTema.Espaco.curto) {
+                    Text(reuniao.data.formatted(date: .abbreviated, time: .omitted))
+                    if !reuniao.participantes.isEmpty {
+                        Text("·")
+                        Text(reuniao.participantes.prefix(3).joined(separator: ", "))
+                    }
+                }
+                .font(PapagaioTema.Tipo.apoio)
                 .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+        }
+        .toggleStyle(.checkbox)
+    }
+
+    private func importarSelecionadas(_ granola: GranolaViewModel) {
+        let ids = selecionadas
+        Task {
+            guard let biblioteca else { return }
+            let salvas = await granola.importar(ids, biblioteca: biblioteca)
+            if salvas > 0 {
+                selecionadas.subtract(ids)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func estadoDaConexaoGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel?) -> some View {
+        if let googleCalendar {
+        switch googleCalendar.estado {
+        case .desconectado:
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Text("Importe reuniões futuras do Google Calendar para a biblioteca.")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if !CredenciaisGoogle.estaConfigurado {
+                    Label("Client ID/Secret não configurados", systemImage: "exclamationmark.triangle.fill")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.aviso)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button {
+                    Task { await googleCalendar.conectar(biblioteca: biblioteca!) }
+                } label: {
+                    Label("Conectar conta Google…", systemImage: "person.badge.plus")
+                }
+                .disabled(!CredenciaisGoogle.estaConfigurado)
+                .help("Abre o navegador para autorizar o Papagaio na sua conta Google.")
+            }
+
+        case .conectando:
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Autorize no navegador e volte ao Papagaio…")
+                    .font(PapagaioTema.Tipo.corpo)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+
+        case let .falhou(mensagem):
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+                Label(mensagem, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await googleCalendar.conectar(biblioteca: biblioteca!) }
+                } label: {
+                    Label("Tentar novamente", systemImage: "arrow.clockwise")
+                }
+            }
+
+        case let .conectado(conta):
+            HStack(spacing: PapagaioTema.Espaco.medio) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(conta.email)
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+                }
+
+                Spacer()
+
+                Button("Desconectar") {
+                    Task { await googleCalendar.desconectar() }
+                }
+                .buttonStyle(.bordered)
+                .help("Apaga as credenciais do Google Calendar do Keychain.")
+            }
         }
     }
 }
+
+    @ViewBuilder
+    private func listaDeReunioesGoogleCalendar(_ googleCalendar: GoogleCalendarViewModel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                Text("Reuniões futuras (próximas 24 horas)")
+                    .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                    .foregroundStyle(PapagaioTema.texto)
+
+                Spacer()
+
+                Button {
+                    Task { await googleCalendar.recarregar() }
+                } label: {
+                    Label("Atualizar", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .font(PapagaioTema.Tipo.apoio)
+                .foregroundStyle(PapagaioTema.destaque)
+            }
+
+            if googleCalendar.carregandoReunioes {
+                HStack(spacing: PapagaioTema.Espaco.medio) {
+                    ProgressView().controlSize(.small)
+                    Text("Carregando reuniões…")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                }
+            } else if googleCalendar.reunioesPendentes.isEmpty {
+                Text("Nenhuma reunião futura encontrada.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            } else {
+                Text("\(googleCalendar.reunioesPendentes.count) reunião(ões) com participantes — sincronizadas automaticamente na aba Calendário da biblioteca.")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let falha = googleCalendar.falhaDeImportacao {
+                Label(falha, systemImage: "exclamationmark.triangle.fill")
+                    .font(PapagaioTema.Tipo.apoio)
+                    .foregroundStyle(PapagaioTema.perigo)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
 /// Botão de tema com uma miniatura da interface no esquema correspondente.
 private struct AmostraDeAparencia: View {
@@ -266,14 +566,10 @@ private struct AmostraDeAparencia: View {
             VStack(spacing: PapagaioTema.Espaco.curto) {
                 miniatura
 
-                // Sem `.lineLimit`: mesmo sendo um rótulo curto e fixo
-                // ("Claro", "Escuro", "Sistema"), nenhum texto desta tela
-                // deve depender de truncar para caber — a régua vale para
-                // qualquer rótulo, não só para os que vêm de dados do
-                // usuário.
                 Label(opcao.titulo, systemImage: opcao.simbolo)
                     .font(PapagaioTema.Tipo.apoio.weight(selecionada ? .semibold : .regular))
                     .foregroundStyle(selecionada ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                    .lineLimit(1)
             }
             .padding(PapagaioTema.Espaco.medio)
             .frame(maxWidth: .infinity)
@@ -337,8 +633,8 @@ private struct AmostraDeAparencia: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .stroke(traco, lineWidth: 1)
-                    }
-            }
+}
+        }  // close ZStack
             .padding(PapagaioTema.Espaco.curto)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -350,4 +646,5 @@ private struct AmostraDeAparencia: View {
         }
         .accessibilityHidden(true)
     }
+}
 }

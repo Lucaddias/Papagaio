@@ -75,14 +75,15 @@ final class TarefasDaConversaViewModel {
         let tituloLimpo = tituloDaTarefa.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !tituloLimpo.isEmpty else { return }
 
-        let tarefa = TarefaDaConversa(
-            titulo: tituloLimpo,
-            origem: origem,
-            prioridade: prioridadeDaTarefa,
-            status: statusDaTarefa,
-            responsavel: responsavelLimpo,
-            prazo: prazoDaTarefa,
-            prioridadeDefinidaManualmente: true
+        let tarefa = RegraDePrazoDaTarefa.ajustada(
+            TarefaDaConversa(
+                titulo: tituloLimpo,
+                origem: origem,
+                prioridade: prioridadeDaTarefa,
+                status: statusDaTarefa,
+                responsavel: responsavelLimpo,
+                prazo: prazoDaTarefa
+            )
         )
         tarefas.append(tarefa)
         salvar()

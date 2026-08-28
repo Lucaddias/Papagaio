@@ -1,6 +1,34 @@
 import Foundation
 import WhisperRuntime
 
+private actor AcumuladorDeTrechos {
+    private var trechos: [Trecho] = []
+
+    func incluir(
+        _ segmentos: [SegmentoWhisper],
+        na janela: DetectorDeAtividadeDeVoz.JanelaEmFluxo,
+        speaker: String?
+    ) {
+        trechos.append(contentsOf: segmentos.map { segmento in
+            Trecho(
+                start: segmento.start + janela.inicio,
+                end: segmento.end + janela.inicio,
+                texto: segmento.texto,
+                speaker: speaker,
+                palavras: segmento.palavras.map {
+                    Palavra(
+                        start: $0.start + janela.inicio,
+                        end: $0.end + janela.inicio,
+                        texto: $0.texto
+                    )
+                }
+            )
+        })
+    }
+
+    func todos() -> [Trecho] { trechos }
+}
+
 /// A engine de transcrição do Papagaio. Não existe segunda (D-0.5).
 ///
 /// Chama o `whisper.cpp` **in-process**, pela biblioteca linkada no Passo 3.
@@ -37,56 +65,44 @@ public struct WhisperEngine: TranscriptionEngine {
     /// `"interlocutor"`, e arquivo importado é `nil` — ver skill
     /// `papagaio-speaker-attribution`.
     ///
-    /// Chama o Whisper **uma vez por janela de fala** (ver
-    /// `DetectorDeAtividadeDeVoz.janelasDeFala`), não uma vez para o arquivo
-    /// inteiro — silêncio longo entre janelas nunca chega ao decoder. Ver o
-    /// comentário de `DetectorDeAtividadeDeVoz.swift` para o porquê: era
-    /// isso que causava a repetição/alucinação em cascata.
+    /// Decodifica, detecta fala e chama o Whisper em fluxo: o arquivo inteiro
+    /// nunca vira um único vetor em RAM e silêncio longo não chega ao decoder.
     public func transcribe(
         _ url: URL,
         speaker: String?,
         initialPrompt: String? = nil
     ) async throws -> [Trecho] {
-        let amostras = try await DecodificadorDeAudio.amostras(de: url)
-        guard !amostras.isEmpty else { return [] }
+        let sessao = DetectorDeAtividadeDeVoz.SessaoEmFluxo()
+        let acumulador = AcumuladorDeTrechos()
 
-        let janelas = try await DetectorDeAtividadeDeVoz.janelasDeFala(nas: amostras)
-        guard !janelas.isEmpty else {
-            // Em uma reunião de dois canais, o microfone pode estar em silêncio
-            // enquanto só o interlocutor fala. Devolver vazio permite que o
-            // pipeline preserve o outro canal; se ambos estiverem vazios, ele
-            // encerra sem resumo e informa que nenhuma fala foi reconhecida.
-            return []
-        }
-
-        var trechos: [Trecho] = []
-        for janela in janelas {
-            let amostrasDaJanela = DetectorDeAtividadeDeVoz.amostras(de: amostras, na: janela)
-            guard !amostrasDaJanela.isEmpty else { continue }
-
-            let segmentos = try await contexto.transcrever(
-                amostras: amostrasDaJanela,
-                initialPrompt: initialPrompt
-            )
-            // O Whisper devolve t0/t1 relativos ao início da JANELA — soma o
-            // deslocamento para voltar à linha do tempo do arquivo original.
-            trechos.append(contentsOf: segmentos.map { segmento in
-                Trecho(
-                    start: segmento.start + janela.inicio,
-                    end: segmento.end + janela.inicio,
-                    texto: segmento.texto,
-                    speaker: speaker,
-                    palavras: segmento.palavras.map {
-                        Palavra(
-                            start: $0.start + janela.inicio,
-                            end: $0.end + janela.inicio,
-                            texto: $0.texto
-                        )
-                    }
+        func transcrever(_ janelas: [DetectorDeAtividadeDeVoz.JanelaEmFluxo]) async throws {
+            for janela in janelas where !janela.amostras.isEmpty {
+                try Task.checkCancellation()
+                let segmentos = try await contexto.transcrever(
+                    amostras: janela.amostras,
+                    initialPrompt: initialPrompt
                 )
-            })
+                // O Whisper devolve t0/t1 relativos ao início da janela.
+                await acumulador.incluir(segmentos, na: janela, speaker: speaker)
+            }
         }
-        return trechos
+
+        try Task.checkCancellation()
+        await sessao.iniciar()
+        do {
+            try await DecodificadorDeAudio.processarEmBlocos(de: url) { bloco in
+                try Task.checkCancellation()
+                try await transcrever(await sessao.receber(bloco))
+            }
+            try await transcrever(await sessao.finalizar())
+        } catch {
+            await sessao.cancelar()
+            throw error
+        }
+
+        // Em uma reunião de dois canais, um deles pode estar em silêncio.
+        // Devolver vazio preserva o outro canal e evita um resumo inventado.
+        return await acumulador.todos()
     }
 
     /// Carrega o modelo antecipadamente, para a primeira transcrição não pagar

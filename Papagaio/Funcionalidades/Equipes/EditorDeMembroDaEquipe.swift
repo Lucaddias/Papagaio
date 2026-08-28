@@ -3,6 +3,9 @@ import SwiftUI
 struct EditorDeMembroDaEquipe: View {
     let titulo: String
     @State var membro: MembroDaEquipe
+    let novoMembro: Bool
+    let salvando: Bool
+    let mensagemDeErro: String?
     let aoCancelar: () -> Void
     let aoSalvar: (MembroDaEquipe) -> Void
 
@@ -19,17 +22,30 @@ struct EditorDeMembroDaEquipe: View {
                 .buttonStyle(.plain)
             }
 
-            CampoDoPerfil(titulo: "Nome", texto: $membro.nome, placeholder: "Nome completo")
-            CampoDoPerfil(titulo: "Email", texto: $membro.email, placeholder: "email@empresa.com")
+            if novoMembro {
+                CampoDoPerfil(
+                    titulo: "Apple Account",
+                    texto: $membro.email,
+                    placeholder: "email@icloud.com"
+                )
+            } else {
+                LabeledContent("Nome", value: membro.nome)
+                LabeledContent("Apple Account", value: membro.email)
+                LabeledContent("Status", value: membro.status.rawValue)
+            }
 
-            CampoDoPerfil(titulo: "Cargo", texto: $membro.cargo, placeholder: "Ex.: Pesquisador, Designer, Transcritor")
-
-            Picker("Status", selection: $membro.status) {
-                ForEach(StatusDaEquipe.allCases) { status in
-                    Text(status.rawValue).tag(status)
+            Picker("Permissão", selection: $membro.permissao) {
+                ForEach(PermissaoDoMembroDaEquipe.allCases) { permissao in
+                    Text(permissao.rawValue).tag(permissao)
                 }
             }
             .pickerStyle(.segmented)
+
+            if let mensagemDeErro {
+                Label(mensagemDeErro, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
 
             HStack {
                 Spacer()
@@ -39,7 +55,10 @@ struct EditorDeMembroDaEquipe: View {
                     aoSalvar(membro)
                 }
                 .buttonStyle(BotaoPrincipalPapagaio())
-                .disabled(membro.nome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || membro.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    salvando
+                        || membro.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
             }
         }
         .padding(PapagaioTema.Espaco.secao)

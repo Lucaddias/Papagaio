@@ -3,6 +3,53 @@ import PapagaioCore
 import Testing
 @testable import Papagaio
 
+@Test("Cleanup estruturado executa em sucesso, erro e cancelamento")
+func cleanupDeModelosEhGarantido() async {
+    let contador = ContadorDeCleanup()
+
+    let valor = await OperacaoComLimpeza.executar {
+        42
+    } limpar: {
+        await contador.registrar()
+    }
+    #expect(valor == 42)
+
+    do {
+        _ = try await OperacaoComLimpeza.executar {
+            throw FalhaDeCleanupTeste()
+        } limpar: {
+            await contador.registrar()
+        }
+    } catch {
+        #expect(error is FalhaDeCleanupTeste)
+    }
+
+    let cancelada = Task {
+        try await OperacaoComLimpeza.executar {
+            try await Task.sleep(for: .seconds(30))
+        } limpar: {
+            await contador.registrar()
+        }
+    }
+    cancelada.cancel()
+    do {
+        try await cancelada.value
+    } catch {
+        #expect(error is CancellationError)
+    }
+
+    #expect(await contador.valor() == 3)
+}
+
+private struct FalhaDeCleanupTeste: Error {}
+
+private actor ContadorDeCleanup {
+    private var quantidade = 0
+
+    func registrar() { quantidade += 1 }
+    func valor() -> Int { quantidade }
+}
+
 // A fila serial da `Biblioteca` é a invariante que impede o Whisper (3 GB) e o
 // Qwen (10,7 GB) de carregarem ao mesmo tempo num Mac cujo piso é 18 GB. Até
 // agora ela não tinha teste nenhum: o `.xcodeproj` tinha um único target.
@@ -45,43 +92,68 @@ private func aguardar(
     return condicao()
 }
 
-@MainActor
-@Test("Trocar de espaço isola as bibliotecas sem apagar o acervo anterior")
-func trocaDeEspacoIsolaBibliotecas() async throws {
-    let espacoPessoal = EspacoID()
-    let espacoDaEquipe = EspacoID()
-    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: raiz) }
+@Test("Migração de remoção de equipes apaga o estado legado uma única vez")
+func migracaoDeRemocaoDeEquipesLimpaSomenteEstadoLegado() throws {
+    let suite = "MigracaoDeRemocaoDeEquipesTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
 
-    let biblioteca = Biblioteca(
-        armazenamento: Armazenamento(raiz: raiz),
-        repositorio: SwiftDataRepository(
-            modelContainer: try SwiftDataRepository.containerLocal(
-                nome: UUID().uuidString,
-                emMemoria: true
-            )
-        ),
-        espaco: espacoPessoal
+    defaults.set(Data([1]), forKey: "membrosDaEquipe.primeira")
+    defaults.set(Data([2]), forKey: "membrosDaEquipe.segunda")
+    defaults.set(Data([3]), forKey: "equipesDoUsuario")
+    defaults.set("primeira", forKey: "equipeAtiva")
+    defaults.set("equipe", forKey: "contextoDaConta")
+    defaults.set(true, forKey: "limpezaDeDadosFabricados.v1")
+    defaults.set("permanece", forKey: "preferenciaSemRelacao")
+
+    MigracaoDeRemocaoDeEquipes.executarUmaVez(defaults)
+
+    #expect(defaults.object(forKey: "membrosDaEquipe.primeira") == nil)
+    #expect(defaults.object(forKey: "membrosDaEquipe.segunda") == nil)
+    #expect(defaults.object(forKey: "equipesDoUsuario") == nil)
+    #expect(defaults.object(forKey: "equipeAtiva") == nil)
+    #expect(defaults.object(forKey: "contextoDaConta") == nil)
+    #expect(defaults.object(forKey: "limpezaDeDadosFabricados.v1") == nil)
+    #expect(defaults.string(forKey: "preferenciaSemRelacao") == "permanece")
+
+    // Depois de concluída, a migração não deve apagar preferências que uma
+    // versão futura venha a gravar com o antigo prefixo por coincidência.
+    defaults.set(Data([4]), forKey: "membrosDaEquipe.posterior")
+    MigracaoDeRemocaoDeEquipes.executarUmaVez(defaults)
+    #expect(defaults.data(forKey: "membrosDaEquipe.posterior") == Data([4]))
+}
+
+@Test("Migração de equipes reúne ativos e lixeira no espaço pessoal")
+func migracaoDeEquipesPreservaBibliotecaCompleta() async throws {
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
     )
-    biblioteca.processamentoAutomatico = false
-
-    _ = await biblioteca.registrar(
-        titulo: "Pessoal",
+    let pessoal = EspacoID()
+    let equipe = EspacoID()
+    let outroEspacoLegado = EspacoID()
+    let ativoDaEquipe = Arquivo(
+        titulo: "Reunião da equipe",
         pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
-        duracao: 10
+        espaco: equipe
     )
-    await biblioteca.usarEspaco(espacoDaEquipe)
-    #expect(biblioteca.arquivos.isEmpty)
-
-    _ = await biblioteca.registrar(
-        titulo: "Equipe",
+    let naLixeira = Arquivo(
+        titulo: "Conversa arquivada",
         pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
-        duracao: 10
+        espaco: outroEspacoLegado
     )
-    await biblioteca.usarEspaco(espacoPessoal)
 
-    #expect(biblioteca.arquivos.map(\.titulo) == ["Pessoal"])
+    try await repositorio.salvar(ativoDaEquipe)
+    try await repositorio.salvar(naLixeira)
+    try await repositorio.moverParaLixeira(naLixeira.id)
+
+    try await repositorio.migrarTodosOsEspacos(para: pessoal)
+
+    #expect(try await repositorio.listar(espaco: pessoal).map(\.id) == [ativoDaEquipe.id])
+    #expect(try await repositorio.listarNaLixeira(espaco: pessoal).map(\.id) == [naLixeira.id])
+    #expect(try await repositorio.listar(espaco: equipe).isEmpty)
+    #expect(try await repositorio.listarNaLixeira(espaco: outroEspacoLegado).isEmpty)
 }
 
 // MARK: - Fila serial
@@ -130,6 +202,85 @@ func naoDuplicaNaFila() async throws {
 
     _ = await aguardar { !biblioteca.processando }
     #expect(!biblioteca.estaNaFila(arquivo))
+}
+
+@MainActor
+@Test("Duplicar recria os bookmarks dos anexos na pasta copiada")
+func duplicacaoMantemAnexosVisiveisNaCopia() async throws {
+    let (biblioteca, raiz) = try bibliotecaDeTeste()
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    biblioteca.processamentoAutomatico = false
+    let pastaOriginal = Armazenamento.caminhoRelativo(id: UUID())
+    let original = try #require(
+        await biblioteca.registrar(titulo: "Com anexo", pastaRelativa: pastaOriginal, duracao: 30)
+    )
+    defer { MidiasDaConversa.remover(original.id) }
+
+    let raizOriginal = raiz.appendingPathComponent(pastaOriginal, isDirectory: true)
+    let pastaDeAnexos = raizOriginal.appendingPathComponent("documentos", isDirectory: true)
+    try FileManager.default.createDirectory(at: pastaDeAnexos, withIntermediateDirectories: true)
+    let anexoOriginal = pastaDeAnexos.appendingPathComponent("roteiro.pdf")
+    try Data("conteúdo".utf8).write(to: anexoOriginal)
+    try MidiasDaConversa.salvar(
+        [try MidiasDaConversa.anexo(para: anexoOriginal)],
+        para: original.id
+    )
+
+    let copia = try #require(await biblioteca.duplicar(original))
+    defer { MidiasDaConversa.remover(copia.id) }
+
+    let anexosDaCopia = MidiasDaConversa.carregar(copia.id)
+    let esperado = raiz
+        .appendingPathComponent(copia.pastaRelativa, isDirectory: true)
+        .appendingPathComponent("documentos/roteiro.pdf")
+        .standardizedFileURL
+    #expect(anexosDaCopia.map(\.url.standardizedFileURL) == [esperado])
+    #expect(FileManager.default.fileExists(atPath: esperado.path))
+}
+
+@MainActor
+@Test("Duplicar preserva o estado das tarefas com novos ids")
+func duplicacaoMantemTarefasIndependentes() async throws {
+    let (biblioteca, raiz) = try bibliotecaDeTeste()
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    biblioteca.processamentoAutomatico = false
+    let original = try #require(
+        await biblioteca.registrar(
+            titulo: "Com tarefas",
+            pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+            duracao: 30
+        )
+    )
+    defer { TarefasGeraisStore.remover(original.id) }
+
+    let prazo = Date(timeIntervalSinceReferenceDate: 12_345)
+    let tarefaOriginal = TarefaDaConversa(
+        titulo: "Enviar ata",
+        origem: original.titulo,
+        prioridade: .alta,
+        status: .emAndamento,
+        responsavel: "Ana",
+        prazo: prazo,
+        descricao: "Incluir os encaminhamentos."
+    )
+    TarefasGeraisStore.salvar([tarefaOriginal], para: original.id)
+
+    let copia = try #require(await biblioteca.duplicar(original))
+    defer { TarefasGeraisStore.remover(copia.id) }
+
+    let tarefasDaCopia = TarefasGeraisStore.carregar(copia)
+    #expect(tarefasDaCopia.count == 1)
+    let tarefaDaCopia = try #require(tarefasDaCopia.first)
+    #expect(tarefaDaCopia.id != tarefaOriginal.id)
+    #expect(tarefaDaCopia.titulo == tarefaOriginal.titulo)
+    #expect(tarefaDaCopia.origem == copia.titulo)
+    #expect(tarefaDaCopia.prioridade == tarefaOriginal.prioridade)
+    #expect(tarefaDaCopia.status == tarefaOriginal.status)
+    #expect(tarefaDaCopia.responsavel == tarefaOriginal.responsavel)
+    #expect(tarefaDaCopia.prazo == prazo)
+    #expect(tarefaDaCopia.descricao == tarefaOriginal.descricao)
 }
 
 @MainActor
@@ -243,4 +394,438 @@ func erroDeCarregamentoEhObservavel() async throws {
     // Container em memória e vazio: carrega sem erro, e o campo precisa ficar
     // limpo em vez de guardar lixo de execuções anteriores.
     #expect(biblioteca.erroDeCarregamento == nil)
+}
+
+@MainActor
+@Test("Excluir o perfil limpa só auxiliares dos arquivos pessoais e é idempotente")
+func exclusaoDaContaLimpaStoresDoEspacoPessoal() throws {
+    let suite = "LimpezaDeContaTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let pessoal = ArquivoID()
+    let equipe = ArquivoID()
+    let sufixoPessoal = pessoal.rawValue.uuidString
+    let sufixoEquipe = equipe.rawValue.uuidString
+    let prefixosPorArquivo = [
+        "tarefasDaConversa.", "midiasDaConversa.", "arquivoFavorito.",
+        "arquivoPasta.", "arquivoCapa.", "arquivoMetadados.",
+        "arquivoNomesDeVoz.", "corDaFaixaDoCartao.", "bannerDoCartao.",
+        "ajusteDoBannerDoCartao.", "faixaSemCorDoCartao.",
+    ]
+    for prefixo in prefixosPorArquivo {
+        defaults.set(Data([1]), forKey: prefixo + sufixoPessoal)
+        defaults.set(Data([2]), forKey: prefixo + sufixoEquipe)
+    }
+
+    // Estes stores não têm dono por espaço. A opção A os preserva porque
+    // podem continuar servindo às conversas da equipe.
+    defaults.set(["Cliente"], forKey: "pastasDaBiblioteca")
+    defaults.set(Data([3]), forKey: "corDaPasta.Cliente")
+    defaults.set(Data([4]), forKey: "fotoDaPessoa.ana")
+    defaults.set("escuro", forKey: "aparenciaDoApp")
+    defaults.set(false, forKey: "processamentoAutomatico")
+    defaults.set(UUID().uuidString, forKey: "espacoIndividual")
+
+    LimpezaDeConta.executar(arquivos: [pessoal], em: defaults)
+    LimpezaDeConta.executar(arquivos: [pessoal], em: defaults)
+
+    for prefixo in prefixosPorArquivo {
+        #expect(defaults.object(forKey: prefixo + sufixoPessoal) == nil)
+        #expect(defaults.object(forKey: prefixo + sufixoEquipe) != nil)
+    }
+    #expect(defaults.stringArray(forKey: "pastasDaBiblioteca") == ["Cliente"])
+    #expect(defaults.object(forKey: "corDaPasta.Cliente") != nil)
+    #expect(defaults.object(forKey: "fotoDaPessoa.ana") != nil)
+    #expect(defaults.string(forKey: "aparenciaDoApp") == "escuro")
+    #expect(defaults.object(forKey: "processamentoAutomatico") != nil)
+    #expect(defaults.object(forKey: "espacoIndividual") == nil)
+}
+
+@MainActor
+@Test("Excluir o perfil cria um novo espaço pessoal estável no relançamento")
+func exclusaoDaContaRenovaEspacoPessoalNoRelancamento() throws {
+    let suite = "EspacoAposExclusaoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let anterior = Biblioteca.espacoPessoal(em: defaults)
+    LimpezaDeConta.executar(arquivos: [], em: defaults)
+    let novo = Biblioteca.espacoPessoal(em: defaults)
+    let restauradoNoRelancamento = Biblioteca.espacoPessoal(em: defaults)
+
+    #expect(novo != anterior)
+    #expect(restauradoNoRelancamento == novo)
+}
+
+private final class CofreDeCredenciaisFake: CofreDeCredenciaisDaConta, @unchecked Sendable {
+    var contas: Set<String>
+
+    init(_ contas: Set<String>) {
+        self.contas = contas
+    }
+
+    func apagar(conta: String) {
+        contas.remove(conta)
+    }
+}
+
+@Test("Excluir o perfil apaga credenciais Google e Granola sem herança")
+func exclusaoDaContaLimpaCredenciaisDasIntegracoes() {
+    let google = CofreDeCredenciaisFake([
+        "access_token", "access_token_expires", "refresh_token", "pkce", "outra",
+    ])
+    let granola = CofreDeCredenciaisFake([
+        "access_token", "access_token_expires", "refresh_token", "client", "pkce", "outra",
+    ])
+
+    LimpezaDeCredenciaisDaConta.executar(google: google, granola: granola)
+    LimpezaDeCredenciaisDaConta.executar(google: google, granola: granola)
+
+    #expect(google.contas == ["outra"])
+    #expect(granola.contas == ["outra"])
+}
+
+@Test("Excluir o perfil persiste a remoção dos vínculos de equipe")
+func exclusaoDaContaRemoveEquipesNoRelancamento() throws {
+    let suite = "EquipesAposExclusaoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let equipe = EquipeDisponivel(
+        id: "produto", nome: "Produto", papel: "Administrador",
+        quantidadeDeMembros: 1, espacoID: UUID().uuidString
+    )
+    let membro = MembroDaEquipe(
+        nome: "Ana", email: "ana@example.com", cargo: "Design",
+        status: .ativo
+    )
+    EquipesDoUsuario.salvar([equipe], em: defaults)
+    MembrosDasEquipes.salvar([membro], equipeID: equipe.id, em: defaults)
+    defaults.set(equipe.id, forKey: "equipeAtiva")
+    defaults.set("equipe", forKey: "contextoDaConta")
+    defaults.set("preservar", forKey: "preferenciaGlobal")
+
+    LimpezaDeVinculosDeEquipe.executar(equipes: [equipe], em: defaults)
+    LimpezaDeVinculosDeEquipe.executar(equipes: [equipe], em: defaults)
+
+    #expect(EquipesDoUsuario.carregar(em: defaults).isEmpty)
+    #expect(MembrosDasEquipes.carregar(equipeID: equipe.id, em: defaults).isEmpty)
+    #expect(defaults.object(forKey: "equipeAtiva") == nil)
+    #expect(defaults.object(forKey: "contextoDaConta") == nil)
+    #expect(defaults.string(forKey: "preferenciaGlobal") == "preservar")
+}
+
+@MainActor
+@Test("Excluir o perfil pessoal com equipe ativa preserva o espaço da equipe")
+func exclusaoDaContaPreservaMidiaDeOutroEspaco() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let armazenamento = Armazenamento(raiz: raiz)
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
+    )
+    let espacoAtual = EspacoID()
+    let outroEspaco = EspacoID()
+    let bibliotecaAtual = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: espacoAtual
+    )
+    let bibliotecaDoOutroEspaco = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: outroEspaco
+    )
+    bibliotecaAtual.processamentoAutomatico = false
+    bibliotecaDoOutroEspaco.processamentoAutomatico = false
+
+    let pastaAtual = Armazenamento.caminhoRelativo(id: UUID())
+    let pastaDoOutroEspaco = Armazenamento.caminhoRelativo(id: UUID())
+    let arquivoAtual = try #require(
+        await bibliotecaAtual.registrar(titulo: "Minha conversa", pastaRelativa: pastaAtual, duracao: 30)
+    )
+    let arquivoDoOutroEspaco = try #require(
+        await bibliotecaDoOutroEspaco.registrar(
+            titulo: "Conversa da outra conta", pastaRelativa: pastaDoOutroEspaco, duracao: 30
+        )
+    )
+    try FileManager.default.createDirectory(
+        at: armazenamento.resolver(relativo: arquivoAtual.pastaRelativa),
+        withIntermediateDirectories: true
+    )
+    let audioDoOutroEspaco = armazenamento
+        .resolver(relativo: arquivoDoOutroEspaco.pastaRelativa)
+        .appendingPathComponent(Armazenamento.Nome.microfone)
+    try FileManager.default.createDirectory(
+        at: audioDoOutroEspaco.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try Data("preservar".utf8).write(to: audioDoOutroEspaco)
+
+    let idsExcluidos = try await bibliotecaDoOutroEspaco.excluirDadosDaConta(
+        espaco: espacoAtual
+    )
+
+    #expect(idsExcluidos == [arquivoAtual.id])
+    #expect(try await repositorio.listar(espaco: espacoAtual).isEmpty)
+    #expect(bibliotecaDoOutroEspaco.arquivos.map(\.id) == [arquivoDoOutroEspaco.id])
+    #expect(FileManager.default.fileExists(atPath: audioDoOutroEspaco.path))
+    #expect(try await repositorio.listar(espaco: outroEspaco).map(\.id) == [arquivoDoOutroEspaco.id])
+}
+
+@MainActor
+@Test("Callback tardio não recria conversa nem deixa mídia após excluir o perfil")
+func exclusaoDaContaBloqueiaRegistroTardio() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: raiz, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let espaco = EspacoID()
+    let armazenamento = Armazenamento(raiz: raiz)
+    let repositorio = SwiftDataRepository(
+        modelContainer: try SwiftDataRepository.containerLocal(
+            nome: UUID().uuidString, emMemoria: true
+        )
+    )
+    let biblioteca = Biblioteca(
+        armazenamento: armazenamento, repositorio: repositorio, espaco: espaco
+    )
+
+    _ = try await biblioteca.excluirDadosDaConta()
+
+    let pastaRelativa = Armazenamento.caminhoRelativo(id: UUID())
+    let pasta = armazenamento.resolver(relativo: pastaRelativa)
+    try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+    try Data("tardio".utf8).write(
+        to: pasta.appendingPathComponent(Armazenamento.Nome.microfone)
+    )
+
+    let recriado = await biblioteca.registrar(
+        titulo: "Não deve voltar", pastaRelativa: pastaRelativa, duracao: 10
+    )
+
+    #expect(recriado == nil)
+    #expect(try await repositorio.listar(espaco: espaco).isEmpty)
+    #expect(!FileManager.default.fileExists(atPath: pasta.path))
+}
+
+@MainActor
+@Test("Excluir uma conversa limpa só os dados auxiliares daquele arquivo")
+func exclusaoDeArquivoLimpaSomenteSeuEstado() throws {
+    let suite = "LimpezaDeArquivoTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let alvo = ArquivoID()
+    let outro = ArquivoID()
+    let sufixo = alvo.rawValue.uuidString
+    let sufixoDoOutro = outro.rawValue.uuidString
+    let chavesDoAlvo = [
+        "tarefasDaConversa.\(sufixo)", "midiasDaConversa.\(sufixo)",
+        "arquivoFavorito.\(sufixo)", "arquivoPasta.\(sufixo)",
+        "arquivoCapa.\(sufixo)", "arquivoMetadados.\(sufixo)",
+        "arquivoNomesDeVoz.\(sufixo)", "corDaFaixaDoCartao.\(sufixo)",
+        "bannerDoCartao.\(sufixo)", "ajusteDoBannerDoCartao.\(sufixo)",
+        "faixaSemCorDoCartao.\(sufixo)",
+    ]
+    for chave in chavesDoAlvo { defaults.set(Data([1]), forKey: chave) }
+    defaults.set(Data([2]), forKey: "tarefasDaConversa.\(sufixoDoOutro)")
+
+    let tarefa = TarefaDaConversa(
+        titulo: "Revisar", origem: "Conversa", prioridade: .media,
+        status: .naoIniciado, responsavel: nil, prazo: nil
+    )
+    let tarefasNaLixeira = [
+        TarefaNaLixeira(arquivoID: alvo, conversaTitulo: "Alvo", tarefa: tarefa),
+        TarefaNaLixeira(arquivoID: outro, conversaTitulo: "Outra", tarefa: tarefa),
+    ]
+    defaults.set(try JSONEncoder().encode(tarefasNaLixeira), forKey: "tarefasNaLixeira")
+
+    let midiasNaLixeira = [
+        MidiaNaLixeira(
+            arquivoID: alvo, conversaTitulo: "Alvo", nome: "a.wav", tamanho: 1,
+            tipo: "Áudio", daGravacao: false, caminhoOriginal: "/a", caminhoNaLixeira: "/b"
+        ),
+        MidiaNaLixeira(
+            arquivoID: outro, conversaTitulo: "Outra", nome: "b.wav", tamanho: 1,
+            tipo: "Áudio", daGravacao: false, caminhoOriginal: "/c", caminhoNaLixeira: "/d"
+        ),
+    ]
+    defaults.set(try JSONEncoder().encode(midiasNaLixeira), forKey: "midiaNaLixeira")
+
+    let estado = AparenciaDasPastas.Estado(
+        preset: nil, corLivre: nil, favorita: false, semCor: nil,
+        criadaEm: nil, capa: nil
+    )
+    let pastasNaLixeira = [
+        PastaNaLixeira(nome: "Cliente", conversas: [alvo.rawValue, outro.rawValue], aparencia: estado),
+    ]
+    defaults.set(try JSONEncoder().encode(pastasNaLixeira), forKey: "pastasNaLixeira")
+
+    LimpezaDeArquivo.executar(alvo, em: defaults)
+
+    for chave in chavesDoAlvo {
+        #expect(defaults.object(forKey: chave) == nil, "sobrou \(chave)")
+    }
+    #expect(defaults.data(forKey: "tarefasDaConversa.\(sufixoDoOutro)") == Data([2]))
+    #expect(try JSONDecoder().decode([TarefaNaLixeira].self, from: #require(defaults.data(forKey: "tarefasNaLixeira"))).map(\.arquivoID) == [outro])
+    #expect(try JSONDecoder().decode([MidiaNaLixeira].self, from: #require(defaults.data(forKey: "midiaNaLixeira"))).map(\.arquivoID) == [outro])
+    #expect(try JSONDecoder().decode([PastaNaLixeira].self, from: #require(defaults.data(forKey: "pastasNaLixeira"))).first?.conversas == [outro.rawValue])
+}
+
+@Test("Apagar anexo não aceita pasta irmã com o mesmo prefixo")
+func apagarAnexoRecusaPastaIrma() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let conversa = raiz.appendingPathComponent("Conversa", isDirectory: true)
+    let irma = raiz.appendingPathComponent("Conversa-antiga", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: irma, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let externo = irma.appendingPathComponent("nao-apagar.txt")
+    try Data("preservar".utf8).write(to: externo)
+    let anexo = AnexoDeMidiaDaConversa(
+        id: UUID(), nome: externo.lastPathComponent, tamanho: 9,
+        data: Date(), url: externo
+    )
+
+    #expect(throws: MidiasDaConversa.Erro.arquivoForaDaConversa) {
+        try MidiasDaConversa.apagarArquivoSalvo(anexo, pastaDaConversa: conversa)
+    }
+    #expect(FileManager.default.fileExists(atPath: externo.path))
+}
+
+@Test("Apagar anexo remove arquivo realmente contido na conversa")
+func apagarAnexoInterno() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let conversa = raiz.appendingPathComponent("Conversa", isDirectory: true)
+    let midia = conversa.appendingPathComponent("Mídia", isDirectory: true)
+    try FileManager.default.createDirectory(at: midia, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    let interno = midia.appendingPathComponent("apagar.txt")
+    try Data("apagar".utf8).write(to: interno)
+    let anexo = AnexoDeMidiaDaConversa(
+        id: UUID(), nome: interno.lastPathComponent, tamanho: 6,
+        data: Date(), url: interno
+    )
+
+    try MidiasDaConversa.apagarArquivoSalvo(anexo, pastaDaConversa: conversa)
+
+    #expect(!FileManager.default.fileExists(atPath: interno.path))
+}
+
+@Test("Exportar conversas com o mesmo título cria pastas distintas e completas")
+func exportacaoNaoMisturaTitulosIguais() throws {
+    let origem = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: origem, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: origem) }
+
+    var conversas: [(arquivo: Arquivo, audio: URL)] = []
+    for indice in 1...2 {
+        let pasta = origem.appendingPathComponent("origem-\(indice)", isDirectory: true)
+        try FileManager.default.createDirectory(at: pasta, withIntermediateDirectories: true)
+        let audio = pasta.appendingPathComponent(Armazenamento.Nome.microfone)
+        try Data("audio-\(indice)".utf8).write(to: audio)
+        conversas.append((
+            Arquivo(
+                titulo: "Entrevista repetida",
+                pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+                espaco: EspacoID()
+            ),
+            audio
+        ))
+    }
+
+    let exportada = try DossieDaConversa.pastaComTudo(
+        nome: "Cliente/Projeto", conversas: conversas
+    )
+
+    #expect(exportada.lastPathComponent == "Cliente-Projeto")
+    let pastas = try FileManager.default.contentsOfDirectory(
+        at: exportada, includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+    #expect(pastas.count == 2)
+    #expect(Set(pastas.map(\.lastPathComponent)).count == 2)
+    for pasta in pastas {
+        let itens = try FileManager.default.contentsOfDirectory(atPath: pasta.path)
+        #expect(itens.contains(Armazenamento.Nome.microfone))
+        #expect(itens.contains("entrevista-repetida.md"))
+    }
+
+    let raizTemporaria = exportada.deletingLastPathComponent()
+    DossieDaConversa.descartarPastaTemporaria(exportada)
+    #expect(!FileManager.default.fileExists(atPath: raizTemporaria.path))
+}
+
+@Test("Exportar uma conversa descarta a pasta intermediária após criar o zip")
+func pacoteDaConversaNaoAcumulaPastaIntermediaria() throws {
+    let fm = FileManager.default
+    let origem = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try fm.createDirectory(at: origem, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: origem) }
+
+    let audio = origem.appendingPathComponent(Armazenamento.Nome.microfone)
+    try Data("audio".utf8).write(to: audio)
+    let arquivo = Arquivo(
+        titulo: "Pacote temporário \(UUID().uuidString)",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: EspacoID()
+    )
+    let base = DossieDaConversa.nomeDeArquivo(para: arquivo).replacingOccurrences(of: ".md", with: "")
+
+    let pacote = try DossieDaConversa.pacoteComAudio(arquivo: arquivo, audioPrincipal: audio)
+
+    let intermediarias = try fm.contentsOfDirectory(
+        at: fm.temporaryDirectory,
+        includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter { url in
+        url.lastPathComponent.hasPrefix("\(base)-")
+            && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+    #expect(intermediarias.isEmpty)
+    #expect(fm.fileExists(atPath: pacote.path))
+
+    let raizDoPacote = pacote.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(pacote)
+    #expect(!fm.fileExists(atPath: raizDoPacote.path))
+}
+
+@Test("Compactar pasta mantém o nome do pacote e permite limpar o temporário")
+func zipDaPastaMantemNomeELimpeza() throws {
+    let fm = FileManager.default
+    let pasta = fm.temporaryDirectory
+        .appendingPathComponent("Projeto-\(UUID().uuidString)", isDirectory: true)
+    try fm.createDirectory(at: pasta, withIntermediateDirectories: true)
+    defer { try? fm.removeItem(at: pasta) }
+    try Data("conteúdo".utf8).write(to: pasta.appendingPathComponent("nota.txt"))
+
+    let zip = try DossieDaConversa.zipar(pasta)
+
+    #expect(zip.lastPathComponent == "\(pasta.lastPathComponent).zip")
+    #expect(fm.fileExists(atPath: zip.path))
+
+    let raizDoZip = zip.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(zip)
+    #expect(!fm.fileExists(atPath: raizDoZip.path))
+}
+
+@Test("Fallback Markdown usa raiz temporária exclusiva e removível")
+func markdownTemporarioTemCicloDeVidaSeguro() throws {
+    let fm = FileManager.default
+    let arquivo = Arquivo(
+        titulo: "Fallback \(UUID().uuidString)",
+        pastaRelativa: Armazenamento.caminhoRelativo(id: UUID()),
+        espaco: EspacoID()
+    )
+
+    let markdown = try DossieDaConversa.markdownTemporario(arquivo: arquivo)
+
+    #expect(markdown.lastPathComponent == DossieDaConversa.nomeDeArquivo(para: arquivo))
+    #expect(fm.fileExists(atPath: markdown.path))
+
+    let raiz = markdown.deletingLastPathComponent()
+    DossieDaConversa.descartarArquivoTemporario(markdown)
+    #expect(!fm.fileExists(atPath: raiz.path))
 }

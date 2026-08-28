@@ -44,6 +44,10 @@ public final class ArquivoPersistido {
     /// É opcional para manter compatibilidade com registros locais já salvos.
     public var apagadoEm: Date?
 
+    /// Identificador da reunião na fonte externa de origem (`granola:` + id).
+    /// Opcional para manter a migração leve: arquivos locais não têm.
+    public var idExterno: String?
+
     /// Só em arquivos importados: quando a pessoa trouxe o arquivo para
     /// dentro do app. `criadoEm`, nesse caso, guarda a data real da
     /// gravação (lida do arquivo em disco); esta guarda a data do gesto de

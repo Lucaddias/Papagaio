@@ -5,8 +5,11 @@ struct EquipesDoPerfil: View {
     let equipes: [EquipeDisponivel]
     let aoSelecionar: (EquipeDisponivel) -> Void
     let aoAdicionarEquipe: (String) -> Void
+    let aoEntrarComCodigo: (String) -> Void
     @State private var mostrandoNovaEquipe = false
     @State private var nomeDaNovaEquipe = ""
+    @State private var mostrandoEntrada = false
+    @State private var codigoDaEquipe = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
@@ -28,6 +31,11 @@ struct EquipesDoPerfil: View {
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
                 .background(PapagaioTema.destaqueSuave, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 .help("Adicionar nova equipe")
+
+                Button("Entrar com código", systemImage: "number") {
+                    mostrandoEntrada = true
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
             }
 
             SeparadorPapagaio()
@@ -90,6 +98,17 @@ struct EquipesDoPerfil: View {
         } message: {
             Text("Crie uma equipe para vincular ao seu perfil.")
         }
+        .alert("Entrar em uma equipe", isPresented: $mostrandoEntrada) {
+            TextField("Código da equipe", text: $codigoDaEquipe)
+            Button("Cancelar", role: .cancel) { codigoDaEquipe = "" }
+            Button("Entrar") {
+                aoEntrarComCodigo(codigoDaEquipe)
+                codigoDaEquipe = ""
+            }
+            .disabled(codigoDaEquipe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Peça o código ao administrador da equipe.")
+        }
     }
 
     private func adicionarEquipe() {
@@ -98,4 +117,20 @@ struct EquipesDoPerfil: View {
         aoAdicionarEquipe(nome)
         nomeDaNovaEquipe = ""
     }
+}
+
+#Preview("Equipes no perfil") {
+    EquipesDoPerfil(
+        equipeAtiva: .init(id: "produto", nome: "Produto", papel: "Administrador", quantidadeDeMembros: 4, codigoDeEntrada: "A7K2M9"),
+        equipes: [
+            .init(id: "produto", nome: "Produto", papel: "Administrador", quantidadeDeMembros: 4, codigoDeEntrada: "A7K2M9"),
+            .init(id: "pesquisa", nome: "Pesquisa", papel: "Membro", quantidadeDeMembros: 8, codigoDeEntrada: "B4N8Q2")
+        ],
+        aoSelecionar: { _ in },
+        aoAdicionarEquipe: { _ in },
+        aoEntrarComCodigo: { _ in }
+    )
+    .padding()
+    .background(PapagaioTema.fundo)
+    .frame(width: 420)
 }

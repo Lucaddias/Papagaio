@@ -14,7 +14,7 @@ private actor RepositorioEspiao: ArquivoRepository {
     private(set) var salvos: [Arquivo] = []
 
     func salvar(_ a: Arquivo) async throws { salvos.append(a) }
-    func buscar(termo: String) async throws -> [Arquivo] { [] }
+    func buscar(termo: String, espaco: EspacoID) async throws -> [Arquivo] { [] }
     func listar(espaco: EspacoID) async throws -> [Arquivo] { salvos }
     func apagar(_ id: ArquivoID) async throws {}
 }
@@ -294,6 +294,152 @@ func pipelineDiarizaMixagemQuandoNaoHaCanais() async throws {
     let final = try await pipeline.processar(arquivo)
     #expect(chamouDiarizacao.withLock { $0 } == true)
     #expect(final.trechos[0].palavras[0].falanteAcustico == "S1")
+}
+
+@Test("Diarizar arquivo existente não re-transcreve nem resume, só casa falantes")
+func pipelineDiarizaExistenteSemRetranscrever() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: true, sistema: true, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    // O arquivo "antigo" já tem transcrição com palavras sem falante acústico.
+    let antigo = Arquivo(
+        id: arquivo.id,
+        titulo: arquivo.titulo,
+        criadoEm: arquivo.criadoEm,
+        duracao: arquivo.duracao,
+        pastaRelativa: arquivo.pastaRelativa,
+        espaco: arquivo.espaco,
+        trechos: [
+            Trecho(
+                start: 0, end: 3, texto: "oi tudo", speaker: Speaker.eu,
+                palavras: [
+                    Palavra(start: 0, end: 1, texto: "oi"),
+                    Palavra(start: 1, end: 3, texto: "tudo"),
+                ]
+            )
+        ],
+        notas: arquivo.notas,
+        resumo: resumoDeMentira,
+        engineTranscricao: arquivo.engineTranscricao,
+        engineResumo: arquivo.engineResumo,
+        apagadoEm: arquivo.apagadoEm
+    )
+
+    let transcreveu = Mutex(false)
+    let resumiu = Mutex(false)
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { _, _ in
+            transcreveu.withLock { $0 = true }
+            return []
+        },
+        resumir: { _ in
+            resumiu.withLock { $0 = true }
+            return resumoDeMentira
+        },
+        diarizar: { _ in
+            [SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 10)]
+        }
+    )
+
+    let diarizado = await pipeline.diarizarExistente(antigo)
+
+    // Leve: nada de Whisper nem de Qwen.
+    #expect(transcreveu.withLock { $0 } == false)
+    #expect(resumiu.withLock { $0 } == false)
+    // Só a diarização casou os falantes com as palavras já existentes.
+    #expect(diarizado.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "S1" })
+    #expect(diarizado.resumo?.titulo == "Resumo")
+}
+
+@Test("Diarizar arquivo existente também resolve falantes pelo contexto quando há closure")
+func pipelineDiarizaExistenteResolvePorContexto() async throws {
+    let (armazenamento, arquivo) = try montarGravacao(
+        microfone: true, sistema: true, mixagem: true
+    )
+    defer { try? FileManager.default.removeItem(at: armazenamento.raiz) }
+
+    // "oi" dentro do segmento S1; "sim" exatamente a meio caminho entre S1 e
+    // S2 (empate de distâncias) — o alinhamento deixa sem falante de propósito,
+    // caso do contexto.
+    let antigo = Arquivo(
+        id: arquivo.id,
+        titulo: arquivo.titulo,
+        criadoEm: arquivo.criadoEm,
+        duracao: arquivo.duracao,
+        pastaRelativa: arquivo.pastaRelativa,
+        espaco: arquivo.espaco,
+        trechos: [
+            Trecho(
+                start: 0, end: 3, texto: "oi sim", speaker: Speaker.eu,
+                palavras: [
+                    Palavra(start: 0, end: 1, texto: "oi"),
+                    Palavra(start: 1.4, end: 1.6, texto: "sim"),
+                ]
+            )
+        ],
+        notas: arquivo.notas,
+        resumo: resumoDeMentira,
+        engineTranscricao: arquivo.engineTranscricao,
+        engineResumo: arquivo.engineResumo,
+        apagadoEm: arquivo.apagadoEm
+    )
+
+    let resolverChamado = Mutex(false)
+    let pipeline = PipelineDeArquivo(
+        armazenamento: armazenamento,
+        repositorio: RepositorioEspiao(),
+        idTranscricao: "w", idResumo: "q",
+        transcrever: { _, _ in [] },
+        resumir: { _ in resumoDeMentira },
+        diarizar: { _ in
+            [
+                SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 1),
+                SegmentoDeFalante(falanteId: "S2", inicio: 2, fim: 3),
+            ]
+        },
+        resolverFalantes: { arquivo in
+            resolverChamado.withLock { $0 = true }
+            let trechos = arquivo.trechos.map { umTrecho in
+                umTrecho.comPalavras(umTrecho.palavras.map { palavra in
+                    guard palavra.falanteAcustico == nil else { return palavra }
+                    return Palavra(
+                        id: palavra.id,
+                        start: palavra.start,
+                        end: palavra.end,
+                        texto: palavra.texto,
+                        falanteAcustico: "S2"
+                    )
+                })
+            }
+            return Arquivo(
+                id: arquivo.id,
+                titulo: arquivo.titulo,
+                criadoEm: arquivo.criadoEm,
+                duracao: arquivo.duracao,
+                pastaRelativa: arquivo.pastaRelativa,
+                espaco: arquivo.espaco,
+                trechos: trechos,
+                notas: arquivo.notas,
+                resumo: arquivo.resumo,
+                engineTranscricao: arquivo.engineTranscricao,
+                engineResumo: arquivo.engineResumo,
+                apagadoEm: arquivo.apagadoEm
+            )
+        }
+    )
+
+    let diarizado = await pipeline.diarizarExistente(antigo)
+
+    // A resolução contextual rodou em cima do resultado da diarização: "oi"
+    // veio rotulado S1 e continuou intacto; "sim" ganhou S2.
+    #expect(resolverChamado.withLock { $0 } == true)
+    #expect(diarizado.trechos[0].palavras[0].falanteAcustico == "S1")
+    #expect(diarizado.trechos[0].palavras[1].falanteAcustico == "S2")
 }
 
 @Test("Silêncio total não vira resumo inventado")

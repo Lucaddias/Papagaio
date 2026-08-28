@@ -62,10 +62,10 @@ struct SegurancaDoPerfil: View {
     private var conteudoDeExclusao: some View {
         Group {
             VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text("Excluir conta")
+                Text("Excluir perfil")
                     .font(.headline)
                     .foregroundStyle(PapagaioTema.perigo)
-                Text("Remove permanentemente seu perfil, conversas, áudios, notas e equipes deste Mac.")
+                Text("Remove deste Mac o perfil e seus dados pessoais, sem apagar os espaços de equipe nem as preferências do app.")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
@@ -73,7 +73,7 @@ struct SegurancaDoPerfil: View {
             Spacer()
 
             Button(role: .destructive, action: aoExcluirConta) {
-                Label(excluindoConta ? "Excluindo..." : "Excluir conta", systemImage: "trash")
+                Label(excluindoConta ? "Excluindo..." : "Excluir perfil", systemImage: "trash")
             }
             .buttonStyle(BotaoDeContornoPapagaio())
             .disabled(excluindoConta)

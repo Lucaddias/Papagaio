@@ -251,7 +251,9 @@ final class SystemAudioTap {
         )
         var uid: CFString = "" as CFString
         var size = UInt32(MemoryLayout<CFString>.size)
-        let status = AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, &uid)
+        let status = withUnsafeMutablePointer(to: &uid) { uidPointer in
+            AudioObjectGetPropertyData(tapID, &address, 0, nil, &size, uidPointer)
+        }
         guard status == noErr else {
             throw SystemAudioTapError.coreAudioFailure(status, "ler o UID do tap")
         }
@@ -283,7 +285,9 @@ final class SystemAudioTap {
         )
         var deviceUID: CFString = "" as CFString
         var uidSize = UInt32(MemoryLayout<CFString>.size)
-        status = AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, &deviceUID)
+        status = withUnsafeMutablePointer(to: &deviceUID) { uidPointer in
+            AudioObjectGetPropertyData(deviceID, &uidAddress, 0, nil, &uidSize, uidPointer)
+        }
         guard status == noErr else {
             throw SystemAudioTapError.coreAudioFailure(status, "ler o UID do dispositivo de saída")
         }

@@ -45,6 +45,31 @@ enum TarefasGeraisStore {
         UserDefaults.standard.set(dados, forKey: chave(arquivoID))
     }
 
+    /// Duplica o estado atual das tarefas para uma conversa distinta. IDs e a
+    /// origem precisam ser recriados: a cópia é uma nova conversa e não pode
+    /// compartilhar a identidade nem continuar mostrando o título antigo.
+    static func duplicar(_ arquivo: Arquivo, para copia: Arquivo) {
+        let origemDaCopia = copia.resumo?.titulo ?? copia.titulo
+        let tarefasCopiadas = carregar(arquivo).map { tarefa in
+            TarefaDaConversa(
+                titulo: tarefa.titulo,
+                origem: origemDaCopia,
+                prioridade: tarefa.prioridade,
+                status: tarefa.status,
+                responsavel: tarefa.responsavel,
+                prazo: tarefa.prazo,
+                descricao: tarefa.descricao
+            )
+        }
+
+        guard !tarefasCopiadas.isEmpty else { return }
+        salvar(tarefasCopiadas, para: copia.id)
+    }
+
+    static func remover(_ arquivoID: ArquivoID, em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave(arquivoID))
+    }
+
     private static func chave(_ arquivoID: ArquivoID) -> String {
         "tarefasDaConversa.\(arquivoID.rawValue.uuidString)"
     }

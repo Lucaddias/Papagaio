@@ -65,18 +65,18 @@ func painelAlternaConclusao() {
 }
 
 @MainActor
-@Test("Mover aplica o status e a prioridade do destino")
+@Test("Mover aplica o status do destino sem alterar a prioridade")
 func painelMoveParaDestino() {
     let vm = TarefasDoPainelViewModel()
     let conversa = conversaDeTeste()
     let tarefa = TarefaDaConversa(titulo: "Mover", origem: conversa.titulo, prioridade: .media, status: .emAndamento, responsavel: nil, prazo: nil)
     vm.salvar(tarefa, em: conversa, substituindo: false)
 
-    vm.mover(tarefa.id, para: .alta, em: conversa)
+    vm.mover(tarefa.id, para: .concluida, em: conversa)
 
     let movida = try! #require(vm.tarefas(de: conversa).first)
-    #expect(movida.prioridade == .alta)
-    #expect(movida.status == .emAndamento)
+    #expect(movida.prioridade == .media)
+    #expect(movida.status == .concluida)
 }
 
 @MainActor
