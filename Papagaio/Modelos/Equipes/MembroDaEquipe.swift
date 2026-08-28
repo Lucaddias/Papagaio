@@ -1,5 +1,28 @@
 import SwiftUI
 
+/// Representa a identidade que o CloudKit expõe para uma pessoa no `CKShare`.
+///
+/// Não usamos e-mail aqui: o CloudKit deliberadamente não o revela para todos
+/// os participantes de um compartilhamento. O identificador serve somente para
+/// que o proprietário execute uma ação sobre o participante certo.
+struct ParticipanteDaEquipe: Identifiable, Hashable, Sendable {
+    enum Permissao: String, CaseIterable, Identifiable, Sendable {
+        case leitura = "Somente leitura"
+        case escrita = "Leitura e escrita"
+
+        var id: Self { self }
+    }
+
+    let id: String
+    let nome: String
+    let eProprietario: Bool
+    let permissao: Permissao
+
+    var descricaoDaPermissao: String {
+        eProprietario ? "Proprietário" : permissao.rawValue
+    }
+}
+
 enum StatusDaEquipe: String, CaseIterable, Identifiable, Codable, Sendable {
     case ativo = "Ativo"
     case offline = "Offline"

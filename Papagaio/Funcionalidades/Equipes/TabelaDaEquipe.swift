@@ -3,14 +3,14 @@ import SwiftUI
 struct TabelaDaEquipe: View {
     static let itensPorPagina = 4
 
-    let membros: [MembroDaEquipe]
+    let membros: [ParticipanteDaEquipe]
     let pagina: Int
     let podeGerenciar: Bool
-    let aoEditar: (MembroDaEquipe) -> Void
-    let aoRemover: (MembroDaEquipe) -> Void
+    let aoEditar: (ParticipanteDaEquipe) -> Void
+    let aoRemover: (ParticipanteDaEquipe) -> Void
     let aoAlternarPagina: (Int) -> Void
 
-    private var membrosDaPagina: [MembroDaEquipe] {
+    private var membrosDaPagina: [ParticipanteDaEquipe] {
         let inicio = min(pagina * Self.itensPorPagina, membros.count)
         let fim = min(inicio + Self.itensPorPagina, membros.count)
         return Array(membros[inicio..<fim])
@@ -31,9 +31,8 @@ struct TabelaDaEquipe: View {
             VStack(spacing: 0) {
                 HStack {
                     CabecalhoDeColuna("MEMBRO", largura: 300)
-                    CabecalhoDeColuna("EMAIL", largura: 330)
-                    CabecalhoDeColuna("CARGO", largura: 210)
-                    CabecalhoDeColuna("STATUS", largura: 170)
+                    CabecalhoDeColuna("IDENTIDADE", largura: 330)
+                    CabecalhoDeColuna("ACESSO", largura: 210)
                     CabecalhoDeColuna("AÇÕES", alinhamento: .trailing)
                 }
                 .padding(.horizontal, PapagaioTema.Espaco.secao)
@@ -88,7 +87,7 @@ struct TabelaDaEquipe: View {
                 .padding(.horizontal, PapagaioTema.Espaco.secao)
                 .frame(height: 72)
             }
-            .frame(minWidth: 1_060)
+            .frame(minWidth: 940)
         }
         .cartaoPapagaio()
     }
@@ -115,7 +114,7 @@ struct CabecalhoDeColuna: View {
 }
 
 struct LinhaDeMembroDaEquipe: View {
-    let membro: MembroDaEquipe
+    let membro: ParticipanteDaEquipe
     let podeGerenciar: Bool
     let aoEditar: () -> Void
     let aoRemover: () -> Void
@@ -123,27 +122,25 @@ struct LinhaDeMembroDaEquipe: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: PapagaioTema.Espaco.largo) {
-                AvatarDeMembro(iniciais: membro.iniciais)
+                AvatarDeMembro(iniciais: Papagaio.iniciais(de: membro.nome, vazio: "M"))
 
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     Text(membro.nome)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(PapagaioTema.texto)
-                    if membro.atual {
-                        Text("Você")
-                            .font(.callout)
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                    }
+                    Text(membro.eProprietario ? "Conta proprietária" : "Participante aceito")
+                        .font(.callout)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
                 }
             }
             .frame(width: 300, alignment: .leading)
 
-            Text(membro.email)
+            Text("Apple Account compartilhada")
                 .font(.title3)
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .frame(width: 330, alignment: .leading)
 
-            Text(membro.cargo)
+            Text(membro.descricaoDaPermissao)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(PapagaioTema.textoSecundario)
                 .padding(.horizontal, PapagaioTema.Espaco.largo)
@@ -151,19 +148,9 @@ struct LinhaDeMembroDaEquipe: View {
                 .background(PapagaioTema.destaque.opacity(0.24), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
                 .frame(width: 210, alignment: .leading)
 
-            HStack(spacing: PapagaioTema.Espaco.medio) {
-                Circle()
-                    .fill(membro.status.cor)
-                    .frame(width: 10, height: 10)
-                Text(membro.status.rawValue)
-                    .font(.title3)
-                    .foregroundStyle(PapagaioTema.textoSecundario)
-            }
-            .frame(width: 210, alignment: .leading)
-
             Spacer()
 
-            if podeGerenciar && !membro.atual && membro.cargo != "Proprietário" {
+            if podeGerenciar && !membro.eProprietario {
                 Menu {
                     Button("Alterar permissão", systemImage: "pencil", action: aoEditar)
                     Button("Remover", systemImage: "trash", role: .destructive, action: aoRemover)

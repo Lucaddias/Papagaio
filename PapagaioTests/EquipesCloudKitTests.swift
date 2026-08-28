@@ -285,6 +285,35 @@ func filaCloudKitEhPersistente() async throws {
     #expect(FilaPersistenteCloudKit.atraso(para: 20) == 15 * 60)
 }
 
+@Test("Excluir equipe descarta apenas as retentativas daquela equipe")
+func exclusaoDaEquipeDescartaOutboxCorreta() async throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let fila = FilaPersistenteCloudKit(url: raiz.appendingPathComponent("fila.json"))
+    let espaco = EspacoID()
+    let equipeA = equipeCloudKitDeTeste(espaco: espaco)
+    let equipeB = EquipeDisponivel(
+        id: "outra-equipe",
+        nome: "Outra",
+        papel: "Administrador",
+        quantidadeDeMembros: 1,
+        espacoID: EspacoID().rawValue.uuidString,
+        zonaCloudKit: "equipe.outra",
+        compartilhamentoCloudKit: "share-outra",
+        bancoCloudKit: BancoCloudKitDaEquipe.privado.rawValue
+    )
+    try await fila.agendarEnvio(Arquivo(titulo: "A", pastaRelativa: "", espaco: espaco), para: equipeA)
+    try await fila.agendarEnvio(
+        Arquivo(titulo: "B", pastaRelativa: "", espaco: EspacoID(rawValue: UUID(uuidString: equipeB.espacoID!)!)),
+        para: equipeB
+    )
+
+    try await fila.descartarOperacoes(daEquipeComID: equipeA.id)
+
+    let pendentes = try await fila.operacoesPendentes()
+    #expect(pendentes.count == 1)
+    #expect(pendentes.first?.equipe.id == equipeB.id)
+}
+
 @Test("Download antigo não sobrescreve uma edição local pendente")
 func conflitoCloudKitPreservaEdicaoLocal() {
     let revisaoRemota = Date(timeIntervalSince1970: 1_000)

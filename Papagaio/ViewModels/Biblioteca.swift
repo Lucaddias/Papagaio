@@ -558,6 +558,13 @@ final class Biblioteca {
         return arquivosDaConta.map(\.id)
     }
 
+    /// Descarta somente a outbox de uma equipe que acabou de ser removida no
+    /// CloudKit. Não mistura essa limpeza com a conta pessoal: uma equipe
+    /// diferente pode ter alterações pendentes legítimas.
+    func descartarOperacoesPendentes(daEquipeComID equipeID: String) async throws {
+        try await filaCloudKit.descartarOperacoes(daEquipeComID: equipeID)
+    }
+
     func estaEmOperacaoDeLixeira(_ arquivo: Arquivo) -> Bool {
         operacoesDeLixeiraEmAndamento.contains(arquivo.id)
     }

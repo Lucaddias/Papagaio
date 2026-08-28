@@ -157,6 +157,15 @@ actor FilaPersistenteCloudKit {
         try carregar()
     }
 
+    /// Uma zona apagada não pode continuar recebendo retentativas. Além de
+    /// reter conteúdo que o proprietário excluiu, uma fila sobrevivente faria
+    /// a interface informar falhas recorrentes sem nenhuma ação útil.
+    func descartarOperacoes(daEquipeComID equipeID: String) throws {
+        var operacoes = try carregar()
+        operacoes.removeAll { $0.equipe.id == equipeID }
+        try salvar(operacoes)
+    }
+
     func revisoesLocaisPendentes(equipeID: String) throws -> [ArquivoID: Date] {
         var revisoes: [ArquivoID: Date] = [:]
         for operacao in try carregar()

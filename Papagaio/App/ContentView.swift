@@ -411,6 +411,8 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         case .equipe:
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
+                                aoAtualizarEquipe: atualizarEquipe,
+                                aoExcluirEquipe: excluirEquipe,
                                 estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
                                 aoRetomarSincronizacao: {
                                     Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
@@ -436,6 +438,7 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                 nova.marcarFichaPendente(arquivo.id)
             }
             biblioteca = nova
+            await reconciliarEquipesExcluidas()
 
             let conexao = GranolaViewModel()
             conexao.aoNotificar = { titulo, mensagem, tipo in
@@ -668,6 +671,68 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         equipeAtivaID = equipe.id
         garantirEspacoParaEquipe(id: equipe.id)
         atualizarEspacoDaBiblioteca()
+    }
+
+    private func atualizarEquipe(_ equipe: EquipeDisponivel) {
+        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
+        equipes[indice] = equipe
+        EquipesDoUsuario.salvar(equipes)
+    }
+
+    /// Só é chamado depois de o serviço confirmar a exclusão da zona remota.
+    /// Assim a interface não esconde a equipe nem apaga este Mac por uma ação
+    /// que falhou no CloudKit.
+    private func excluirEquipe(_ equipe: EquipeDisponivel) async throws {
+        try await servicoDeEquipesCloudKit.excluirEquipeGlobalmente(equipe)
+        try await limparDadosLocais(da: equipe)
+        MembrosDasEquipes.remover(equipeID: equipe.id)
+        equipes.removeAll { $0.id == equipe.id }
+        EquipesDoUsuario.salvar(equipes)
+
+        if equipeAtivaID == equipe.id || equipes.isEmpty {
+            equipeAtivaID = ""
+            contextoDaConta = .perfil
+            await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
+        }
+    }
+
+    /// A exclusão da zona remota não acorda Macs desligados. Ao abrir o app,
+    /// cada instalação consulta o marcador público e só então remove a cópia
+    /// local, inclusive mídia e itens na lixeira daquele espaço.
+    private func reconciliarEquipesExcluidas() async {
+        let candidatas = equipes.filter { $0.zonaCloudKit != nil }
+        for equipe in candidatas {
+            do {
+                guard try await servicoDeEquipesCloudKit.equipeFoiExcluida(equipe) else { continue }
+                try await limparDadosLocais(da: equipe)
+                MembrosDasEquipes.remover(equipeID: equipe.id)
+                equipes.removeAll { $0.id == equipe.id }
+                if equipeAtivaID == equipe.id {
+                    equipeAtivaID = ""
+                    contextoDaConta = .perfil
+                }
+            } catch {
+                // Uma falha transitória não autoriza apagar conteúdo local.
+                // A próxima abertura ou troca de equipe tenta de novo.
+            }
+        }
+        EquipesDoUsuario.salvar(equipes)
+        if equipeAtivaID.isEmpty {
+            await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
+        }
+    }
+
+    /// Complementa a exclusão do SwiftData: tarefas, anexos, aparência e
+    /// lixeiras vivem em stores locais separados, todos indexados pelo ID da
+    /// conversa. Sem essa cascata a equipe sumiria da biblioteca, mas deixaria
+    /// dados pessoais acessíveis em outros painéis do mesmo Mac.
+    private func limparDadosLocais(da equipe: EquipeDisponivel) async throws {
+        try await biblioteca?.descartarOperacoesPendentes(daEquipeComID: equipe.id)
+        guard let texto = equipe.espacoID, let espaco = UUID(uuidString: texto) else { return }
+        let arquivos = try await biblioteca?.excluirDadosDaConta(espaco: EspacoID(rawValue: espaco)) ?? []
+        for arquivo in arquivos {
+            LimpezaDeArquivo.executar(arquivo)
+        }
     }
 
     private func adicionarEquipe(nome: String) {

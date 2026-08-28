@@ -85,7 +85,11 @@ No Xcode, selecione o scheme `Loro` e execute no seu Mac. Para usar equipes,
 habilite o container `iCloud.com.papagaio.Papagaio` na assinatura do target e
 publique o schema correspondente no CloudKit Dashboard. O registro público
 `CodigoDeEquipe` precisa disponibilizar os campos `codigoDeEntrada` (consultável)
-e `urlDoCompartilhamento`.
+e `urlDoCompartilhamento`. A exclusão global de equipes também requer o tipo
+público `EquipeExcluida`, com `equipeID` (String), `excluidaEm` (Date) e
+`estadoDaExclusao` (String). Esse
+marcador permite que instalações de participantes removam a cópia local ao se
+conectarem novamente depois que a zona compartilhada foi apagada.
 
 ## Validar localmente
 

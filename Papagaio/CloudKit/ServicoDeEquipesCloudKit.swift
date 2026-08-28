@@ -16,14 +16,25 @@ actor ServicoDeEquipesCloudKit {
         static let codigoDeEntrada = "codigoDeEntrada"
         static let configuracoes = "configuracoes"
         static let urlDoCompartilhamento = "urlDoCompartilhamento"
+        static let equipeID = "equipeID"
+        static let excluidaEm = "excluidaEm"
+        static let estadoDaExclusao = "estadoDaExclusao"
     }
 
     private enum TipoDeRegistro {
         static let equipe = "Equipe"
         static let codigoDeEquipe = "CodigoDeEquipe"
+        /// Marcador fora da zona. A zona é apagada na exclusão, por isso não
+        /// pode carregar o sinal que manda os demais Macs limparem o cache.
+        static let equipeExcluida = "EquipeExcluida"
     }
 
     private let container: CKContainer
+
+    private enum EstadoDoMarcadorDeExclusao: String {
+        case preparando
+        case concluida
+    }
 
     init(container: CKContainer = CKContainer(identifier: "iCloud.com.papagaio.Papagaio")) {
         self.container = container
@@ -129,6 +140,123 @@ actor ServicoDeEquipesCloudKit {
         _ = try await container.privateCloudDatabase.save(registro)
     }
 
+    /// Lê o `CKShare` real. A identidade retornada é a que o CloudKit permite
+    /// mostrar; e-mail não é um dado disponível para o app nesse fluxo.
+    func participantes(da equipe: EquipeDisponivel) async throws -> [ParticipanteDaEquipe] {
+        try await garantirContaICloudDisponivel()
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else {
+            throw ErroDeEquipeCloudKit.apenasAdministrador
+        }
+        let compartilhamento = try await compartilhamento(da: equipe)
+        return Self.participantes(no: compartilhamento)
+    }
+
+    /// Atualiza a permissão de uma Apple Account já aceita na equipe.
+    func atualizarPermissao(
+        do participanteID: String,
+        para permissao: ParticipanteDaEquipe.Permissao,
+        na equipe: EquipeDisponivel
+    ) async throws {
+        let compartilhamento = try await compartilhamento(da: equipe)
+        guard let participante = compartilhamento.participants.first(where: {
+            Self.idDoParticipante($0) == participanteID
+        }) else {
+            throw ErroDeEquipeCloudKit.membroNaoEncontrado
+        }
+        participante.permission = permissao == .leitura ? .readOnly : .readWrite
+        _ = try await container.privateCloudDatabase.save(compartilhamento)
+    }
+
+    /// Revoga o acesso de uma Apple Account aceita. O proprietário nunca é
+    /// incluído em `participants`, mas a defesa existe para evitar regressões.
+    func removerParticipante(_ participanteID: String, da equipe: EquipeDisponivel) async throws {
+        let compartilhamento = try await compartilhamento(da: equipe)
+        guard let participante = compartilhamento.participants.first(where: {
+            Self.idDoParticipante($0) == participanteID
+        }) else {
+            throw ErroDeEquipeCloudKit.membroNaoEncontrado
+        }
+        compartilhamento.removeParticipant(participante)
+        _ = try await container.privateCloudDatabase.save(compartilhamento)
+    }
+
+    /// Trocar um código precisa trocar o `CKShare`, não só o registro público:
+    /// um URL de share antigo continuaria concedendo acesso. Por consequência,
+    /// pessoas já aceitas precisam entrar novamente com o novo código.
+    func rotacionarCodigo(da equipe: EquipeDisponivel) async throws -> EquipeDisponivel {
+        try await garantirContaICloudDisponivel()
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else {
+            throw ErroDeEquipeCloudKit.apenasAdministrador
+        }
+        let zona = try referenciaDaZona(de: equipe)
+        let antigo = try await compartilhamento(da: equipe)
+        let novo = CKShare(recordZoneID: zona)
+        novo[CKShare.SystemFieldKey.title] = equipe.nome as NSString
+        novo.publicPermission = Self.permissaoDaEntradaPorCodigo
+
+        // Remover o share anterior é o ponto que invalida o URL antigo e os
+        // participantes existentes. Só então a nova URL pode ser publicada.
+        _ = try await container.privateCloudDatabase.modifyRecords(
+            saving: [novo],
+            deleting: [antigo.recordID],
+            savePolicy: .ifServerRecordUnchanged,
+            atomically: true
+        )
+        guard let url = novo.url else { throw ErroDeEquipeCloudKit.conviteIndisponivel }
+        let novoCodigo = EquipeDisponivel.novoCodigoDeEntrada()
+        try await invalidarCodigoAnterior(equipe.codigoDeEntrada)
+        try await publicarCodigo(novoCodigo, para: url)
+
+        var atualizada = equipe
+        atualizada.codigoDeEntrada = novoCodigo
+        atualizada.compartilhamentoCloudKit = novo.recordID.recordName
+        atualizada.quantidadeDeMembros = 1
+        return atualizada
+    }
+
+    /// Exclusão global é uma operação do proprietário. O marcador passa por
+    /// `preparando` antes de apagar a zona e só vira `concluida` depois: não
+    /// podemos atomizar escrita pública e remoção de zona privada, portanto
+    /// outros Macs só limpam conteúdo após a confirmação remota final.
+    func excluirEquipeGlobalmente(_ equipe: EquipeDisponivel) async throws {
+        try await garantirContaICloudDisponivel()
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else {
+            throw ErroDeEquipeCloudKit.apenasAdministrador
+        }
+        let marcador = CKRecord(
+            recordType: TipoDeRegistro.equipeExcluida,
+            recordID: Self.idDoMarcadorDeExclusao(para: equipe.id)
+        )
+        marcador[Campo.equipeID] = equipe.id as NSString
+        marcador[Campo.excluidaEm] = Date() as NSDate
+        marcador[Campo.estadoDaExclusao] = EstadoDoMarcadorDeExclusao.preparando.rawValue as NSString
+        _ = try await container.publicCloudDatabase.save(marcador)
+        try await invalidarCodigoAnterior(equipe.codigoDeEntrada)
+        do {
+            try await container.privateCloudDatabase.deleteRecordZone(withID: try referenciaDaZona(de: equipe))
+        } catch let erro as CKError where erro.code == .unknownItem {
+            // Repetir a confirmação depois de uma queda entre as duas bases
+            // é seguro: a zona já saiu, falta só tornar o marcador visível.
+        }
+        marcador[Campo.estadoDaExclusao] = EstadoDoMarcadorDeExclusao.concluida.rawValue as NSString
+        _ = try await container.publicCloudDatabase.save(marcador)
+    }
+
+    /// Chamado por cada instalação antes de voltar a usar uma equipe salva.
+    /// O resultado positivo é definitivo: a cópia local daquela equipe deve
+    /// sair inclusive da lixeira e do disco.
+    func equipeFoiExcluida(_ equipe: EquipeDisponivel) async throws -> Bool {
+        do {
+            let marcador = try await container.publicCloudDatabase.record(
+                for: Self.idDoMarcadorDeExclusao(para: equipe.id)
+            )
+            return (marcador[Campo.estadoDaExclusao] as? String)
+                == EstadoDoMarcadorDeExclusao.concluida.rawValue
+        } catch let erro as CKError where erro.code == .unknownItem {
+            return false
+        }
+    }
+
     /// Converte uma equipe criada antes da entrada por código. A ação é do
     /// proprietário porque muda quem pode entrar na zona compartilhada.
     func ativarEntradaPorCodigo(na equipe: EquipeDisponivel) async throws {
@@ -226,6 +354,71 @@ actor ServicoDeEquipesCloudKit {
         registro[Campo.codigoDeEntrada] = Self.normalizar(codigo) as NSString
         registro[Campo.urlDoCompartilhamento] = url.absoluteString as NSString
         _ = try await container.publicCloudDatabase.save(registro)
+    }
+
+    private func invalidarCodigoAnterior(_ codigo: String?) async throws {
+        guard let codigo else { return }
+        let consulta = CKQuery(
+            recordType: TipoDeRegistro.codigoDeEquipe,
+            predicate: NSPredicate(format: "%K == %@", Campo.codigoDeEntrada, Self.normalizar(codigo))
+        )
+        let resultado = try await container.publicCloudDatabase.records(matching: consulta)
+        let ids = resultado.matchResults.compactMap { chave, valor -> CKRecord.ID? in
+            guard (try? valor.get()) != nil else { return nil }
+            return chave
+        }
+        guard !ids.isEmpty else { return }
+        _ = try await container.publicCloudDatabase.modifyRecords(
+            saving: [], deleting: ids, savePolicy: .ifServerRecordUnchanged, atomically: true
+        )
+    }
+
+    private func compartilhamento(da equipe: EquipeDisponivel) async throws -> CKShare {
+        try await garantirContaICloudDisponivel()
+        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else {
+            throw ErroDeEquipeCloudKit.apenasAdministrador
+        }
+        let zona = try referenciaDaZona(de: equipe)
+        let id = try idDoCompartilhamento(de: equipe, na: zona)
+        guard let compartilhamento = try await container.privateCloudDatabase.record(for: id) as? CKShare else {
+            throw ErroDeEquipeCloudKit.compartilhamentoInvalido
+        }
+        return compartilhamento
+    }
+
+    private nonisolated static func participantes(no compartilhamento: CKShare) -> [ParticipanteDaEquipe] {
+        let dono = ParticipanteDaEquipe(
+            id: idDoParticipante(compartilhamento.owner),
+            nome: nomeDoParticipante(compartilhamento.owner, fallback: "Proprietário"),
+            eProprietario: true,
+            permissao: .escrita
+        )
+        let aceitos = compartilhamento.participants.map { participante in
+            ParticipanteDaEquipe(
+                id: idDoParticipante(participante),
+                nome: nomeDoParticipante(participante, fallback: "Membro da equipe"),
+                eProprietario: false,
+                permissao: participante.permission == .readOnly ? .leitura : .escrita
+            )
+        }
+        return [dono] + aceitos.sorted { $0.nome.localizedStandardCompare($1.nome) == .orderedAscending }
+    }
+
+    private nonisolated static func idDoParticipante(_ participante: CKShare.Participant) -> String {
+        participante.userIdentity.userRecordID?.recordName
+            ?? participante.userIdentity.lookupInfo?.emailAddress
+            ?? UUID().uuidString
+    }
+
+    private nonisolated static func nomeDoParticipante(
+        _ participante: CKShare.Participant,
+        fallback: String
+    ) -> String {
+        participante.userIdentity.nameComponents?.formatted(.name(style: .medium)) ?? fallback
+    }
+
+    private nonisolated static func idDoMarcadorDeExclusao(para equipeID: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "equipe-excluida.\(equipeID)")
     }
 
     private func configuracoes(no registro: CKRecord) -> ConfiguracoesDaEquipe {
