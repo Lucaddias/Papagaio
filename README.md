@@ -101,8 +101,15 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-O GitHub Actions executa o bootstrap, os testes do `PapagaioCore` e o build do
-app para cada pull request direcionado a `main`.
+O GitHub Actions configura o bootstrap, os testes do `PapagaioCore`, os testes
+do app com `PAPAGAIO_TEST_MODE=1` e o build para pull requests direcionados a
+`main`. No modo de teste, o lançamento usa um host vazio; os testes continuam
+responsáveis por injetar armazenamento temporário e serviços falsos.
+
+## Plano e revisões
+
+- [Plano de aplicação de produto](PLANO-APLICACAO-INTELIGENCIA-PRODUTO-PAPAGAIO.md): classificação, prioridades e critérios de aceite.
+- [Revisão de bugs e fluxos de dados](docs/REVISAO-PLANO-E-FLUXOS-2026-08-28.md): mapa de entradas/saídas, correções, evidências e validações pendentes.
 
 ## Limites conhecidos
 
