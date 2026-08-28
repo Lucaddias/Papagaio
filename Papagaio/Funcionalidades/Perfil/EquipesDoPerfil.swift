@@ -65,7 +65,7 @@ struct EquipesDoPerfil: View {
                                     .foregroundStyle(PapagaioTema.texto)
                                     .lineLimit(1)
 
-                                Text("\(equipe.papel) • \(equipe.quantidadeDeMembros) membros")
+                                Text("\(equipe.papel) • \(equipe.resumoDeMembros)")
                                     .font(.caption)
                                     .foregroundStyle(PapagaioTema.textoSecundario)
                                     .lineLimit(1)

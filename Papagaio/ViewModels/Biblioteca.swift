@@ -1060,11 +1060,16 @@ final class Biblioteca {
             if resultado.pendentes == 0 {
                 estadoDaSincronizacaoCloudKit = .sincronizado
             } else {
-                let detalhe = resultado.erros.first.map { ": \($0)" } ?? ""
+                let erro = resultado.erros.first ?? ""
+                let detalhe = erro.isEmpty
+                    ? ""
+                    : ": \(DiagnosticoDaSincronizacaoCloudKit.mensagem(paraTexto: erro))"
                 estadoDaSincronizacaoCloudKit = .falhou(
                     "\(resultado.pendentes) alteração(ões) aguardando nova tentativa no iCloud\(detalhe)"
                 )
-                agendarRetryCloudKit(para: resultado.proximaTentativa)
+                if !DiagnosticoDaSincronizacaoCloudKit.exigeAcaoDoProprietario(erro) {
+                    agendarRetryCloudKit(para: resultado.proximaTentativa)
+                }
             }
         } catch {
             let mensagem = "Não foi possível ler ou salvar a fila do iCloud: \(error.localizedDescription)"
@@ -1136,7 +1141,7 @@ final class Biblioteca {
                 aoNotificar?("Conflito de sincronização", mensagem, .aviso)
             }
         } catch {
-            let mensagem = "Não foi possível baixar as conversas da equipe: \(error.localizedDescription)"
+            let mensagem = "Não foi possível baixar as conversas da equipe: \(DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error))"
             estadoDaSincronizacaoCloudKit = .falhou(mensagem)
             aoNotificar?("Falha de sincronização do iCloud", mensagem, .aviso)
         }

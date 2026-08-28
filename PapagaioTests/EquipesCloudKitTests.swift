@@ -199,6 +199,33 @@ func equipeParticipantePreservaDonoDaZonaCloudKit() throws {
     #expect(restaurada.donoDaZonaCloudKit == "_dono-real_")
 }
 
+@Test("Contagem desconhecida não é apresentada como equipe vazia")
+func equipeComParticipantesAindaNaoCarregadosTemRotuloHonesto() {
+    let equipe = EquipeDisponivel(
+        id: "produto",
+        nome: "Produto",
+        papel: "Membro",
+        quantidadeDeMembros: 0
+    )
+
+    #expect(equipe.resumoDeMembros == "participantes ainda não carregados")
+}
+
+@Test("Falhas de esquema e zona orientam o participante sem tentar mascará-las")
+func diagnosticoCloudKitExplicaDependenciaDoProprietario() {
+    let esquema = DiagnosticoDaSincronizacaoCloudKit.mensagem(
+        paraTexto: "Cannot create new type Conversa in production schema"
+    )
+    let zona = DiagnosticoDaSincronizacaoCloudKit.mensagem(
+        paraTexto: "Zone does not exist"
+    )
+
+    #expect(esquema.contains("proprietário"))
+    #expect(esquema.contains("CloudKit Dashboard"))
+    #expect(zona.contains("entre novamente"))
+    #expect(DiagnosticoDaSincronizacaoCloudKit.exigeAcaoDoProprietario("Zone does not exist"))
+}
+
 @Test("Falha transitória sobrevive ao relançamento e respeita backoff limitado")
 func filaCloudKitEhPersistente() async throws {
     let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)

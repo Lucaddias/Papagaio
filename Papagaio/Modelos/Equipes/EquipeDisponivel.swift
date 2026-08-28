@@ -53,6 +53,16 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
             && codigoDeEntrada == nil
     }
 
+    /// `0` não significa que a equipe esteja vazia. Ele é usado pelas versões
+    /// que ainda não conseguiram ler os participantes do `CKShare`; exibir
+    /// "0 membros" nesse caso fazia parecer que o proprietário tinha sumido.
+    var resumoDeMembros: String {
+        guard quantidadeDeMembros > 0 else {
+            return "participantes ainda não carregados"
+        }
+        return quantidadeDeMembros == 1 ? "1 membro" : "\(quantidadeDeMembros) membros"
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, nome, papel, quantidadeDeMembros
         case espacoID, zonaCloudKit, donoDaZonaCloudKit, compartilhamentoCloudKit, bancoCloudKit

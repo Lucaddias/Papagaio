@@ -169,7 +169,10 @@ actor ServicoDeEquipesCloudKit {
             id: id,
             nome: nome,
             papel: "Membro",
-            quantidadeDeMembros: 0,
+            // O compartilhamento devolvido pelo CloudKit contém as pessoas
+            // que já aceitaram o convite. A versão anterior gravava zero de
+            // propósito, embora esta conta já fosse participante.
+            quantidadeDeMembros: compartilhamento.participants.count,
             espacoID: espacoID,
             zonaCloudKit: zonaID.zoneName,
             donoDaZonaCloudKit: zonaID.ownerName,

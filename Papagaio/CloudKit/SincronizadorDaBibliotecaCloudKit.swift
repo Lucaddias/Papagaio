@@ -79,6 +79,36 @@ enum PoliticaDeConflitoCloudKit {
     }
 }
 
+/// Traduz erros de infraestrutura do CloudKit para uma ação possível no app.
+///
+/// Em especial, um participante não consegue criar tipos no esquema de
+/// produção nem recriar a zona privada do proprietário. Essas condições não
+/// melhoram ao repetir a mesma operação em segundo plano.
+enum DiagnosticoDaSincronizacaoCloudKit {
+    static func mensagem(para erro: any Error) -> String {
+        mensagem(paraTexto: erro.localizedDescription)
+    }
+
+    static func mensagem(paraTexto texto: String) -> String {
+        let normalizado = texto.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        if normalizado.contains("cannot create new type conversa in production schema")
+            || normalizado.contains("did not find record type: conversa") {
+            return "A equipe foi aceita, mas o tipo de registro “Conversa” ainda não está publicado no CloudKit de produção. Peça ao proprietário da equipe para publicar o esquema no CloudKit Dashboard; suas alterações continuam neste Mac até isso acontecer."
+        }
+        if normalizado.contains("zone does not exist") {
+            return "A zona compartilhada desta equipe ainda não está disponível nesta Apple Account. Peça ao proprietário para confirmar o compartilhamento e entre novamente com o código da equipe."
+        }
+        return texto
+    }
+
+    static func exigeAcaoDoProprietario(_ texto: String) -> Bool {
+        let normalizado = texto.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return normalizado.contains("cannot create new type conversa in production schema")
+            || normalizado.contains("did not find record type: conversa")
+            || normalizado.contains("zone does not exist")
+    }
+}
+
 /// Limite testável entre regras de sincronização e as APIs concretas do
 /// CloudKit. Nenhum double precisa construir `CKContainer` ou acessar iCloud.
 protocol TransporteDeConversasCloudKit: Sendable {
