@@ -26,6 +26,19 @@ func alinhamentoAtribuiFalanteUnico() {
     #expect(atribuidas.map(\.falanteAcustico) == ["S1", "S1", "S1"])
 }
 
+@Test("Atribuir falante preserva confiança da palavra")
+func alinhamentoPreservaConfianca() {
+    let palavras = [Palavra(
+        start: 0, end: 1, texto: "oi", confianca: 0.73, noSpeechProb: 0.04
+    )]
+    let segmentos = [SegmentoDeFalante(falanteId: "S1", inicio: 0, fim: 1)]
+
+    let atribuida = AlinhamentoDeFalantes.atribuir(palavras: palavras, a: segmentos)[0]
+    #expect(atribuida.falanteAcustico == "S1")
+    #expect(atribuida.confianca == 0.73)
+    #expect(atribuida.noSpeechProb == 0.04)
+}
+
 @Test("Palavra cortada pela fronteira dos segmentos fica desconhecida")
 func alinhamentoEmpateTecnicoEUnknown() {
     // A palavra 0,95–1,05 é cortada ao meio por S1 (0–1) e S2 (1–2): overlaps

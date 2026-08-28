@@ -25,6 +25,14 @@ struct LinhaDeFala: View {
     /// centralizado na altura dele — nem preso só à linha do cabeçalho (fica
     /// solto demais lá em cima), nem flutuando fora de qualquer texto.
     let aoEditar: () -> Void
+    /// Termo da busca na transcrição — destaca palavras que casam.
+    var termoDeBusca: String = ""
+    /// Palavra da ocorrência atual do Cmd+F — destaque mais forte.
+    var idOcorrenciaAtual: UUID? = nil
+    /// Falante preservado para falas editadas (quando `fala.falanteAcustico` virou nil)
+    var falantePreservado: String? = nil
+    var mostrarConfianca: Bool = false
+    var mostrarPorcentagemConfianca: Bool = true
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
@@ -81,8 +89,9 @@ struct LinhaDeFala: View {
     /// a fala veio inteira dele (regra dos dois rótulos — nunca se fundem).
     @ViewBuilder
     private var cabecalhoDaFala: some View {
-        HStack(spacing: PapagaioTema.Espaco.minimo) {
-            if let acustico = fala.falanteAcustico {
+        let exibido = fala.falanteAcustico ?? falantePreservado
+        return HStack(spacing: PapagaioTema.Espaco.minimo) {
+            if let acustico = exibido {
                 Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -118,10 +127,18 @@ struct LinhaDeFala: View {
         if !fala.palavras.isEmpty {
             LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3, justificado: true) {
                 ForEach(Array(fala.palavras.enumerated()), id: \.element.palavra.id) { _, item in
+                    let buscaDestacada = !termoDeBusca.isEmpty && item.palavra.texto.casaComBusca(termoDeBusca)
+                    let ehAtual = buscaDestacada && idOcorrenciaAtual == item.palavra.id
+                    let isBaixa = mostrarConfianca && (item.palavra.confianca ?? 1) <= 0.50 && (item.palavra.noSpeechProb ?? 0) < 0.6
                     BotaoDePalavra(
                         palavra: item.palavra,
                         ativa: item.trechoId == palavraAtiva?.trechoId
                             && item.indiceNoTrecho == palavraAtiva?.indiceNoTrecho,
+                        destacadoPelaBusca: buscaDestacada,
+                        ehOcorrenciaAtual: ehAtual,
+                        isBaixaConfianca: isBaixa,
+                        mostrarConfianca: mostrarConfianca,
+                        mostrarPorcentagemConfianca: mostrarPorcentagemConfianca,
                         animacao: animacao,
                         acao: { aoTocarPalavra(item.palavra) }
                     )
@@ -130,10 +147,19 @@ struct LinhaDeFala: View {
         } else {
             // Fala sem palavras: trecho legado ou editado à mão. Cai no
             // parágrafo inteiro, como sempre foi.
+            let destaca = !termoDeBusca.isEmpty && fala.texto.casaComBusca(termoDeBusca)
+            let ehAtual = destaca && idOcorrenciaAtual == fala.id
             Text(fala.texto)
                 .font(.body)
                 .fontWeight(ativo ? .medium : .regular)
                 .foregroundStyle(PapagaioTema.texto)
+                .padding(.horizontal, destaca ? 4 : 0)
+                .padding(.vertical, destaca ? 1 : 0)
+                .background(
+                    ehAtual ? PapagaioTema.destaque : (destaca ? Color.yellow.opacity(0.45) : Color.clear),
+                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                )
+                .foregroundStyle(ehAtual ? .white : PapagaioTema.texto)
                 .multilineTextAlignment(.leading)
         }
     }

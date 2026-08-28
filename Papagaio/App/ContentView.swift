@@ -158,6 +158,7 @@ struct ContentView: View {
                         naFila: naFila,
                         responsaveisDisponiveis: responsaveisDaEquipeAtiva,
                         aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
+                        aoGerarNovoResumo: { Task { await biblioteca.regerarResumo(arquivo) } },
                         aoAtualizarNotas: { notas in
                             await biblioteca.atualizarNotas(notas, de: arquivo)
                         },

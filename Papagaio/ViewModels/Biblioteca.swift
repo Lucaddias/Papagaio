@@ -886,6 +886,55 @@ final class Biblioteca {
         fases[chave] = nil
     }
 
+    /// Gera um novo resumo a partir da transcrição já existente, sem re-transcrever.
+    /// Usado pelo botão “Gerar novo resumo” no detalhe da conversa.
+    func regerarResumo(_ arquivo: Arquivo) async {
+        guard !arquivo.trechos.isEmpty,
+              arquivoEmProcessamento != arquivo.id,
+              !filaDeProcessamento.contains(arquivo.id),
+              !operacoesDeLixeiraEmAndamento.contains(arquivo.id) else { return }
+        let chave = arquivo.id.rawValue
+        guard fases[chave] == nil else { return }
+
+        let preflight = Preflight(pastaDeModelos: pastaDeModelos).avaliar()
+        if preflight != .pronto, preflight != .termicoCritico {
+            erros[chave] = preflight.mensagem
+            return
+        }
+
+        erros[chave] = nil
+        fases[chave] = .resumindo
+        iniciadoEm[chave] = Date()
+
+        let motores = MotoresLocais(pastaDeModelos: pastaDeModelos, ciclo: ciclo)
+        defer {
+            Task {
+                await motores.descarregarResumo()
+                await ciclo.remover(QwenEngine.identificador)
+            }
+            fases[chave] = nil
+            iniciadoEm[chave] = nil
+        }
+
+        do {
+            let novoResumo = try await motores.resumir(arquivo.trechos)
+            guard arquivos.contains(where: { $0.id == arquivo.id }) else { return }
+            var atualizado = arquivo
+            atualizado.resumo = novoResumo
+            // Mantém o título do arquivo sincronizado com o do resumo quando ainda é o padrão de gravação
+            if arquivo.titulo.hasPrefix("Gravação de") {
+                atualizado.titulo = novoResumo.titulo
+            }
+            try await repositorio.salvar(atualizado)
+            substituir(atualizado)
+            await sincronizar(atualizado)
+            aoNotificar?("Novo resumo gerado", "\"\(novoResumo.titulo)\" atualizado.", .sucesso)
+        } catch {
+            erros[chave] = "Não foi possível gerar o resumo: \(error.localizedDescription)"
+            aoNotificar?("Falha ao gerar resumo", error.localizedDescription, .erro)
+        }
+    }
+
     private func finalizarProcessamento(_ chave: UUID, execucao: UUID) {
         guard identificadorDaExecucao == execucao else { return }
 

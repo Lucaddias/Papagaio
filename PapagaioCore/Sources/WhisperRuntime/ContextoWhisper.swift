@@ -10,11 +10,15 @@ public struct PalavraWhisper: Sendable, Equatable {
     public let start: TimeInterval
     public let end: TimeInterval
     public let texto: String
+    public let confianca: Float?
+    public let noSpeechProb: Float?
 
-    public init(start: TimeInterval, end: TimeInterval, texto: String) {
+    public init(start: TimeInterval, end: TimeInterval, texto: String, confianca: Float? = nil, noSpeechProb: Float? = nil) {
         self.start = start
         self.end = end
         self.texto = texto
+        self.confianca = confianca
+        self.noSpeechProb = noSpeechProb
     }
 }
 
@@ -26,17 +30,23 @@ public struct SegmentoWhisper: Sendable, Equatable {
     public let texto: String
     /// Palavras com timestamps próprios, na ordem da fala.
     public let palavras: [PalavraWhisper]
+    public let confianca: Float?
+    public let noSpeechProb: Float?
 
     public init(
         start: TimeInterval,
         end: TimeInterval,
         texto: String,
-        palavras: [PalavraWhisper] = []
+        palavras: [PalavraWhisper] = [],
+        confianca: Float? = nil,
+        noSpeechProb: Float? = nil
     ) {
         self.start = start
         self.end = end
         self.texto = texto
         self.palavras = palavras
+        self.confianca = confianca
+        self.noSpeechProb = noSpeechProb
     }
 }
 
@@ -186,12 +196,21 @@ public actor ContextoWhisper {
             // Os timestamps vêm em centésimos de segundo.
             let t0 = TimeInterval(whisper_full_get_segment_t0(contexto, indice)) / 100
             let t1 = TimeInterval(whisper_full_get_segment_t1(contexto, indice)) / 100
+            let noSpeech = whisper_full_get_segment_no_speech_prob(contexto, indice)
+            let palavras = palavrasDoSegmento(indice)
+            let confSeg: Float? = {
+                let vals = palavras.compactMap(\.confianca)
+                guard !vals.isEmpty else { return nil }
+                return vals.reduce(0, +) / Float(vals.count)
+            }()
 
             segmentos.append(SegmentoWhisper(
                 start: t0,
                 end: t1,
                 texto: texto,
-                palavras: palavrasDoSegmento(indice)
+                palavras: palavras,
+                confianca: confSeg,
+                noSpeechProb: noSpeech
             ))
         }
         return segmentos
@@ -226,17 +245,23 @@ public actor ContextoWhisper {
         var bytesDaPalavra: [UInt8] = []
         var inicioDaPalavra: TimeInterval = 0
         var fimDaPalavra: TimeInterval = 0
+        var confiancasDaPalavra: [Float] = []
+        let noSpeech = whisper_full_get_segment_no_speech_prob(contexto, indice)
 
         func fecharPalavra() {
             guard !bytesDaPalavra.isEmpty else { return }
             let texto = String(decoding: bytesDaPalavra, as: UTF8.self)
                 .trimmingCharacters(in: .whitespaces)
             bytesDaPalavra.removeAll(keepingCapacity: true)
+            let conf: Float? = confiancasDaPalavra.isEmpty ? nil : confiancasDaPalavra.reduce(0, +) / Float(confiancasDaPalavra.count)
+            confiancasDaPalavra.removeAll(keepingCapacity: true)
             guard !texto.isEmpty else { return }
             palavras.append(PalavraWhisper(
                 start: inicioDaPalavra,
                 end: fimDaPalavra,
-                texto: texto
+                texto: texto,
+                confianca: conf,
+                noSpeechProb: noSpeech
             ))
         }
 
@@ -259,6 +284,11 @@ public actor ContextoWhisper {
 
             let t0 = TimeInterval(dados.t0) / 100
             let t1 = TimeInterval(dados.t1) / 100
+            // Usa a API específica de probabilidade. Ela é a fonte pública
+            // do valor `p` do token e continua funcionando mesmo quando a
+            // struct retornada por `whisper_full_get_token_data` muda entre
+            // versões do binding.
+            let confiancaDoToken = whisper_full_get_token_p(contexto, indice, token)
 
             // O espaço é sempre 0x20 em UTF-8 e nunca aparece dentro de uma
             // sequência multibyte, então testar o primeiro byte é seguro sem
@@ -268,9 +298,14 @@ public actor ContextoWhisper {
                 bytesDaPalavra = Array(bytesDoToken.dropFirst())
                 inicioDaPalavra = t0
                 fimDaPalavra = t1
+                confiancasDaPalavra = [confiancaDoToken]
             } else {
+                if bytesDaPalavra.isEmpty {
+                    inicioDaPalavra = t0
+                }
                 bytesDaPalavra.append(contentsOf: bytesDoToken)
                 fimDaPalavra = t1
+                confiancasDaPalavra.append(confiancaDoToken)
             }
         }
         fecharPalavra()

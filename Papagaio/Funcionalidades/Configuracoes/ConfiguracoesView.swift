@@ -15,6 +15,7 @@ struct ConfiguracoesView: View {
     var biblioteca: Biblioteca?
     /// Mesma chave lida pelo `PapagaioApp`, que é quem abre e fecha o painel.
     @AppStorage("painelFlutuanteDuranteGravacao") private var painelFlutuante = true
+    @AppStorage("mostrarPorcentagemConfianca") private var mostrarPorcentagemConfianca = true
     /// Reuniões marcadas para importar, pelos ids do Granola.
     @State private var selecionadas: Set<String> = []
 
@@ -169,7 +170,7 @@ struct ConfiguracoesView: View {
                         .font(PapagaioTema.Tipo.corpo.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
 
-                    Text("Quando ligado, a ficha abre sozinha ao fim da transcrição. Quando desligado, mostra só o selo “Concluído” — ideal quando a ficha já foi preenchida pelo calendário.")
+                    Text("Quando desligado, a ficha não abre automaticamente ao fim do processamento — ideal quando a ficha já foi preenchida pelo calendário.")
                         .font(PapagaioTema.Tipo.apoio)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .fixedSize(horizontal: false, vertical: true)
@@ -180,6 +181,21 @@ struct ConfiguracoesView: View {
             .accessibilityHint(
                 "Quando ativado, novos áudios não entram na fila até você selecionar Transcrever."
             )
+
+            Toggle(isOn: $mostrarPorcentagemConfianca) {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text("Mostrar porcentagem de confiança")
+                        .font(PapagaioTema.Tipo.corpo.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+
+                    Text("Quando desligado, as palavras continuam destacadas por cor, mas o percentual não aparece.")
+                        .font(PapagaioTema.Tipo.apoio)
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(PapagaioTema.preenchimentoPrimario)
         }
         .padding(PapagaioTema.Espaco.secao)
         // Largura cheia: os 760pt fixos deixavam metade da janela vazia à

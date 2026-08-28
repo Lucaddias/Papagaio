@@ -181,6 +181,17 @@ struct BarraSuperiorPapagaioView: View {
             }
             .buttonStyle(.plain)
             .help("Lixeira")
+
+            Button(action: aoAbrirConfiguracoes) {
+                BotaoDeIconeDaBarra(
+                    simbolo: "gearshape",
+                    legenda: "Configurações",
+                    legendaAtiva: $legendaAtiva,
+                    selecionado: configuracoesSelecionada
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Configurações")
         }
         // Sem cápsula em volta: eram dois contornos concêntricos para a mesma
         // coisa. Cada ícone já se anuncia como botão pelo próprio círculo, e
@@ -208,6 +219,7 @@ struct BarraSuperiorPapagaioView: View {
                 )
             }
             Button("Lixeira", systemImage: "trash", action: aoAbrirLixeira)
+            Button("Configurações", systemImage: "gearshape", action: aoAbrirConfiguracoes)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 15, weight: .semibold))
@@ -323,29 +335,11 @@ struct BarraSuperiorPapagaioView: View {
                     aoGerenciarEquipe()
                 }
 
-                // Saiu da fileira de ícones ao lado de Lixeira/Tarefas/
-                // Biblioteca: aqueles três têm busca, e Configurações não —
-                // ficar lado a lado prometia o mesmo tipo de tela para os
-                // quatro, e a busca sumia sozinha ao entrar ali, como se
-                // tivesse quebrado. Aqui, dentro do menu de conta, ela não
-                // promete nada que não cumpre.
-                Button("Configurações", systemImage: "gearshape") {
-                    exibindoMenuDePerfil = false
-                    aoAbrirConfiguracoes()
-                }
-
                 Button("Sair", role: .destructive) {
                     exibindoMenuDePerfil = false
                     aoSair()
                 }
             } else {
-                Button("Configurações", systemImage: "gearshape") {
-                    exibindoMenuDePerfil = false
-                    aoAbrirConfiguracoes()
-                }
-
-                Divider()
-
                 Button("Entrar com Apple") {
                     exibindoMenuDePerfil = false
                     aoEntrar()

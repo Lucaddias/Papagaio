@@ -45,7 +45,7 @@ public struct FalaDeFalante: Sendable, Identifiable, Equatable {
         palavras: [PalavraDeFala],
         texto: String,
         speaker: String?,
-        trechoIds: [UUID]
+        trechoIds: [UUID],
     ) {
         self.id = id
         self.falanteAcustico = falanteAcustico
