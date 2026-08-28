@@ -98,6 +98,10 @@ enum DiagnosticoDaSincronizacaoCloudKit {
         if normalizado.contains("zone does not exist") {
             return "A zona compartilhada desta equipe ainda não está disponível nesta Apple Account. Peça ao proprietário para confirmar o compartilhamento e entre novamente com o código da equipe."
         }
+        if normalizado.contains("type is not marked indexable")
+            && normalizado.contains("conversa") {
+            return "A versão instalada ainda tenta consultar o tipo de registro “Conversa”, mas ele não está indexado no CloudKit. Atualize o Papagaio para a versão que sincroniza diretamente a zona compartilhada; suas alterações locais permanecem neste Mac."
+        }
         return texto
     }
 
@@ -133,6 +137,7 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
     }
 
     private static let tipoDeRegistro = "Conversa"
+    private static let tamanhoDaPagina = 200
     private let container: CKContainer
 
     init(container: CKContainer) {
@@ -169,34 +174,18 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         let zona = try await zonaDaEquipe(equipe, no: banco)
 
         if let cursor {
-            guard let cursorCloudKit = cursor.valor as? CKQueryOperation.Cursor else {
+            guard let paginaPendente = cursor.valor as? PaginaPendenteDeConversasCloudKit else {
                 throw ErroDeEquipeCloudKit.cursorInvalido
             }
-            let resposta = try await banco.records(
-                continuingMatchFrom: cursorCloudKit,
-                desiredKeys: [Campo.conteudo, Campo.dados],
-                resultsLimit: 200
-            )
-            return try Self.pagina(
-                resultados: resposta.matchResults,
-                proxima: resposta.queryCursor
-            )
+            return Self.pagina(de: paginaPendente.registros, aPartirDe: paginaPendente.proximoIndice)
         }
 
-        let consulta = CKQuery(
-            recordType: Self.tipoDeRegistro,
-            predicate: NSPredicate(value: true)
-        )
-        let resposta = try await banco.records(
-            matching: consulta,
-            inZoneWith: zona,
-            desiredKeys: [Campo.conteudo, Campo.dados],
-            resultsLimit: 200
-        )
-        return try Self.pagina(
-            resultados: resposta.matchResults,
-            proxima: resposta.queryCursor
-        )
+        // CKQuery exige que o tipo esteja marcado como indexável no schema de
+        // produção. Como a equipe já identifica uma zona customizada única,
+        // buscamos suas alterações diretamente: esse fluxo não depende de
+        // índices e inclui a carga completa quando o token é nulo.
+        let registros = try await registrosDaZona(zona, no: banco)
+        return Self.pagina(de: try Self.dadosDosRegistros(registros), aPartirDe: 0)
     }
 
     func remover(id: String, equipe: EquipeDisponivel) async throws {
@@ -211,22 +200,66 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
         )
     }
 
-    private static func pagina(
-        resultados: [(CKRecord.ID, Result<CKRecord, any Error>)],
-        proxima: CKQueryOperation.Cursor?
-    ) throws -> PaginaDeConversasCloudKit {
-        let dados = try resultados.compactMap { _, resultado -> Data? in
-            let registro = try resultado.get()
+    private static func dadosDosRegistros(_ registros: [CKRecord]) throws -> [Data] {
+        try registros.compactMap { registro -> Data? in
+            guard registro.recordType == tipoDeRegistro else { return nil }
             if let asset = registro[Campo.conteudo] as? CKAsset,
                let url = asset.fileURL {
                 return try Data(contentsOf: url)
             }
             return registro[Campo.dados] as? Data
         }
+    }
+
+    private static func pagina(
+        de registros: [Data],
+        aPartirDe indice: Int
+    ) -> PaginaDeConversasCloudKit {
+        let limite = min(indice + tamanhoDaPagina, registros.count)
+        let proxima = limite < registros.count
+            ? CursorDeConversasCloudKit(
+                PaginaPendenteDeConversasCloudKit(
+                    registros: registros,
+                    proximoIndice: limite
+                )
+            )
+            : nil
         return PaginaDeConversasCloudKit(
-            registros: dados,
-            proxima: proxima.map(CursorDeConversasCloudKit.init)
+            registros: Array(registros[indice..<limite]),
+            proxima: proxima
         )
+    }
+
+    private func registrosDaZona(
+        _ zona: CKRecordZone.ID,
+        no banco: CKDatabase
+    ) async throws -> [CKRecord] {
+        try await withCheckedThrowingContinuation { continuation in
+            let operacao = CKFetchRecordZoneChangesOperation()
+            operacao.recordZoneIDs = [zona]
+            operacao.fetchAllChanges = true
+
+            var registros: [CKRecord] = []
+            var erroPorRegistro: (any Error)?
+            operacao.recordWasChangedBlock = { _, resultado in
+                switch resultado {
+                case let .success(registro):
+                    registros.append(registro)
+                case let .failure(erro):
+                    erroPorRegistro = erro
+                }
+            }
+            operacao.fetchRecordZoneChangesResultBlock = { resultado in
+                if let erroPorRegistro {
+                    continuation.resume(throwing: erroPorRegistro)
+                } else if case let .failure(erro) = resultado {
+                    continuation.resume(throwing: erro)
+                } else {
+                    continuation.resume(returning: registros)
+                }
+            }
+            banco.add(operacao)
+        }
     }
 
     private func registroExistente(
@@ -273,6 +306,16 @@ actor TransporteDeConversasCloudKitReal: TransporteDeConversasCloudKit {
             throw ErroDeEquipeCloudKit.zonaCompartilhadaIndisponivel
         }
         return correspondentes[0].zoneID
+    }
+}
+
+private final class PaginaPendenteDeConversasCloudKit: @unchecked Sendable {
+    let registros: [Data]
+    let proximoIndice: Int
+
+    init(registros: [Data], proximoIndice: Int) {
+        self.registros = registros
+        self.proximoIndice = proximoIndice
     }
 }
 

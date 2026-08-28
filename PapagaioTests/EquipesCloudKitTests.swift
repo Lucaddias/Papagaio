@@ -226,6 +226,16 @@ func diagnosticoCloudKitExplicaDependenciaDoProprietario() {
     #expect(DiagnosticoDaSincronizacaoCloudKit.exigeAcaoDoProprietario("Zone does not exist"))
 }
 
+@Test("Erro de índice orienta a atualizar uma versão anterior do app")
+func diagnosticoCloudKitExplicaErroDeIndiceDeConversa() {
+    let mensagem = DiagnosticoDaSincronizacaoCloudKit.mensagem(
+        paraTexto: "Type is not marked indexable: Conversa"
+    )
+
+    #expect(mensagem.contains("Atualize o Papagaio"))
+    #expect(mensagem.contains("zona compartilhada"))
+}
+
 @Test("Falha transitória sobrevive ao relançamento e respeita backoff limitado")
 func filaCloudKitEhPersistente() async throws {
     let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
