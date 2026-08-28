@@ -351,7 +351,11 @@ struct MidiasView: View {
     }
 
     private func apagarDeVezItem(_ item: MidiaNaLixeira) {
-        LixeiraDeMidia.remover(item)
-        versaoDasMidias += 1
+        do {
+            try LixeiraDeMidia.remover(item)
+            versaoDasMidias += 1
+        } catch {
+            erro = "Não foi possível apagar definitivamente \"\(item.nome)\": \(error.localizedDescription)"
+        }
     }
 }

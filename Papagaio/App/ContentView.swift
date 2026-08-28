@@ -411,7 +411,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
         case .equipe:
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
-                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
                                 estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
                                 aoRetomarSincronizacao: {
                                     Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
@@ -711,12 +710,6 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                 falhaDeAbertura = "Não foi possível entrar na equipe: \(error.localizedDescription)"
             }
         }
-    }
-
-    private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
-        equipes[indice].quantidadeDeMembros = quantidade
-        EquipesDoUsuario.salvar(equipes)
     }
 
     private func garantirEspacoParaEquipe(id: String) {

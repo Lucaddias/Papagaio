@@ -36,8 +36,8 @@ struct EquipeDisponivel: Identifiable, Hashable, Codable, Sendable {
     var zonaCloudKit: String?
     var compartilhamentoCloudKit: String?
     var bancoCloudKit: String?
-    /// Código curto compartilhado para entrar na equipe. Não é uma senha: ele
-    /// apenas resolve o convite CloudKit público desta equipe.
+    /// Código curto compartilhado que libera a entrada na equipe. Quem o
+    /// possuir recebe acesso à zona compartilhada na Apple Account atual.
     var codigoDeEntrada: String?
     var configuracoes: ConfiguracoesDaEquipe
 

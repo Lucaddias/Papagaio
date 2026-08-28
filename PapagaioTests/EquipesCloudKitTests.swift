@@ -153,66 +153,9 @@ func falhaCloudKitEhObservavel() async throws {
     #expect(notificacao?.contains("Falha simulada") == true)
 }
 
-@MainActor
-@Test("Remoção só altera o espelho local depois da revogação remota")
-func remocaoDeMembroEhRemotaPrimeiro() async throws {
-    let suite = "membros-cloudkit-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suite))
-    defer { defaults.removePersistentDomain(forName: suite) }
-    let equipe = equipeCloudKitDeTeste(espaco: EspacoID())
-    let membro = MembroDaEquipe(
-        id: "usuario-remoto",
-        nome: "Ana",
-        email: "ana@icloud.com",
-        cargo: "Membro",
-        status: .ativo
-    )
-    let servico = ServicoDeMembrosFake(membros: [membro])
-    let gestor = GestorDeMembrosDaEquipe(servico: servico, defaults: defaults)
-
-    await gestor.carregar(equipe)
-    await servico.definirFalhaNaRemocao(true)
-    await gestor.remover(membro, da: equipe)
-
-    #expect(gestor.membros == [membro])
-    #expect(MembrosDasEquipes.carregar(equipeID: equipe.id, em: defaults) == [membro])
-    #expect(gestor.erro?.contains("Falha simulada") == true)
-
-    await servico.definirFalhaNaRemocao(false)
-    await gestor.remover(membro, da: equipe)
-
-    #expect(gestor.membros.isEmpty)
-    #expect(MembrosDasEquipes.carregar(equipeID: equipe.id, em: defaults).isEmpty)
-    #expect(await servico.quantidadeDeRemocoesTentadas() == 2)
-}
-
-@MainActor
-@Test("Convite e edição persistem a permissão devolvida pelo serviço remoto")
-func permissoesDeMembroSeguemRespostaRemota() async throws {
-    let suite = "permissoes-cloudkit-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suite))
-    defer { defaults.removePersistentDomain(forName: suite) }
-    let equipe = equipeCloudKitDeTeste(espaco: EspacoID())
-    let servico = ServicoDeMembrosFake(membros: [])
-    let gestor = GestorDeMembrosDaEquipe(servico: servico, defaults: defaults)
-
-    await gestor.carregar(equipe)
-    await gestor.convidar(
-        email: "bia@icloud.com",
-        permissao: .leitura,
-        para: equipe
-    )
-    let convidada = try #require(gestor.membros.first)
-    #expect(convidada.permissao == .leitura)
-    #expect(convidada.status == .aguardando)
-
-    await gestor.atualizar(convidada, permissao: .escrita, na: equipe)
-
-    #expect(gestor.membros.first?.permissao == .escrita)
-    #expect(
-        MembrosDasEquipes.carregar(equipeID: equipe.id, em: defaults).first?.permissao
-            == .escrita
-    )
+@Test("Código libera entrada na equipe com permissão de escrita")
+func codigoDaEquipeLiberaEscrita() {
+    #expect(ServicoDeEquipesCloudKit.permissaoDaEntradaPorCodigo == .readWrite)
 }
 
 @Test("Falha transitória sobrevive ao relançamento e respeita backoff limitado")
@@ -349,64 +292,4 @@ private actor TransporteDeConversasFake: TransporteDeConversasCloudKit {
     func quantidadeDePaginasLidas() -> Int { indiceDaPagina }
     func ultimoArquivoSalvo() -> Data? { arquivoSalvo }
     func definirFalhaAoSalvar(_ falhar: Bool) { falharAoSalvar = falhar }
-}
-
-private actor ServicoDeMembrosFake: ServicoDeMembrosDaEquipe {
-    private var membros: [MembroDaEquipe]
-    private var falharNaRemocao = false
-    private var remocoesTentadas = 0
-
-    init(membros: [MembroDaEquipe]) {
-        self.membros = membros
-    }
-
-    func carregarMembros(da equipe: EquipeDisponivel) -> [MembroDaEquipe] {
-        membros
-    }
-
-    func adicionarMembro(
-        email: String,
-        permissao: PermissaoDoMembroDaEquipe,
-        a equipe: EquipeDisponivel
-    ) -> [MembroDaEquipe] {
-        membros.append(
-            MembroDaEquipe(
-                id: "email:\(email)",
-                nome: "Convidado",
-                email: email,
-                cargo: "Membro",
-                status: .aguardando,
-                permissao: permissao
-            )
-        )
-        return membros
-    }
-
-    func atualizarPermissao(
-        do membro: MembroDaEquipe,
-        para permissao: PermissaoDoMembroDaEquipe,
-        na equipe: EquipeDisponivel
-    ) -> [MembroDaEquipe] {
-        guard let indice = membros.firstIndex(where: { $0.id == membro.id }) else {
-            return membros
-        }
-        membros[indice].permissao = permissao
-        return membros
-    }
-
-    func removerMembro(
-        _ membro: MembroDaEquipe,
-        da equipe: EquipeDisponivel
-    ) throws -> [MembroDaEquipe] {
-        remocoesTentadas += 1
-        if falharNaRemocao { throw FalhaCloudKitFake() }
-        membros.removeAll { $0.id == membro.id }
-        return membros
-    }
-
-    func definirFalhaNaRemocao(_ falhar: Bool) {
-        falharNaRemocao = falhar
-    }
-
-    func quantidadeDeRemocoesTentadas() -> Int { remocoesTentadas }
 }

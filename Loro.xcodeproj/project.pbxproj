@@ -88,8 +88,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		PA00000000000000000003 /* Papagaio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Papagaio;
 			sourceTree = "<group>";
 		};

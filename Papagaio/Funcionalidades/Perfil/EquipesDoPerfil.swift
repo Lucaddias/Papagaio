@@ -41,7 +41,7 @@ struct EquipesDoPerfil: View {
             SeparadorPapagaio()
 
             if equipes.isEmpty {
-                Text("Você ainda não tem equipes. Use o + para criar a primeira e convidar pessoas.")
+                Text("Você ainda não tem equipes. Use o + para criar a primeira ou entre com um código.")
                     .font(.callout)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)

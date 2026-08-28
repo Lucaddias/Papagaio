@@ -4,33 +4,29 @@ struct GestaoDeEquipeView: View {
     let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
-    let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
     let estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit
     let aoRetomarSincronizacao: () -> Void
 
-    @State private var gestor: GestorDeMembrosDaEquipe
-    @State private var pagina = 0
     @State private var mostrandoTrocarEquipe = false
-    @State private var mostrandoConvite = false
-    @State private var convite = Self.novoConvite()
-    @State private var membroEmEdicao: MembroDaEquipe?
+    @State private var atualizandoEntradaPorCodigo = false
+    @State private var erroDaEntradaPorCodigo: String?
+    @State private var entradaPorCodigoAtualizada = false
+    private let servicoDeEquipes: ServicoDeEquipesCloudKit
 
     init(
         equipeAtiva: EquipeDisponivel?,
         equipes: [EquipeDisponivel],
         aoSelecionarEquipe: @escaping (EquipeDisponivel) -> Void,
-        aoAtualizarQuantidadeDeMembros: @escaping (String, Int) -> Void,
         estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit = .local,
         aoRetomarSincronizacao: @escaping () -> Void = {},
-        servicoDeMembros: any ServicoDeMembrosDaEquipe = ServicoDeEquipesCloudKit()
+        servicoDeEquipes: ServicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
     ) {
         self.equipeAtiva = equipeAtiva
         self.equipes = equipes
         self.aoSelecionarEquipe = aoSelecionarEquipe
-        self.aoAtualizarQuantidadeDeMembros = aoAtualizarQuantidadeDeMembros
         self.estadoDaSincronizacao = estadoDaSincronizacao
         self.aoRetomarSincronizacao = aoRetomarSincronizacao
-        _gestor = State(initialValue: GestorDeMembrosDaEquipe(servico: servicoDeMembros))
+        self.servicoDeEquipes = servicoDeEquipes
     }
 
     var body: some View {
@@ -40,23 +36,9 @@ struct GestaoDeEquipeView: View {
                     cabecalho(equipeAtiva)
                     estadoDoICloud
                     codigoDaEquipe(equipeAtiva)
-
-                    if let erro = gestor.erro {
-                        avisoDeErro(erro, equipe: equipeAtiva)
+                    if podeAtualizarEntradaPorCodigo(equipeAtiva) {
+                        atualizacaoDeEquipeExistente(equipeAtiva)
                     }
-
-                    TabelaDaEquipe(
-                        membros: gestor.membros,
-                        pagina: pagina,
-                        podeGerenciar: podeGerenciar(equipeAtiva),
-                        aoEditar: { membroEmEdicao = $0 },
-                        aoRemover: { membro in
-                            Task { await remover(membro, da: equipeAtiva) }
-                        },
-                        aoAlternarPagina: alternarPagina
-                    )
-                    .opacity(gestor.operacaoEmAndamento ? 0.65 : 1)
-                    .disabled(gestor.operacaoEmAndamento)
                 }
                 .larguraDeConteudoPapagaio()
                 .padding(.horizontal, PapagaioTema.espacamentoDePagina)
@@ -71,7 +53,6 @@ struct GestaoDeEquipeView: View {
             }
         }
         .background(PapagaioTema.fundo)
-        .task(id: equipeAtiva?.id) { await carregarEquipe() }
         .sheet(isPresented: $mostrandoTrocarEquipe) {
             SeletorDeEquipeView(
                 equipeAtiva: equipeAtiva,
@@ -83,36 +64,6 @@ struct GestaoDeEquipeView: View {
                 }
             )
         }
-        .sheet(isPresented: $mostrandoConvite) {
-            if let equipeAtiva {
-                EditorDeMembroDaEquipe(
-                    titulo: "Adicionar membro",
-                    membro: convite,
-                    novoMembro: true,
-                    salvando: gestor.operacaoEmAndamento,
-                    mensagemDeErro: gestor.erro,
-                    aoCancelar: { mostrandoConvite = false },
-                    aoSalvar: { membro in
-                        Task { await convidar(membro, para: equipeAtiva) }
-                    }
-                )
-            }
-        }
-        .sheet(item: $membroEmEdicao) { membro in
-            if let equipeAtiva {
-                EditorDeMembroDaEquipe(
-                    titulo: "Permissão do membro",
-                    membro: membro,
-                    novoMembro: false,
-                    salvando: gestor.operacaoEmAndamento,
-                    mensagemDeErro: gestor.erro,
-                    aoCancelar: { membroEmEdicao = nil },
-                    aoSalvar: { alterado in
-                        Task { await atualizar(alterado, na: equipeAtiva) }
-                    }
-                )
-            }
-        }
     }
 
     private func cabecalho(_ equipe: EquipeDisponivel) -> some View {
@@ -121,19 +72,11 @@ struct GestaoDeEquipeView: View {
                 Text("Gerenciar equipe")
                     .font(PapagaioTema.Tipo.tituloDePagina)
                     .foregroundStyle(PapagaioTema.texto)
-                Text("Gerencie participantes e o acesso ao espaço compartilhado.")
+                Text("Compartilhe o código para dar acesso ao espaço compartilhado.")
                     .font(.title3)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
             Spacer()
-            if podeGerenciar(equipe) {
-                Button("Adicionar membro", systemImage: "person.badge.plus") {
-                    convite = Self.novoConvite()
-                    gestor.limparErro()
-                    mostrandoConvite = true
-                }
-                .buttonStyle(BotaoPrincipalPapagaio())
-            }
             Button("Mudar: \(equipe.nome)", systemImage: "arrow.triangle.2.circlepath") {
                 mostrandoTrocarEquipe = true
             }
@@ -179,7 +122,7 @@ struct GestaoDeEquipeView: View {
             Text(equipe.codigoDeEntrada ?? "Código indisponível para equipes criadas antes desta atualização.")
                 .font(.title2.monospaced().weight(.semibold))
                 .textSelection(.enabled)
-            Text("Antes de enviar o código, adicione o Apple Account da pessoa. Só participantes autorizados no iCloud conseguem aceitar o compartilhamento.")
+            Text("Compartilhe este código com quem deve entrar. Ao informá-lo no Loro, a pessoa recebe acesso de leitura e escrita à equipe nesta Apple Account.")
                 .font(.callout)
                 .foregroundStyle(PapagaioTema.textoSecundario)
         }
@@ -187,74 +130,48 @@ struct GestaoDeEquipeView: View {
         .cartaoPapagaio()
     }
 
-    private func avisoDeErro(_ mensagem: String, equipe: EquipeDisponivel) -> some View {
-        HStack(spacing: PapagaioTema.Espaco.medio) {
-            Image(systemName: "exclamationmark.icloud")
-                .foregroundStyle(PapagaioTema.perigo)
-            Text(mensagem).foregroundStyle(PapagaioTema.texto)
-            Spacer()
-            Button("Tentar novamente") { Task { await recarregar(equipe) } }
-                .buttonStyle(BotaoDeContornoPapagaio())
+    private func atualizacaoDeEquipeExistente(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Label("Já usava esta equipe antes do acesso por código?", systemImage: "arrow.triangle.2.circlepath")
+                .font(.headline)
+            Text("Use esta ação uma vez para que o código também libere a zona compartilhada no iCloud. Convites pendentes por e-mail deixam de valer.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            if let erroDaEntradaPorCodigo {
+                Label(erroDaEntradaPorCodigo, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            } else if entradaPorCodigoAtualizada {
+                Label("A entrada por código está ativa.", systemImage: "checkmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.sucesso)
+            }
+            Button("Reconfigurar acesso por código") {
+                Task { await ativarEntradaPorCodigo(na: equipe) }
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+            .disabled(atualizandoEntradaPorCodigo)
         }
         .padding(PapagaioTema.Espaco.secao)
         .cartaoPapagaio()
     }
 
-    private func carregarEquipe() async {
-        gestor.selecionar(equipeAtiva)
-        pagina = 0
-        guard let equipeAtiva else { return }
-        await recarregar(equipeAtiva)
+    private func ativarEntradaPorCodigo(na equipe: EquipeDisponivel) async {
+        atualizandoEntradaPorCodigo = true
+        erroDaEntradaPorCodigo = nil
+        defer { atualizandoEntradaPorCodigo = false }
+        do {
+            try await servicoDeEquipes.ativarEntradaPorCodigo(na: equipe)
+            entradaPorCodigoAtualizada = true
+        } catch {
+            erroDaEntradaPorCodigo = error.localizedDescription
+        }
     }
 
-    private func recarregar(_ equipe: EquipeDisponivel) async {
-        await gestor.carregar(equipe)
-        sincronizarQuantidade(equipe)
-    }
-
-    private func convidar(_ membro: MembroDaEquipe, para equipe: EquipeDisponivel) async {
-        await gestor.convidar(email: membro.email, permissao: membro.permissao, para: equipe)
-        sincronizarQuantidade(equipe)
-        guard gestor.erro == nil else { return }
-        mostrandoConvite = false
-    }
-
-    private func atualizar(_ membro: MembroDaEquipe, na equipe: EquipeDisponivel) async {
-        await gestor.atualizar(membro, permissao: membro.permissao, na: equipe)
-        sincronizarQuantidade(equipe)
-        guard gestor.erro == nil else { return }
-        membroEmEdicao = nil
-    }
-
-    private func remover(_ membro: MembroDaEquipe, da equipe: EquipeDisponivel) async {
-        await gestor.remover(membro, da: equipe)
-        sincronizarQuantidade(equipe)
-    }
-
-    private func sincronizarQuantidade(_ equipe: EquipeDisponivel) {
-        aoAtualizarQuantidadeDeMembros(equipe.id, gestor.membros.count)
-        let ultima = max(0, (gestor.membros.count - 1) / TabelaDaEquipe.itensPorPagina)
-        pagina = min(pagina, ultima)
-    }
-
-    private func podeGerenciar(_ equipe: EquipeDisponivel) -> Bool {
+    private func podeAtualizarEntradaPorCodigo(_ equipe: EquipeDisponivel) -> Bool {
         equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue
     }
 
-    private func alternarPagina(_ delta: Int) {
-        let ultima = max(0, (gestor.membros.count - 1) / TabelaDaEquipe.itensPorPagina)
-        pagina = min(max(0, pagina + delta), ultima)
-    }
-
-    private static func novoConvite() -> MembroDaEquipe {
-        MembroDaEquipe(
-            nome: "Novo membro",
-            email: "",
-            cargo: "Membro",
-            status: .aguardando,
-            permissao: .escrita
-        )
-    }
 }
 
 #Preview("Gerenciar equipe") {
@@ -275,8 +192,7 @@ struct GestaoDeEquipeView: View {
                 codigoDeEntrada: "A7K2M9"
             )
         ],
-        aoSelecionarEquipe: { _ in },
-        aoAtualizarQuantidadeDeMembros: { _, _ in }
+        aoSelecionarEquipe: { _ in }
     )
     .frame(width: 1_200, height: 760)
 }
