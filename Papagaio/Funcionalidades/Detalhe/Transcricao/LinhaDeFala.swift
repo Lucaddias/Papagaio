@@ -34,6 +34,19 @@ struct LinhaDeFala: View {
     var mostrarConfianca: Bool = false
     var mostrarPorcentagemConfianca: Bool = true
 
+    private var isBaixaConfiancaFala: Bool {
+        guard mostrarConfianca, let c = fala.confianca else { return false }
+        if let nsp = fala.palavras.first?.palavra.noSpeechProb, nsp > 0.6 { return false }
+        // Usa mesmo threshold da palavra para consistência
+        return c < 0.6
+    }
+
+    private var corDeFundoFala: Color {
+        if isBaixaConfiancaFala { return Color.yellow.opacity(0.22) }
+        if ativo { return PapagaioTema.destaqueSuave.opacity(0.76) }
+        return PapagaioTema.superficie
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
             Text(fala.inicio.comoRelogio)
@@ -60,7 +73,7 @@ struct LinhaDeFala: View {
         .padding(.horizontal, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            ativo ? PapagaioTema.destaqueSuave.opacity(0.76) : PapagaioTema.superficie,
+            corDeFundoFala,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .overlay(alignment: .leading) {
@@ -102,6 +115,15 @@ struct LinhaDeFala: View {
                 Text("Voz desconhecida")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            if mostrarConfianca && mostrarPorcentagemConfianca, let c = fala.confianca {
+                Text(String(format: "%.0f%%", c * 100))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(c < 0.6 ? Color.red : (c < 0.85 ? Color.orange : PapagaioTema.textoSecundario))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((c < 0.6 ? Color.red.opacity(0.12) : Color.clear), in: Capsule())
+                    .overlay { Capsule().stroke((c < 0.6 ? Color.red.opacity(0.3) : Color.clear), lineWidth: 1) }
             }
         }
     }

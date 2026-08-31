@@ -27,6 +27,18 @@ struct LinhaDeTranscricao: View {
     var mostrarConfianca: Bool = false
     var mostrarPorcentagemConfianca: Bool = true
 
+    private var isBaixaConfiancaTrecho: Bool {
+        guard mostrarConfianca, let c = trecho.confianca else { return false }
+        if let nsp = trecho.noSpeechProb, nsp > 0.6 { return false }
+        return c < 0.6
+    }
+
+    private var corDeFundoTrecho: Color {
+        if isBaixaConfiancaTrecho { return Color.yellow.opacity(0.22) }
+        if ativo { return PapagaioTema.destaqueSuave.opacity(0.76) }
+        return PapagaioTema.superficie
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
             Text(trecho.start.comoRelogio)
@@ -62,6 +74,15 @@ struct LinhaDeTranscricao: View {
                                     in: Capsule()
                                 )
                         }
+                        if mostrarConfianca && mostrarPorcentagemConfianca, let c = trecho.confianca, (trecho.noSpeechProb ?? 0) < 0.6 {
+                            Text(String(format: "%.0f%%", c * 100))
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(c < 0.6 ? Color.red : (c < 0.85 ? Color.orange : PapagaioTema.textoSecundario))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background((c < 0.6 ? Color.red.opacity(0.12) : Color.clear), in: Capsule())
+                                .overlay { Capsule().stroke((c < 0.6 ? Color.red.opacity(0.3) : Color.clear), lineWidth: 1) }
+                        }
                     }
 
                     corpoDaTranscricao
@@ -75,7 +96,7 @@ struct LinhaDeTranscricao: View {
         .padding(.horizontal, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            ativo ? PapagaioTema.destaqueSuave.opacity(0.76) : PapagaioTema.superficie,
+            corDeFundoTrecho,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .overlay(alignment: .leading) {
@@ -235,10 +256,8 @@ struct BotaoDePalavra: View {
 
     private var backgroundColor: Color {
         if ehOcorrenciaAtual { return PapagaioTema.destaque }
-        if let c = palavra.confianca, c <= 0.30, (palavra.noSpeechProb ?? 0) < 0.6 {
-            return Color.red.opacity(0.18)
-        }
-        if let c = palavra.confianca, c <= 0.50, (palavra.noSpeechProb ?? 0) < 0.6 {
+        if isBaixaConfianca {
+            if let c = palavra.confianca, c <= 0.30 { return Color.red.opacity(0.18) }
             return Color.yellow.opacity(0.28)
         }
         if destacadoPelaBusca { return Color.yellow.opacity(0.45) }

@@ -36,6 +36,7 @@ public struct FalaDeFalante: Sendable, Identifiable, Equatable {
     public let speaker: String?
     /// Trechos de origem, únicos e na ordem em que aparecem na fala.
     public let trechoIds: [UUID]
+    public let confianca: Float?
 
     public init(
         id: UUID,
@@ -46,6 +47,7 @@ public struct FalaDeFalante: Sendable, Identifiable, Equatable {
         texto: String,
         speaker: String?,
         trechoIds: [UUID],
+        confianca: Float? = nil
     ) {
         self.id = id
         self.falanteAcustico = falanteAcustico
@@ -55,6 +57,7 @@ public struct FalaDeFalante: Sendable, Identifiable, Equatable {
         self.texto = texto
         self.speaker = speaker
         self.trechoIds = trechoIds
+        self.confianca = confianca
     }
 }
 
@@ -82,6 +85,18 @@ public enum FalasDaConversa {
 
         func fechar() {
             guard let primeira = atuais.first, let ultima = atuais.last else { return }
+            let confianca: Float? = {
+                let vals = atuais.compactMap { p -> (Float, TimeInterval)? in
+                    guard let c = p.palavra.confianca else { return nil }
+                    return (c, max(0, p.palavra.end - p.palavra.start))
+                }
+                guard !vals.isEmpty else { return nil }
+                let totalDur = vals.map(\.1).reduce(0, +)
+                if totalDur > 0 {
+                    return vals.reduce(Float(0)) { $0 + $1.0 * Float($1.1) } / Float(totalDur)
+                }
+                return vals.map(\.0).reduce(0, +) / Float(vals.count)
+            }()
             falas.append(FalaDeFalante(
                 id: primeira.palavra.id,
                 falanteAcustico: falanteAtual,
@@ -90,7 +105,8 @@ public enum FalasDaConversa {
                 palavras: atuais,
                 texto: atuais.map { $0.palavra.texto }.joined(separator: " "),
                 speaker: canalUniforme(dos: trechosDaFala, em: trechos),
-                trechoIds: trechosDaFala
+                trechoIds: trechosDaFala,
+                confianca: confianca
             ))
             atuais = []
             falanteAtual = nil
@@ -110,7 +126,8 @@ public enum FalasDaConversa {
                     palavras: [],
                     texto: trecho.texto,
                     speaker: trecho.speaker,
-                    trechoIds: [trecho.id]
+                    trechoIds: [trecho.id],
+                    confianca: trecho.confianca
                 ))
                 continue
             }
