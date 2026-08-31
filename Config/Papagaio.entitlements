@@ -10,7 +10,7 @@
 	<string>development</string>
 	<key>com.apple.developer.icloud-container-identifiers</key>
 	<array>
-		<string>iCloud.com.app.Papagaio</string>
+		<string>iCloud.com.papagaio.Papagaio</string>
 	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>

@@ -404,35 +404,7 @@ struct ArquivoDetalheView: View {
                 seletorDeSecao
 
                 ZStack(alignment: .top) {
-                    GeometryReader { _ in
-                        if exibindoEstadoVazio {
-                            conteudoDaSecao
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            ScrollView {
-                                conteudoDaSecao
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                                    .padding(
-                                        .bottom,
-                                        deveMostrarPlayer || midiaNaoDisponivelNesteMac
-                                            ? alturaMedidaDoPlayer
-                                            : 0
-                                    )
-                                    // Reserva para o painel flutuante de busca não cobrir o conteúdo
-                                    .padding(.top, mostrandoBuscaTranscricao ? 56 : 0)
-                            }
-                            // Barra de rolagem escondida nesta tela.
-                            //
-                            // Quem usa "Mostrar barras de rolagem: sempre" nos
-                            // Ajustes do Sistema recebe uma barra opaca desenhada
-                            // por cima do conteúdo — e aqui ela caía sobre os
-                            // botões das notas, escondendo o lápis e a lixeira e
-                            // roubando o clique deles. Como cada aba tem começo e
-                            // fim visíveis, a barra não estava informando nada que
-                            // a tela já não dissesse.
-                            .scrollIndicators(.hidden)
-                        }
-                    }
+                    areaDeConteudo
                     if mostrandoBuscaTranscricao {
                         barraDeBuscaTranscricao
                             .padding(.horizontal, PapagaioTema.Espaco.medio)
@@ -481,11 +453,7 @@ struct ArquivoDetalheView: View {
         // `alturaMedidaDoPlayer` (medida de verdade, ver o `@State` acima) —
         // zero quando o player não está na tela, e aí o selo volta para o
         // canto de baixo.
-        .alturaDoPlayerPapagaio(
-            deveMostrarPlayer || midiaNaoDisponivelNesteMac
-                ? alturaMedidaDoPlayer
-                : 0
-        )
+        .alturaDoPlayerPapagaio(espacoReservadoParaPlayer)
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         .background {
@@ -608,6 +576,28 @@ struct ArquivoDetalheView: View {
                 aoCancelar: tarefasDaConversaVM.cancelarEdicao,
                 aoAdicionar: tarefasDaConversaVM.salvarEdicao
             )
+        }
+    }
+
+    private var espacoReservadoParaPlayer: CGFloat {
+        deveMostrarPlayer ? alturaMedidaDoPlayer : 0
+    }
+
+    @ViewBuilder
+    private var areaDeConteudo: some View {
+        GeometryReader { _ in
+            if exibindoEstadoVazio {
+                conteudoDaSecao
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    conteudoDaSecao
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(.bottom, espacoReservadoParaPlayer)
+                        .padding(.top, mostrandoBuscaTranscricao ? 56 : 0)
+                }
+                .scrollIndicators(.hidden)
+            }
         }
     }
 

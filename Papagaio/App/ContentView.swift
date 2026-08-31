@@ -150,41 +150,7 @@ struct ContentView: View {
                 LegendaGlobalDaBarra(texto: legendaDaBarra)
             }
             .navigationDestination(for: UUID.self) { id in
-                if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
-                    let audio = biblioteca.audio(de: arquivo)
-                    let audioSecundario = biblioteca.audioSecundario(de: arquivo)
-                    let importado = biblioteca.importado(arquivo)
-                    let estado = biblioteca.estado(de: arquivo)
-                    let processando = biblioteca.estaProcessando(arquivo)
-                    let naFila = biblioteca.estaNaFila(arquivo)
-
-                    ArquivoDetalheView(
-                        arquivo: arquivo,
-                        audio: audio,
-                        audioSecundario: audioSecundario,
-                        importado: importado,
-                        midiaNaoDisponivelNesteMac: arquivo.semAudio && equipeAtiva != nil,
-                        estado: estado,
-                        processando: processando,
-                        naFila: naFila,
-                        responsaveisDisponiveis: responsaveisDaEquipeAtiva,
-                        aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
-                        aoGerarNovoResumo: { Task { await biblioteca.regerarResumo(arquivo) } },
-                        aoAtualizarNotas: { notas in
-                            await biblioteca.atualizarNotas(notas, de: arquivo)
-                        },
-                        aoNotificarTarefa: { titulo, mensagem in
-                            notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: .aviso)
-                        },
-                        aoAtualizarMetadados: { titulo, data, duracao in
-                            Task { await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao) }
-                        },
-                        aoAtualizarTranscricao: { trechos in
-                            await biblioteca.atualizarTrechos(trechos, de: arquivo)
-                        },
-                        aoDitar: { url in try await biblioteca.transcreverDitado(url) },
-                    )
-                }
+                destinoDaConversa(id)
             }
         }
         // Piso de conforto, não de correção: quem garante que nada transborda é
@@ -258,16 +224,7 @@ struct ContentView: View {
             biblioteca?.processamentoAutomatico = novoValor
         }
         .onChange(of: biblioteca?.arquivosComFichaPendente) { _, novoValor in
-            guard exibirFichaAutomaticamente,
-                  let pendentes = novoValor, !pendentes.isEmpty,
-                  let bib = biblioteca,
-                  // Pega a mais recente marcada (a que acabou de entrar)
-                  let id = pendentes.first,
-                  let arquivo = bib.arquivos.first(where: { $0.id == id })
-            else { return }
-            // Evita reabrir se já está com sheet aberto
-            guard arquivoParaConfigurar == nil else { return }
-            abrirFichaDaEntrevista(para: arquivo)
+            abrirFichaPendenteSeNecessario(novoValor)
         }
         .fileImporter(
             isPresented: $mostrandoImportador,
@@ -554,6 +511,57 @@ struct ContentView: View {
             participantes: "\(max(1, metadados.participantes ?? 1))",
             data: arquivo.criadoEm,
             duracao: arquivo.duracao.comoDuracaoPorExtenso
+        )
+    }
+
+    private func abrirFichaPendenteSeNecessario(_ pendentes: Set<ArquivoID>?) {
+        guard exibirFichaAutomaticamente,
+              arquivoParaConfigurar == nil,
+              let id = pendentes?.first,
+              let arquivo = biblioteca?.arquivos.first(where: { $0.id == id })
+        else { return }
+
+        abrirFichaDaEntrevista(para: arquivo)
+    }
+
+    @ViewBuilder
+    private func destinoDaConversa(_ id: UUID) -> some View {
+        if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
+            detalheDaConversa(arquivo, na: biblioteca)
+        }
+    }
+
+    private func detalheDaConversa(_ arquivo: Arquivo, na biblioteca: Biblioteca) -> some View {
+        ArquivoDetalheView(
+            arquivo: arquivo,
+            audio: biblioteca.audio(de: arquivo),
+            audioSecundario: biblioteca.audioSecundario(de: arquivo),
+            importado: biblioteca.importado(arquivo),
+            estado: biblioteca.estado(de: arquivo),
+            processando: biblioteca.estaProcessando(arquivo),
+            naFila: biblioteca.estaNaFila(arquivo),
+            responsaveisDisponiveis: responsaveisDaEquipeAtiva,
+            aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
+            aoAtualizarNotas: { notas in
+                await biblioteca.atualizarNotas(notas, de: arquivo)
+            },
+            aoNotificarTarefa: { titulo, mensagem in
+                notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: .aviso)
+            },
+            aoAtualizarMetadados: { titulo, data, duracao in
+                Task {
+                    await biblioteca.atualizarMetadados(
+                        arquivo,
+                        titulo: titulo,
+                        criadoEm: data,
+                        duracao: duracao
+                    )
+                }
+            },
+            aoAtualizarTranscricao: { trechos in
+                await biblioteca.atualizarTrechos(trechos, de: arquivo)
+            },
+            aoDitar: { url in try await biblioteca.transcreverDitado(url) }
         )
     }
 
