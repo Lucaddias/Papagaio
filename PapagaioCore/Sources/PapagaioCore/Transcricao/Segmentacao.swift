@@ -30,6 +30,12 @@ public enum Segmentacao {
 
         func fechar() {
             guard let primeiro = acumulados.first, let ultimo = acumulados.last else { return }
+            let palavras = acumulados.flatMap(\.palavras)
+            let noSpeech: Float? = {
+                let vals = acumulados.compactMap(\.noSpeechProb)
+                guard !vals.isEmpty else { return nil }
+                return vals.reduce(0, +) / Float(vals.count)
+            }()
             trechos.append(Trecho(
                 start: primeiro.start,
                 end: ultimo.end,
@@ -37,7 +43,8 @@ public enum Segmentacao {
                 speaker: primeiro.speaker,
                 // As palavras já vêm na linha do tempo do arquivo; concatena
                 // na ordem dos segmentos, como o texto.
-                palavras: acumulados.flatMap(\.palavras)
+                palavras: palavras,
+                noSpeechProb: noSpeech
             ))
             acumulados.removeAll()
         }
@@ -108,7 +115,9 @@ public enum Segmentacao {
             end: trecho.end,
             texto: trecho.texto,
             speaker: speaker,
-            palavras: trecho.palavras
+            palavras: trecho.palavras,
+            confianca: trecho.confianca,
+            noSpeechProb: trecho.noSpeechProb
         )
     }
 

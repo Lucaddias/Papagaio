@@ -33,6 +33,11 @@ public struct Palavra: Sendable, Identifiable, Codable, Equatable {
     public let start: TimeInterval
     public let end: TimeInterval
     public let texto: String
+    /// Probabilidade de confiança da palavra (0..1), derivada de `whisper_token_data.p`.
+    /// `nil` para transcrições legadas ou palavras editadas manualmente.
+    public let confianca: Float?
+    /// Probabilidade de `no_speech` do segmento que originou a palavra, se aplicável.
+    public let noSpeechProb: Float?
 
     /// Falante atribuído pela **diarização acústica** (ex.: `"S1"`, `"S2"`).
     ///
@@ -46,13 +51,32 @@ public struct Palavra: Sendable, Identifiable, Codable, Equatable {
         start: TimeInterval,
         end: TimeInterval,
         texto: String,
+        confianca: Float? = nil,
+        noSpeechProb: Float? = nil,
         falanteAcustico: String? = nil
     ) {
         self.id = id
         self.start = start
         self.end = end
         self.texto = texto
+        self.confianca = confianca
+        self.noSpeechProb = noSpeechProb
         self.falanteAcustico = falanteAcustico
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, start, end, texto, confianca, noSpeechProb, falanteAcustico
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        start = try c.decode(TimeInterval.self, forKey: .start)
+        end = try c.decode(TimeInterval.self, forKey: .end)
+        texto = try c.decode(String.self, forKey: .texto)
+        confianca = try c.decodeIfPresent(Float.self, forKey: .confianca)
+        noSpeechProb = try c.decodeIfPresent(Float.self, forKey: .noSpeechProb)
+        falanteAcustico = try c.decodeIfPresent(String.self, forKey: .falanteAcustico)
     }
 }
 
@@ -103,13 +127,21 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
     /// Vazio para transcrições legadas — a interface volta ao `Text` inteiro.
     public let palavras: [Palavra]
 
+    /// Confiança média do trecho (0..1), agregada das palavras por duração.
+    /// `nil` quando nenhuma palavra tem confiança (legado/editado).
+    public let confianca: Float?
+    /// Probabilidade de não-fala do segmento Whisper que originou o trecho.
+    public let noSpeechProb: Float?
+
     public init(
         id: UUID = UUID(),
         start: TimeInterval,
         end: TimeInterval,
         texto: String,
         speaker: String? = nil,
-        palavras: [Palavra] = []
+        palavras: [Palavra] = [],
+        confianca: Float? = nil,
+        noSpeechProb: Float? = nil
     ) {
         self.id = id
         self.start = start
@@ -117,6 +149,36 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
         self.texto = texto
         self.speaker = speaker
         self.palavras = palavras
+        self.confianca = confianca
+        self.noSpeechProb = noSpeechProb
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, start, end, texto, speaker, palavras, confianca, noSpeechProb
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: Self.CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        start = try c.decode(TimeInterval.self, forKey: .start)
+        end = try c.decode(TimeInterval.self, forKey: .end)
+        texto = try c.decode(String.self, forKey: .texto)
+        speaker = try c.decodeIfPresent(String.self, forKey: .speaker)
+        palavras = try c.decodeIfPresent([Palavra].self, forKey: .palavras) ?? []
+        confianca = try c.decodeIfPresent(Float.self, forKey: .confianca)
+        noSpeechProb = try c.decodeIfPresent(Float.self, forKey: .noSpeechProb)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: Self.CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(start, forKey: .start)
+        try c.encode(end, forKey: .end)
+        try c.encode(texto, forKey: .texto)
+        try c.encodeIfPresent(speaker, forKey: .speaker)
+        try c.encode(palavras, forKey: .palavras)
+        try c.encodeIfPresent(confianca, forKey: .confianca)
+        try c.encodeIfPresent(noSpeechProb, forKey: .noSpeechProb)
     }
 
     public var duracao: TimeInterval { end - start }
@@ -148,8 +210,25 @@ public struct Trecho: Sendable, Identifiable, Codable, Equatable {
             end: end,
             texto: texto,
             speaker: speaker,
-            palavras: novas
+            palavras: novas,
+            noSpeechProb: noSpeechProb
         )
+    }
+
+    /// Confiança média ponderada por duração da palavra
+    static func confiancaMedia(_ palavras: [Palavra]) -> Float? {
+        let valid = palavras.compactMap { p -> (Float, TimeInterval)? in
+            guard let c = p.confianca else { return nil }
+            let d = max(0, p.end - p.start)
+            return (c, d)
+        }
+        guard !valid.isEmpty else { return nil }
+        let totalDur = valid.map(\.1).reduce(0, +)
+        if totalDur > 0 {
+            let sum = valid.reduce(Float(0)) { $0 + $1.0 * Float($1.1) }
+            return sum / Float(totalDur)
+        }
+        return valid.map(\.0).reduce(0, +) / Float(valid.count)
     }
 
     /// O rótulo acústico predominante nas palavras do trecho, ou `nil` sem
@@ -241,11 +320,48 @@ public struct Resumo: Sendable, Codable, Equatable {
         citacoes: [Citacao] = [],
         proximosPassos: [ProximoPasso] = []
     ) {
-        self.titulo = titulo
+        self.titulo = titulo.removendoPrefixoAta()
         self.visaoGeral = visaoGeral
         self.temas = temas
         self.citacoes = citacoes
         self.proximosPassos = proximosPassos
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case titulo, visaoGeral, temas, citacoes, proximosPassos
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try c.decode(String.self, forKey: .titulo)
+        titulo = raw.removendoPrefixoAta()
+        visaoGeral = try c.decode(String.self, forKey: .visaoGeral)
+        temas = try c.decodeIfPresent([Tema].self, forKey: .temas) ?? []
+        citacoes = try c.decodeIfPresent([Citacao].self, forKey: .citacoes) ?? []
+        proximosPassos = try c.decodeIfPresent([ProximoPasso].self, forKey: .proximosPassos) ?? []
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(titulo, forKey: .titulo)
+        try c.encode(visaoGeral, forKey: .visaoGeral)
+        try c.encode(temas, forKey: .temas)
+        try c.encode(citacoes, forKey: .citacoes)
+        try c.encode(proximosPassos, forKey: .proximosPassos)
+    }
+}
+
+extension String {
+    /// Remove prefixo "Ata:" / "Ata -" / "Ata da Reunião:" gerado pelo modelo.
+    func removendoPrefixoAta() -> String {
+        let pattern = #"(?i)^\s*ata(\s+da\s+reuni[ãa]o)?\s*[:\-–—]\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let m = regex.firstMatch(in: self, range: NSRange(startIndex..., in: self)),
+              m.range.location == 0,
+              let r = Range(m.range, in: self)
+        else { return self }
+        let resto = String(self[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return resto.isEmpty ? self : resto
     }
 }
 

@@ -107,7 +107,7 @@ struct EditorDeInformacoesDoCard: View {
                 }
 
                 PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistador(es)",
+                    titulo: "Equipe",
                     nome: $entrevistadores,
                     email: $emailDosEntrevistadores,
                     placeholderNome: "Ex.: João Santos",
@@ -115,7 +115,7 @@ struct EditorDeInformacoesDoCard: View {
                 )
 
                 PessoasDaFichaDaEntrevista(
-                    titulo: "Entrevistado(s)",
+                    titulo: "Externos",
                     nome: $entrevistado,
                     email: $emailDoEntrevistado,
                     placeholderNome: "Ex.: Ana Silva",
@@ -129,18 +129,6 @@ struct EditorDeInformacoesDoCard: View {
 
                     VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
                         participantesEDuracao
-                    }
-                }
-
-                campo("Formato") {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: PapagaioTema.Espaco.curto) {
-                            botoesDeFormato
-                        }
-
-                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                            botoesDeFormato
-                        }
                     }
                 }
 
@@ -208,7 +196,7 @@ struct EditorDeInformacoesDoCard: View {
                 valorCalculado(
                     textoDeParticipantes,
                     simbolo: participantesCalculados > 1 ? "person.2" : "person",
-                    ajuda: "Somado a partir dos nomes de entrevistado(s) e entrevistador(es)."
+                    ajuda: "Somado a partir dos nomes de Equipe e Externos."
                 )
             }
 
@@ -243,26 +231,6 @@ struct EditorDeInformacoesDoCard: View {
         }
         .help(ajuda)
         .accessibilityLabel("\(texto). \(ajuda)")
-    }
-
-    private var botoesDeFormato: some View {
-        Group {
-                        BotaoDeFormatoDaEntrevista(
-                            titulo: "Online",
-                            simbolo: "video",
-                            selecionado: formato == "Online"
-                        ) {
-                            formato = "Online"
-                        }
-
-                        BotaoDeFormatoDaEntrevista(
-                            titulo: "Presencial",
-                            simbolo: "mappin.and.ellipse",
-                            selecionado: formato == "Presencial"
-                        ) {
-                            formato = "Presencial"
-                        }
-        }
     }
 
     private var campoDeData: some View {

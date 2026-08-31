@@ -1351,6 +1351,29 @@ final class Biblioteca {
         // silenciosamente no primeiro tick.
         arquivos.insert(arquivo, at: 0)
         arquivos.sort { $0.criadoEm > $1.criadoEm }
+
+        let equipes = EquipesDoUsuario.carregar()
+        let equipeAtivaID = UserDefaults.standard.string(forKey: "equipeAtiva") ?? ""
+        let equipe = equipes.first { $0.id == equipeAtivaID } ?? equipes.first
+        let classificacao = ClassificacaoDeParticipantes.classificar(pendente.participantes, equipe: equipe)
+        let quantidadeDeParticipantes = max(
+            1,
+            classificacao.equipeNomes.split(separator: "\n").count
+                + classificacao.externosNomes.split(separator: "\n").count
+        )
+        PreferenciasVisuaisDoArquivo.definirMetadados(
+            MetadadosVisuaisDoArquivo(
+                entrevistado: classificacao.externosNomes,
+                emailDoEntrevistado: classificacao.externosEmails,
+                entrevistadores: classificacao.equipeNomes,
+                emailDosEntrevistadores: classificacao.equipeEmails,
+                descricao: pendente.descricao ?? "",
+                formato: "",
+                participantes: quantidadeDeParticipantes
+            ),
+            para: arquivo.id
+        )
+
         if processamentoAutomatico {
             enfileirarProcessamento(arquivo)
         }

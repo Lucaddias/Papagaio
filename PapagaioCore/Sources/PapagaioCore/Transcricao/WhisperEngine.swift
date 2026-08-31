@@ -10,18 +10,23 @@ private actor AcumuladorDeTrechos {
         speaker: String?
     ) {
         trechos.append(contentsOf: segmentos.map { segmento in
-            Trecho(
+            let palavras = segmento.palavras.map {
+                Palavra(
+                    start: $0.start + janela.inicio,
+                    end: $0.end + janela.inicio,
+                    texto: $0.texto,
+                    confianca: $0.confianca,
+                    noSpeechProb: $0.noSpeechProb,
+                    falanteAcustico: nil
+                )
+            }
+            return Trecho(
                 start: segmento.start + janela.inicio,
                 end: segmento.end + janela.inicio,
                 texto: segmento.texto,
                 speaker: speaker,
-                palavras: segmento.palavras.map {
-                    Palavra(
-                        start: $0.start + janela.inicio,
-                        end: $0.end + janela.inicio,
-                        texto: $0.texto
-                    )
-                }
+                palavras: palavras,
+                noSpeechProb: segmento.noSpeechProb
             )
         })
     }

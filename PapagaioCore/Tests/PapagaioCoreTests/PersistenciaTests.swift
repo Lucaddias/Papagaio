@@ -100,7 +100,7 @@ func persistenciaPreservaFalanteAcustico() async throws {
         titulo: "Diarizada", espaco: espaco,
         trechos: [
             Trecho(start: 0, end: 12, texto: "oi, tudo bem?", speaker: Speaker.eu, palavras: [
-                Palavra(start: 0, end: 1, texto: "oi", falanteAcustico: "S1"),
+                Palavra(start: 0, end: 1, texto: "oi", confianca: 0.92, noSpeechProb: 0.03, falanteAcustico: "S1"),
                 Palavra(start: 1, end: 6, texto: "tudo bem", falanteAcustico: "S2"),
                 Palavra(start: 6, end: 12, texto: "sim"), // sem falante: nil precisa sobreviver também
             ]),
@@ -119,6 +119,8 @@ func persistenciaPreservaFalanteAcustico() async throws {
     #expect(palavras[0].falanteAcustico == "S1")
     #expect(palavras[1].falanteAcustico == "S2")
     #expect(palavras[2].falanteAcustico == nil)
+    #expect(palavras[0].confianca == 0.92)
+    #expect(palavras[0].noSpeechProb == 0.03)
     #expect(volta.trechos[1].palavras[0].falanteAcustico == nil)
 }
 

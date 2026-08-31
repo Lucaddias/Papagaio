@@ -1,12 +1,32 @@
 import Foundation
+import PapagaioCore
 
 struct ReuniaoPendenteCalendar: Identifiable, Equatable, Codable, Sendable {
     let id: String
     let titulo: String
     let dataHora: Date
-    let participantes: [String]
+    let participantes: [ParticipanteDaReuniao]
     let descricao: String?
     let idExterno: String
+
+    /// Compat: inicializa com strings legadas.
+    init(id: String, titulo: String, dataHora: Date, participantes: [String], descricao: String?, idExterno: String) {
+        self.id = id
+        self.titulo = titulo
+        self.dataHora = dataHora
+        self.participantes = participantes.map { ParticipanteDaReuniao(legado: $0) }
+        self.descricao = descricao
+        self.idExterno = idExterno
+    }
+
+    init(id: String, titulo: String, dataHora: Date, participantes: [ParticipanteDaReuniao], descricao: String?, idExterno: String) {
+        self.id = id
+        self.titulo = titulo
+        self.dataHora = dataHora
+        self.participantes = participantes
+        self.descricao = descricao
+        self.idExterno = idExterno
+    }
 
     enum Status: Equatable {
         case futura

@@ -265,6 +265,8 @@ public enum ResolvedorDeFalantes {
                         start: palavra.start,
                         end: palavra.end,
                         texto: palavra.texto,
+                        confianca: palavra.confianca,
+                        noSpeechProb: palavra.noSpeechProb,
                         falanteAcustico: rotulo
                     )
                 }

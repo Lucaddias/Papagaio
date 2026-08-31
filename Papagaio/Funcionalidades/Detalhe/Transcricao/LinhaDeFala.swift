@@ -25,6 +25,27 @@ struct LinhaDeFala: View {
     /// centralizado na altura dele — nem preso só à linha do cabeçalho (fica
     /// solto demais lá em cima), nem flutuando fora de qualquer texto.
     let aoEditar: () -> Void
+    /// Termo da busca na transcrição — destaca palavras que casam.
+    var termoDeBusca: String = ""
+    /// Palavra da ocorrência atual do Cmd+F — destaque mais forte.
+    var idOcorrenciaAtual: UUID? = nil
+    /// Falante preservado para falas editadas (quando `fala.falanteAcustico` virou nil)
+    var falantePreservado: String? = nil
+    var mostrarConfianca: Bool = false
+    var mostrarPorcentagemConfianca: Bool = true
+
+    private var isBaixaConfiancaFala: Bool {
+        guard mostrarConfianca, let c = fala.confianca else { return false }
+        if let nsp = fala.palavras.first?.palavra.noSpeechProb, nsp > 0.6 { return false }
+        // Usa mesmo threshold da palavra para consistência
+        return c < 0.6
+    }
+
+    private var corDeFundoFala: Color {
+        if isBaixaConfiancaFala { return Color.yellow.opacity(0.22) }
+        if ativo { return PapagaioTema.destaqueSuave.opacity(0.76) }
+        return PapagaioTema.superficie
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
@@ -33,7 +54,6 @@ struct LinhaDeFala: View {
                 .monospacedDigit()
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
-                .accessibilityLabel("Início em \(fala.inicio.faladoPorExtenso)")
 
             // `.center` aqui, e não `.top`: o lápis fica ao lado do
             // parágrafo inteiro (cabeçalho + texto), centralizado na altura
@@ -53,7 +73,7 @@ struct LinhaDeFala: View {
         .padding(.horizontal, PapagaioTema.Espaco.largo)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            ativo ? PapagaioTema.destaqueSuave.opacity(0.76) : PapagaioTema.superficie,
+            corDeFundoFala,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
         .overlay(alignment: .leading) {
@@ -78,19 +98,19 @@ struct LinhaDeFala: View {
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
     }
 
-    /// O canal é a identificação básica confiável; a voz acústica aparece ao
-    /// lado como complemento. Os dois rótulos nunca são fundidos.
+    /// O canal identifica a origem da fala; a voz acústica entra como
+    /// complemento. Os dois rótulos nunca são fundidos.
     @ViewBuilder
     private var cabecalhoDaFala: some View {
-        HStack(spacing: PapagaioTema.Espaco.minimo) {
+        let exibido = fala.falanteAcustico ?? falantePreservado
+        return HStack(spacing: PapagaioTema.Espaco.minimo) {
             Text(Self.rotuloDoCanal(fala.speaker))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PapagaioTema.texto)
                 .padding(.horizontal, PapagaioTema.Espaco.minimo)
                 .padding(.vertical, 1)
                 .background(PapagaioTema.superficieSuave, in: Capsule())
-
-            if let acustico = fala.falanteAcustico {
+            if let acustico = exibido {
                 Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -98,9 +118,18 @@ struct LinhaDeFala: View {
                     .padding(.vertical, 1)
                     .background(PapagaioTema.destaqueSuave, in: Capsule())
             }
+            if mostrarConfianca && mostrarPorcentagemConfianca, let c = fala.confianca {
+                Text(String(format: "%.0f%%", c * 100))
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(c < 0.6 ? Color.red : (c < 0.85 ? Color.orange : PapagaioTema.textoSecundario))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((c < 0.6 ? Color.red.opacity(0.12) : Color.clear), in: Capsule())
+                    .overlay { Capsule().stroke((c < 0.6 ? Color.red.opacity(0.3) : Color.clear), lineWidth: 1) }
+            }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.identidadeAcessivel(fala, nomesDeVoz: nomesDeVoz))
+        .accessibilityLabel(Self.identidadeAcessivel(fala, falantePreservado: falantePreservado, nomesDeVoz: nomesDeVoz))
     }
 
     static func rotuloDoCanal(_ speaker: String?) -> String {
@@ -113,10 +142,11 @@ struct LinhaDeFala: View {
 
     static func identidadeAcessivel(
         _ fala: FalaDeFalante,
+        falantePreservado: String?,
         nomesDeVoz: [String: String]
     ) -> String {
         let canal = rotuloDoCanal(fala.speaker)
-        guard let acustico = fala.falanteAcustico else { return canal }
+        guard let acustico = fala.falanteAcustico ?? falantePreservado else { return canal }
         return "\(canal), \(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))"
     }
 
@@ -141,10 +171,18 @@ struct LinhaDeFala: View {
         if !fala.palavras.isEmpty {
             LayoutDeFluxo(espacoHorizontal: 1, espacoVertical: 3, justificado: true) {
                 ForEach(Array(fala.palavras.enumerated()), id: \.element.palavra.id) { _, item in
+                    let buscaDestacada = !termoDeBusca.isEmpty && item.palavra.texto.casaComBusca(termoDeBusca)
+                    let ehAtual = buscaDestacada && idOcorrenciaAtual == item.palavra.id
+                    let isBaixa = mostrarConfianca && (item.palavra.confianca ?? 1) <= 0.50 && (item.palavra.noSpeechProb ?? 0) < 0.6
                     BotaoDePalavra(
                         palavra: item.palavra,
                         ativa: item.trechoId == palavraAtiva?.trechoId
                             && item.indiceNoTrecho == palavraAtiva?.indiceNoTrecho,
+                        destacadoPelaBusca: buscaDestacada,
+                        ehOcorrenciaAtual: ehAtual,
+                        isBaixaConfianca: isBaixa,
+                        mostrarConfianca: mostrarConfianca,
+                        mostrarPorcentagemConfianca: mostrarPorcentagemConfianca,
                         animacao: animacao,
                         acao: { aoTocarPalavra(item.palavra) }
                     )
@@ -153,10 +191,19 @@ struct LinhaDeFala: View {
         } else {
             // Fala sem palavras: trecho legado ou editado à mão. Cai no
             // parágrafo inteiro, como sempre foi.
+            let destaca = !termoDeBusca.isEmpty && fala.texto.casaComBusca(termoDeBusca)
+            let ehAtual = destaca && idOcorrenciaAtual == fala.id
             Text(fala.texto)
                 .font(.body)
                 .fontWeight(ativo ? .medium : .regular)
                 .foregroundStyle(PapagaioTema.texto)
+                .padding(.horizontal, destaca ? 4 : 0)
+                .padding(.vertical, destaca ? 1 : 0)
+                .background(
+                    ehAtual ? PapagaioTema.destaque : (destaca ? Color.yellow.opacity(0.45) : Color.clear),
+                    in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                )
+                .foregroundStyle(ehAtual ? .white : PapagaioTema.texto)
                 .multilineTextAlignment(.leading)
         }
     }

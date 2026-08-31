@@ -94,7 +94,7 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         let id: String
         let titulo: String
         let dataHora: Date
-        let participantes: [String]
+        let participantes: [ParticipanteDaReuniao]
         let descricao: String?
     }
 
@@ -196,9 +196,17 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         }
         guard let inicio else { throw FonteGoogleCalendarErro.dataInvalida(id) }
 
-        let participantes = attendees?.compactMap { participante -> String? in
-            if let email = participante["email"] as? String { return email }
-            return participante["displayName"] as? String
+        let participantes = attendees?.compactMap { participante -> ParticipanteDaReuniao? in
+            let email = (participante["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nome = (participante["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard email?.isEmpty == false || nome?.isEmpty == false else { return nil }
+            return ParticipanteDaReuniao(
+                nome: nome,
+                email: email,
+                isSelf: (participante["self"] as? Bool) ?? false,
+                isOrganizer: (participante["organizer"] as? Bool) ?? false,
+                responseStatus: participante["responseStatus"] as? String
+            )
         } ?? []
 
         return EventoCalendarSimples(

@@ -197,8 +197,9 @@ struct MapeadorGranolaTests {
         #expect(reunioes[0].id == "a1b2")
         #expect(reunioes[0].titulo == "Planejamento Q3")
         #expect(reunioes[0].data == iso.date(from: "2026-08-19T10:00:00Z"))
-        #expect(reunioes[0].participantes == ["Ana", "Bia"])
-        #expect(reunioes[1].participantes == ["Carlos"])
+        #expect(reunioes[0].participantes.map(\.displayNome) == ["Ana", "Bia"])
+        #expect(reunioes[0].participantes[0].email == "ana@granola.ai")
+        #expect(reunioes[1].participantes.map(\.displayNome) == ["Carlos"])
         #expect(!reunioes[0].temTranscricao)
     }
 

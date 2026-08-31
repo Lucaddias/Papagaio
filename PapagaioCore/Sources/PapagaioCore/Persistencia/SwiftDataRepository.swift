@@ -447,6 +447,8 @@ public actor SwiftDataRepository: ArquivoRepository {
                                 start: $0.start,
                                 end: $0.end,
                                 texto: curarTextoDePalavraLegada($0.texto),
+                                confianca: $0.confianca,
+                                noSpeechProb: $0.noSpeechProb,
                                 // A diarização sobrevive ao round-trip: sem isto
                                 // os falantes somiam ao reabrir o app (o init com
                                 // default apagava o campo).

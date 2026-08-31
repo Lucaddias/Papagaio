@@ -209,6 +209,17 @@ case "transcrever":
     }
     let agrupados = Segmentacao.agrupar(trechos)
     print("segmentos brutos: \(trechos.count)  →  trechos agrupados: \(agrupados.count)")
+    let palavras = agrupados.flatMap(\.palavras)
+    let palavrasComConfianca = palavras.compactMap { palavra -> (String, Float)? in
+        guard let confianca = palavra.confianca else { return nil }
+        return (palavra.texto, confianca)
+    }
+    print("palavras: \(palavras.count)  ·  com confiança: \(palavrasComConfianca.count)")
+    if !palavrasComConfianca.isEmpty {
+        print("amostra de confiança: " + palavrasComConfianca.prefix(12)
+            .map { String(format: "%@=%.0f%%", $0.0, $0.1 * 100) }
+            .joined(separator: " · "))
+    }
     let duracoes = agrupados.map { $0.end - $0.start }
     if let menor = duracoes.min(), let maior = duracoes.max() {
         let media = duracoes.reduce(0, +) / Double(duracoes.count)
@@ -428,7 +439,7 @@ case "granola":
             )
             print("# \(reuniao.titulo)")
             print("data: \(reuniao.data.formatted(date: .abbreviated, time: .shortened))")
-            print("participantes: \(reuniao.participantes.isEmpty ? "—" : reuniao.participantes.joined(separator: ", "))")
+            print("participantes: \(reuniao.participantesNomes.isEmpty ? "—" : reuniao.participantesNomes.joined(separator: ", "))")
             if let notas = reuniao.notas, !notas.isEmpty {
                 print()
                 print("## Notas")
@@ -455,8 +466,8 @@ case "granola":
                              indice + 1,
                              reuniao.data.formatted(date: .abbreviated, time: .omitted),
                              reuniao.titulo))
-                if !reuniao.participantes.isEmpty {
-                    print("        com \(reuniao.participantes.joined(separator: ", "))")
+                if !reuniao.participantesNomes.isEmpty {
+                    print("        com \(reuniao.participantesNomes.joined(separator: ", "))")
                 }
             }
             if soLista { exit(0) }
