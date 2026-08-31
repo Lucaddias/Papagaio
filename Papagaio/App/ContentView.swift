@@ -413,6 +413,7 @@ aoPrepararGravacaoParaReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                 aoSelecionarEquipe: usarEquipe,
                                 aoAtualizarEquipe: atualizarEquipe,
                                 aoExcluirEquipe: excluirEquipe,
+                                nomeDoPerfil: perfil.nome,
                                 estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
                                 aoRetomarSincronizacao: {
                                     Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }

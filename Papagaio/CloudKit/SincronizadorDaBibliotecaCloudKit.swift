@@ -95,6 +95,14 @@ enum DiagnosticoDaSincronizacaoCloudKit {
             || normalizado.contains("did not find record type: conversa") {
             return "A equipe foi aceita, mas o tipo de registro “Conversa” ainda não está publicado no CloudKit de produção. Peça ao proprietário da equipe para publicar o esquema no CloudKit Dashboard; suas alterações continuam neste Mac até isso acontecer."
         }
+        if normalizado.contains("cannot create new type equipeexcluida in production schema")
+            || normalizado.contains("did not find record type: equipeexcluida") {
+            return "A exclusão ainda não pode ser concluída porque o tipo público “EquipeExcluida” não está publicado no CloudKit de produção. No CloudKit Dashboard, publique esse tipo e os campos equipeID, excluidaEm e estadoDaExclusao; nenhum dado foi apagado."
+        }
+        if normalizado.contains("nomesdosparticipantes")
+            && (normalizado.contains("production schema") || normalizado.contains("field")) {
+            return "Para salvar nomes da equipe, publique o campo “nomesDosParticipantes” (Bytes) no tipo Equipe do CloudKit Dashboard. O nome atual continua preservado neste Mac."
+        }
         if normalizado.contains("zone does not exist") {
             return "A zona compartilhada desta equipe ainda não está disponível nesta Apple Account. Peça ao proprietário para confirmar o compartilhamento e entre novamente com o código da equipe."
         }
@@ -110,6 +118,7 @@ enum DiagnosticoDaSincronizacaoCloudKit {
         return normalizado.contains("cannot create new type conversa in production schema")
             || normalizado.contains("did not find record type: conversa")
             || normalizado.contains("zone does not exist")
+            || normalizado.contains("cannot create new type equipeexcluida in production schema")
     }
 }
 

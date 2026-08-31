@@ -15,6 +15,7 @@ actor ServicoDeEquipesCloudKit {
         static let espacoID = "espacoID"
         static let codigoDeEntrada = "codigoDeEntrada"
         static let configuracoes = "configuracoes"
+        static let nomesDosParticipantes = "nomesDosParticipantes"
         static let urlDoCompartilhamento = "urlDoCompartilhamento"
         static let equipeID = "equipeID"
         static let excluidaEm = "excluidaEm"
@@ -148,7 +149,65 @@ actor ServicoDeEquipesCloudKit {
             throw ErroDeEquipeCloudKit.apenasAdministrador
         }
         let compartilhamento = try await compartilhamento(da: equipe)
-        return Self.participantes(no: compartilhamento)
+        let idAtual = try await container.userRecordID().recordName
+        let nomes = try await nomesDosParticipantes(da: equipe, no: container.privateCloudDatabase)
+        return Self.participantes(no: compartilhamento, nomes: nomes, idAtual: idAtual)
+    }
+
+    /// Participantes não têm permissão para enumerar os demais membros do
+    /// share. Ainda assim recebem a própria linha, para editar somente o
+    /// nome que o grupo exibe para a Apple Account atual.
+    func meuParticipante(
+        da equipe: EquipeDisponivel,
+        nomePadrao: String
+    ) async throws -> ParticipanteDaEquipe {
+        try await garantirContaICloudDisponivel()
+        let idAtual = try await container.userRecordID().recordName
+        let zona = try referenciaDaZona(de: equipe)
+        let registro = try await container.sharedCloudDatabase.record(
+            for: CKRecord.ID(recordName: "equipe", zoneID: zona)
+        )
+        let nomes = Self.nomes(no: registro)
+        return ParticipanteDaEquipe(
+            id: idAtual,
+            nome: nomes[idAtual] ?? Self.nomeLimpo(nomePadrao, fallback: "Meu perfil"),
+            eProprietario: false,
+            eAtual: true,
+            permissao: .escrita
+        )
+    }
+
+    /// O proprietário pode nomear qualquer participante; os demais só podem
+    /// alterar a identidade que representa a própria Apple Account.
+    func atualizarNome(
+        de participanteID: String,
+        para nome: String,
+        na equipe: EquipeDisponivel
+    ) async throws {
+        try await garantirContaICloudDisponivel()
+        let nomeLimpo = Self.nomeLimpo(nome, fallback: "")
+        guard !nomeLimpo.isEmpty else { throw ErroDeEquipeCloudKit.nomeInvalido }
+        let idAtual = try await container.userRecordID().recordName
+        let zona = try referenciaDaZona(de: equipe)
+        let banco: CKDatabase
+
+        if equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue {
+            // A zona privada só é acessível à conta proprietária; não
+            // dependemos de `userIdentity` do CKShare, que pode vir omitida.
+            banco = container.privateCloudDatabase
+        } else {
+            guard participanteID == idAtual else { throw ErroDeEquipeCloudKit.apenasProprioNome }
+            banco = container.sharedCloudDatabase
+        }
+
+        let id = CKRecord.ID(recordName: "equipe", zoneID: zona)
+        let registro = try await banco.record(for: id)
+        var nomes = Self.nomes(no: registro)
+        nomes[participanteID] = nomeLimpo
+        registro[Campo.nomesDosParticipantes] = try JSONEncoder().encode(nomes) as NSData
+        _ = try await banco.modifyRecords(
+            saving: [registro], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true
+        )
     }
 
     /// Atualiza a permissão de uma Apple Account já aceita na equipe.
@@ -386,18 +445,33 @@ actor ServicoDeEquipesCloudKit {
         return compartilhamento
     }
 
-    private nonisolated static func participantes(no compartilhamento: CKShare) -> [ParticipanteDaEquipe] {
+    private nonisolated static func participantes(
+        no compartilhamento: CKShare,
+        nomes: [String: String],
+        idAtual: String
+    ) -> [ParticipanteDaEquipe] {
         let dono = ParticipanteDaEquipe(
             id: idDoParticipante(compartilhamento.owner),
-            nome: nomeDoParticipante(compartilhamento.owner, fallback: "Proprietário"),
+            nome: nomeDoParticipante(
+                compartilhamento.owner,
+                nomes: nomes,
+                fallback: "Proprietário"
+            ),
             eProprietario: true,
+            eAtual: idDoParticipante(compartilhamento.owner) == idAtual,
             permissao: .escrita
         )
-        let aceitos = compartilhamento.participants.map { participante in
-            ParticipanteDaEquipe(
+        let aceitos = compartilhamento.participants.compactMap { participante -> ParticipanteDaEquipe? in
+            // O CloudKit pode repetir o proprietário em `participants`. A
+            // role é a fonte de verdade, e a comparação pelo ID protege SDKs
+            // que tenham omitido a role em metadados antigos.
+            guard participante.role != .owner,
+                  idDoParticipante(participante) != dono.id else { return nil }
+            return ParticipanteDaEquipe(
                 id: idDoParticipante(participante),
-                nome: nomeDoParticipante(participante, fallback: "Membro da equipe"),
+                nome: nomeDoParticipante(participante, nomes: nomes, fallback: "Membro da equipe"),
                 eProprietario: false,
+                eAtual: idDoParticipante(participante) == idAtual,
                 permissao: participante.permission == .readOnly ? .leitura : .escrita
             )
         }
@@ -412,9 +486,33 @@ actor ServicoDeEquipesCloudKit {
 
     private nonisolated static func nomeDoParticipante(
         _ participante: CKShare.Participant,
+        nomes: [String: String],
         fallback: String
     ) -> String {
-        participante.userIdentity.nameComponents?.formatted(.name(style: .medium)) ?? fallback
+        nomes[idDoParticipante(participante)]
+            ?? participante.userIdentity.nameComponents?.formatted(.name(style: .medium))
+            ?? fallback
+    }
+
+    private func nomesDosParticipantes(
+        da equipe: EquipeDisponivel,
+        no banco: CKDatabase
+    ) async throws -> [String: String] {
+        let zona = try referenciaDaZona(de: equipe)
+        let registro = try await banco.record(for: CKRecord.ID(recordName: "equipe", zoneID: zona))
+        return Self.nomes(no: registro)
+    }
+
+    private nonisolated static func nomes(no registro: CKRecord) -> [String: String] {
+        guard let dados = registro[Campo.nomesDosParticipantes] as? Data,
+              let nomes = try? JSONDecoder().decode([String: String].self, from: dados)
+        else { return [:] }
+        return nomes
+    }
+
+    private nonisolated static func nomeLimpo(_ nome: String, fallback: String) -> String {
+        let limpo = nome.trimmingCharacters(in: .whitespacesAndNewlines)
+        return limpo.isEmpty ? fallback : limpo
     }
 
     private nonisolated static func idDoMarcadorDeExclusao(para equipeID: String) -> CKRecord.ID {
@@ -468,6 +566,8 @@ enum ErroDeEquipeCloudKit: LocalizedError {
     case membroNaoEncontrado
     case proprietarioNaoPodeSerAlterado
     case proprietarioNaoPodeSerRemovido
+    case nomeInvalido
+    case apenasProprioNome
 
     var errorDescription: String? {
         switch self {
@@ -495,6 +595,10 @@ enum ErroDeEquipeCloudKit: LocalizedError {
             "A permissão do proprietário da equipe não pode ser alterada."
         case .proprietarioNaoPodeSerRemovido:
             "O proprietário da equipe não pode ser removido."
+        case .nomeInvalido:
+            "Informe um nome para mostrar na equipe."
+        case .apenasProprioNome:
+            "Você só pode alterar o próprio nome nesta equipe."
         }
     }
 }
