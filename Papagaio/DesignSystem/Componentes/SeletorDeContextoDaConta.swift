@@ -3,11 +3,31 @@ import SwiftUI
 struct SeletorDeContextoDaConta: View {
     let contexto: ContextoDaConta
     let equipeAtiva: EquipeDisponivel?
+    /// Todas as equipes da pessoa — uma linha para cada, não só a ativa.
+    /// Com só uma linha genérica "Equipe" (o que havia antes), quem tinha
+    /// várias não tinha como trocar por aqui: precisava ir em "Gerenciar
+    /// equipe" só para escolher outra. Criar continua sendo coisa de lá —
+    /// aqui é só trocar entre as que já existem.
+    let equipes: [EquipeDisponivel]
     let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
+    let aoUsarEquipe: (EquipeDisponivel) -> Void
+    /// Um `Menu` nativo do SwiftUI renderiza os itens como `NSMenuItem` de
+    /// verdade — sem jeito de colorir o fundo ou destacar qual equipe está
+    /// selecionada, só o texto puro. E abrir a lista "inline" (empurrando o
+    /// resto do menu pra baixo) duplicava a equipe ativa na tela: uma vez na
+    /// linha resumo, outra dentro da lista. Por isso a lista vira um
+    /// popover flutuante — como o seletor do Codex — que abre por cima sem
+    /// mexer no resto do menu, e a linha resumo some enquanto ele está
+    /// aberto.
+    @State private var mostrandoEquipes = false
 
     var body: some View {
-        VStack(spacing: PapagaioTema.Espaco.minimo) {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            Text("Pessoal")
+                .font(.caption.weight(.bold))
+                .textCase(.uppercase)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+
             BotaoDeContextoDaConta(
                 titulo: "Perfil pessoal",
                 subtitulo: "Conta pessoal",
@@ -16,13 +36,97 @@ struct SeletorDeContextoDaConta: View {
                 acao: aoUsarPerfil
             )
 
-            BotaoDeContextoDaConta(
-                titulo: "Equipe",
-                subtitulo: equipeAtiva?.nome ?? "Nenhuma equipe ainda",
-                simbolo: "person.3",
-                selecionado: contexto == .equipe,
-                acao: aoUsarEquipe
+            if !equipes.isEmpty {
+                Text("Equipe")
+                    .font(.caption.weight(.bold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+                    .padding(.top, PapagaioTema.Espaco.curto)
+
+                linhaDeEquipeAtiva
+            }
+        }
+        .frame(width: 260, alignment: .leading)
+    }
+
+    /// A linha que fica sempre visível: nome da equipe ativa e um "v" que
+    /// abre o popover flutuante com a lista completa.
+    private var linhaDeEquipeAtiva: some View {
+        Button {
+            mostrandoEquipes = true
+        } label: {
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Image(systemName: "person.3")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(contexto == .equipe ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
+                    .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text(equipeAtiva?.nome ?? "Selecionar equipe")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.texto)
+                    if let ativa = equipeAtiva {
+                        Text("\(ativa.papel) • \(ativa.quantidadeDeMembros) membros")
+                            .font(.caption)
+                            .foregroundStyle(PapagaioTema.textoSecundario)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            .padding(PapagaioTema.Espaco.curto)
+            .background(
+                contexto == .equipe ? PapagaioTema.destaqueSuave.opacity(0.7) : Color.clear,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
             )
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $mostrandoEquipes, arrowEdge: .bottom) {
+            listaFlutuanteDeEquipes
+        }
+    }
+
+    /// Até `maximoVisivel` equipes cabem sem rolagem — acima disso, uma
+    /// altura travada com `ScrollView` mantém o popover num tamanho
+    /// razoável em vez de crescer com a lista inteira.
+    private static let maximoVisivel = 5
+    private static let alturaDeCadaLinha: CGFloat = 56
+    private static let alturaDaRolagem = alturaDeCadaLinha * CGFloat(maximoVisivel)
+
+    private var listaFlutuanteDeEquipes: some View {
+        Group {
+            if equipes.count <= Self.maximoVisivel {
+                conteudoDaLista
+            } else {
+                ScrollView {
+                    conteudoDaLista
+                }
+                .frame(maxHeight: Self.alturaDaRolagem)
+            }
+        }
+        .frame(width: 260)
+        .padding(PapagaioTema.Espaco.curto)
+    }
+
+    private var conteudoDaLista: some View {
+        VStack(spacing: PapagaioTema.Espaco.minimo) {
+            ForEach(equipes) { equipe in
+                BotaoDeContextoDaConta(
+                    titulo: equipe.nome,
+                    subtitulo: "\(equipe.papel) • \(equipe.quantidadeDeMembros) membros",
+                    simbolo: "person.3",
+                    selecionado: contexto == .equipe && equipe.id == equipeAtiva?.id,
+                    acao: {
+                        aoUsarEquipe(equipe)
+                        mostrandoEquipes = false
+                    }
+                )
+            }
         }
     }
 }
@@ -53,12 +157,6 @@ struct BotaoDeContextoDaConta: View {
                 }
 
                 Spacer()
-
-                if selecionado {
-                    Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(PapagaioTema.destaqueEscuro)
-                }
             }
             .padding(PapagaioTema.Espaco.curto)
             .background(

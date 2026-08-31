@@ -58,7 +58,10 @@ enum TarefasGeraisStore {
                 status: tarefa.status,
                 responsavel: tarefa.responsavel,
                 prazo: tarefa.prazo,
-                descricao: tarefa.descricao
+                descricao: tarefa.descricao,
+                sugestaoPendente: tarefa.sugestaoPendente,
+                prioridadeDefinidaManualmente: tarefa.prioridadeDefinidaManualmente,
+                atrasoReconhecido: tarefa.atrasoReconhecido
             )
         }
 

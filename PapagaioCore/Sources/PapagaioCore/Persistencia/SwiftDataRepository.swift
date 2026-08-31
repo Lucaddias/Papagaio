@@ -311,6 +311,15 @@ public actor SwiftDataRepository: ArquivoRepository {
         try salvarContexto()
     }
 
+    /// Remove somente um registro que acabou de ser salvo por uma operação
+    /// invalidada. É a compensação de uma corrida entre save e exclusão de
+    /// perfil; a mídia correspondente é tratada pelo chamador.
+    public func descartarRegistro(_ id: ArquivoID) throws {
+        guard let persistido = try buscarPersistido(id: id) else { return }
+        modelContext.delete(persistido)
+        try salvarContexto()
+    }
+
     /// A versão local-first não oferece mais seleção de equipes. Para não
     /// esconder conversas criadas nos espaços antigos, reúne todos os registros
     /// (ativos, na lixeira e também os legados sem relação de espaço) no espaço

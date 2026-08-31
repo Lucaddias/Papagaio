@@ -85,7 +85,15 @@ No Xcode, selecione o scheme `Loro` e execute no seu Mac. Para usar equipes,
 habilite o container `iCloud.com.papagaio.Papagaio` na assinatura do target e
 publique o schema correspondente no CloudKit Dashboard. O registro público
 `CodigoDeEquipe` precisa disponibilizar os campos `codigoDeEntrada` (consultável)
-e `urlDoCompartilhamento`.
+e `urlDoCompartilhamento`. A exclusão global de equipes também requer o tipo
+público `EquipeExcluida`, com `equipeID` (String), `excluidaEm` (Date) e
+`estadoDaExclusao` (String). Esse
+marcador permite que instalações de participantes removam a cópia local ao se
+conectarem novamente depois que a zona compartilhada foi apagada.
+
+No tipo `Equipe` da zona compartilhada, publique também o campo `nomesDosParticipantes`
+como `Bytes`. Ele guarda o mapa de nomes exibidos pela equipe; cada participante
+altera somente o próprio nome, enquanto o proprietário pode corrigir qualquer um.
 
 ## Validar localmente
 
@@ -101,8 +109,15 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-O GitHub Actions executa o bootstrap, os testes do `PapagaioCore` e o build do
-app para cada pull request direcionado a `main`.
+O GitHub Actions configura o bootstrap, os testes do `PapagaioCore`, os testes
+do app com `PAPAGAIO_TEST_MODE=1` e o build para pull requests direcionados a
+`main`. No modo de teste, o lançamento usa um host vazio; os testes continuam
+responsáveis por injetar armazenamento temporário e serviços falsos.
+
+## Plano e revisões
+
+- [Plano de aplicação de produto](PLANO-APLICACAO-INTELIGENCIA-PRODUTO-PAPAGAIO.md): classificação, prioridades e critérios de aceite.
+- [Revisão de bugs e fluxos de dados](docs/REVISAO-PLANO-E-FLUXOS-2026-08-28.md): mapa de entradas/saídas, correções, evidências e validações pendentes.
 
 ## Limites conhecidos
 

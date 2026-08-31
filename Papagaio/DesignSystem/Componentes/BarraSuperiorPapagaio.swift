@@ -9,6 +9,7 @@ struct BarraSuperiorPapagaioView: View {
     let exibindoBotaoVoltar: Bool
     let bibliotecaSelecionada: Bool
     let tarefasSelecionada: Bool
+    let midiasSelecionada: Bool
     let configuracoesSelecionada: Bool
     let lixeiraSelecionada: Bool
     let perfilConectado: Bool
@@ -16,6 +17,7 @@ struct BarraSuperiorPapagaioView: View {
     let avatarURL: URL?
     let contextoDaConta: ContextoDaConta
     let equipeAtiva: EquipeDisponivel?
+    let equipes: [EquipeDisponivel]
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -27,10 +29,11 @@ struct BarraSuperiorPapagaioView: View {
     let aoVoltar: () -> Void
     let aoAbrirBiblioteca: () -> Void
     let aoAbrirTarefas: () -> Void
+    let aoAbrirMidias: () -> Void
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
     let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
+    let aoUsarEquipe: (EquipeDisponivel) -> Void
     let aoGerenciarPerfil: () -> Void
     let aoGerenciarEquipe: () -> Void
 
@@ -54,6 +57,7 @@ struct BarraSuperiorPapagaioView: View {
     /// "conversas" ali prometia menos do que a busca de fato cobre.
     private var placeholderDeBusca: String {
         if tarefasSelecionada { return "Buscar tarefas…" }
+        if midiasSelecionada { return "Buscar mídias…" }
         if lixeiraSelecionada { return "Buscar na lixeira…" }
         return "Buscar conversas…"
     }
@@ -206,6 +210,7 @@ struct BarraSuperiorPapagaioView: View {
         Menu {
             Button("Biblioteca de conversas", systemImage: "folder", action: aoAbrirBiblioteca)
             Button("Tarefas", systemImage: "list.clipboard", action: aoAbrirTarefas)
+            Button("Mídias", systemImage: "photo.on.rectangle", action: aoAbrirMidias)
 
             Divider()
 
@@ -313,13 +318,14 @@ struct BarraSuperiorPapagaioView: View {
                 SeletorDeContextoDaConta(
                     contexto: contextoDaConta,
                     equipeAtiva: equipeAtiva,
+                    equipes: equipes,
                     aoUsarPerfil: {
                         exibindoMenuDePerfil = false
                         aoUsarPerfil()
                     },
-                    aoUsarEquipe: {
+                    aoUsarEquipe: { equipe in
                         exibindoMenuDePerfil = false
-                        aoUsarEquipe()
+                        aoUsarEquipe(equipe)
                     }
                 )
 
@@ -407,6 +413,18 @@ struct BarraSuperiorPapagaioView: View {
             .buttonStyle(.plain)
             .help("Tarefas")
             .accessibilityLabel("Tarefas")
+
+            Button(action: aoAbrirMidias) {
+                BotaoDeAtalhoDaBarra(
+                    simbolo: "photo.on.rectangle",
+                    legenda: "Mídias",
+                    legendaAtiva: $legendaAtiva,
+                    selecionado: midiasSelecionada
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Mídias")
+            .accessibilityLabel("Mídias")
         }
         .padding(.horizontal, PapagaioTema.Espaco.minimo)
         .frame(height: PapagaioTema.Altura.padrao)

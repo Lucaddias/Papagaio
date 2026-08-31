@@ -3,13 +3,27 @@ import os
 import PapagaioCore
 
 struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
+    typealias Transportar = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
     let identificador = "google-calendar-api"
     private let obterToken: @Sendable (Bool) async throws -> String
-
-    private let baseURL = URL(string: "https://www.googleapis.com/calendar/v3")!
+    private let transportar: Transportar
+    private let agora: @Sendable () -> Date
+    private let baseURL: URL
     private let registro = Logger(subsystem: "Papagaio", category: "GoogleCalendar")
 
-    init(obterToken: @escaping @Sendable (Bool) async throws -> String) {
+    init(
+        sessao: URLSession = .shared,
+        baseURL: URL = URL(string: "https://www.googleapis.com/calendar/v3")!,
+        agora: @escaping @Sendable () -> Date = Date.init,
+        transportar: Transportar? = nil,
+        obterToken: @escaping @Sendable (Bool) async throws -> String
+    ) {
+        self.transportar = transportar ?? { pedido in
+            try await sessao.data(for: pedido)
+        }
+        self.baseURL = baseURL
+        self.agora = agora
         self.obterToken = obterToken
     }
 
@@ -19,7 +33,7 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         pedido.timeoutInterval = 15
 
-        let (dados, resposta) = try await URLSession.shared.data(for: pedido)
+        let (dados, resposta) = try await transportar(pedido)
         guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw FonteGoogleCalendarErro.respostaInesperada
         }
@@ -53,7 +67,7 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         pedido.timeoutInterval = 15
 
-        let (dados, resposta) = try await URLSession.shared.data(for: pedido)
+        let (dados, resposta) = try await transportar(pedido)
         guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             if (resposta as? HTTPURLResponse)?.statusCode == 404 {
                 throw FonteGoogleCalendarErro.reuniaoNaoEncontrada(id)
@@ -61,16 +75,22 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
             throw FonteGoogleCalendarErro.respostaInesperada
         }
         guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any],
-              let reuniao = ReuniaoExterna.fromGoogleEvent(json)
+              let evento = try decodificarEvento(json, exigirParticipantes: false)
         else {
             throw FonteGoogleCalendarErro.respostaInesperada
         }
-        return reuniao
+        return ReuniaoExterna(
+            id: evento.id,
+            titulo: evento.titulo,
+            data: evento.dataHora,
+            participantes: evento.participantes,
+            notas: evento.descricao
+        )
     }
 
     // MARK: - Internal
 
-    struct EventoCalendarSimples {
+    struct EventoCalendarSimples: Equatable, Sendable {
         let id: String
         let titulo: String
         let dataHora: Date
@@ -81,84 +101,53 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
     func listarEventos() async throws -> [EventoCalendarSimples] {
         let token = try await obterToken(false)
 
-        let agora = Date()
-        let fim = Calendar.current.date(byAdding: .day, value: 90, to: agora) ?? agora
+        let agora = agora()
+        let fim = agora.addingTimeInterval(24 * 3600)
 
         let formatador = ISO8601DateFormatter()
         formatador.formatOptions = [.withInternetDateTime]
         let timeMin = formatador.string(from: agora)
         let timeMax = formatador.string(from: fim)
 
-        var componentes = URLComponents(url: baseURL.appendingPathComponent("calendars/primary/events"), resolvingAgainstBaseURL: false)!
-        componentes.queryItems = [
-            URLQueryItem(name: "timeMin", value: timeMin),
-            URLQueryItem(name: "timeMax", value: timeMax),
-            URLQueryItem(name: "singleEvents", value: "true"),
-            URLQueryItem(name: "orderBy", value: "startTime"),
-            URLQueryItem(name: "maxResults", value: "250"),
-            URLQueryItem(name: "showDeleted", value: "false"),
-        ]
-
-        var pedido = URLRequest(url: componentes.url!)
-        pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        pedido.timeoutInterval = 15
-
-        let (dados, resposta) = try await URLSession.shared.data(for: pedido)
-        guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw FonteGoogleCalendarErro.respostaInesperada
-        }
-        guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any],
-              let itens = json["items"] as? [[String: Any]]
-        else {
-            return []
-        }
-
-        let eventos = itens
-            .filter { evento in
-                let tipo = evento["eventType"] as? String ?? "default"
-                let attendees = evento["attendees"] as? [[String: Any]]
-                return tipo == "default" && (attendees?.isEmpty == false)
-            }
-            .compactMap { evento -> EventoCalendarSimples? in
-                guard let id = evento["id"] as? String, !id.isEmpty else { return nil }
-                let titulo = (evento["summary"] as? String) ?? "Evento sem título"
-
-                let inicio: Date
-                if let startDateTime = evento["start"] as? [String: Any],
-                   let dateTimeStr = startDateTime["dateTime"] as? String {
-                    inicio = ReuniaoExterna.parseDateTime(dateTimeStr) ?? Date()
-                } else if let startDate = evento["start"] as? [String: Any],
-                          let dateStr = startDate["date"] as? String {
-                    inicio = ReuniaoExterna.parseDate(dateStr) ?? Date()
-                } else {
-                    inicio = Date()
-                }
-
-                let participantes: [ParticipanteDaReuniao]
-                if let attendees = evento["attendees"] as? [[String: Any]] {
-                    participantes = attendees.compactMap { a -> ParticipanteDaReuniao? in
-                        let email = (a["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let nome = (a["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let isSelf = (a["self"] as? Bool) ?? false
-                        let isOrganizer = (a["organizer"] as? Bool) ?? false
-                        let status = a["responseStatus"] as? String
-                        if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
-                        return ParticipanteDaReuniao(nome: nome, email: email, isSelf: isSelf, isOrganizer: isOrganizer, responseStatus: status)
-                    }
-                } else {
-                    participantes = []
-                }
-
-                let descricao = evento["description"] as? String
-
-                return EventoCalendarSimples(
-                    id: id,
-                    titulo: titulo,
-                    dataHora: inicio,
-                    participantes: participantes,
-                    descricao: descricao
+        var eventos: [EventoCalendarSimples] = []
+        var proximaPagina: String?
+        repeat {
+            var componentes = URLComponents(
+                url: baseURL.appendingPathComponent("calendars/primary/events"),
+                resolvingAgainstBaseURL: false
+            )!
+            componentes.queryItems = [
+                URLQueryItem(name: "timeMin", value: timeMin),
+                URLQueryItem(name: "timeMax", value: timeMax),
+                URLQueryItem(name: "singleEvents", value: "true"),
+                URLQueryItem(name: "orderBy", value: "startTime"),
+                URLQueryItem(name: "maxResults", value: "250"),
+                URLQueryItem(name: "showDeleted", value: "false"),
+            ]
+            if let proximaPagina {
+                componentes.queryItems?.append(
+                    URLQueryItem(name: "pageToken", value: proximaPagina)
                 )
             }
+
+            var pedido = URLRequest(url: componentes.url!)
+            pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            pedido.timeoutInterval = 15
+
+            let (dados, resposta) = try await transportar(pedido)
+            guard let http = resposta as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode)
+            else { throw FonteGoogleCalendarErro.respostaInesperada }
+            guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any]
+            else { throw FonteGoogleCalendarErro.respostaInesperada }
+
+            let itens = json["items"] as? [[String: Any]] ?? []
+            eventos += try itens.compactMap { try decodificarEvento($0) }
+            proximaPagina = (json["nextPageToken"] as? String).flatMap {
+                $0.isEmpty ? nil : $0
+            }
+        } while proximaPagina != nil
+
         registro.info("\(eventos.count) eventos futuros (com participantes) carregados do Google Calendar")
         return eventos
     }
@@ -171,7 +160,7 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         pedido.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         pedido.timeoutInterval = 15
 
-        let (dados, resposta) = try await URLSession.shared.data(for: pedido)
+        let (dados, resposta) = try await transportar(pedido)
         guard let http = resposta as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             if (resposta as? HTTPURLResponse)?.statusCode == 404 {
                 return nil
@@ -181,44 +170,51 @@ struct FonteGoogleCalendarAPI: FonteDeReunioesExternas {
         guard let json = try JSONSerialization.jsonObject(with: dados) as? [String: Any] else {
             return nil
         }
+        return try decodificarEvento(json, exigirParticipantes: false)
+    }
 
-        guard let id = json["id"] as? String, !id.isEmpty else { return nil }
-        let titulo = (json["summary"] as? String) ?? "Evento sem título"
-
-        let inicio: Date
-        if let startDateTime = json["start"] as? [String: Any],
-           let dateTimeStr = startDateTime["dateTime"] as? String {
-            inicio = ReuniaoExterna.parseDateTime(dateTimeStr) ?? Date()
-        } else if let startDate = json["start"] as? [String: Any],
-                  let dateStr = startDate["date"] as? String {
-            inicio = ReuniaoExterna.parseDate(dateStr) ?? Date()
-        } else {
-            inicio = Date()
+    private func decodificarEvento(
+        _ evento: [String: Any],
+        exigirParticipantes: Bool = true
+    ) throws -> EventoCalendarSimples? {
+        let tipo = evento["eventType"] as? String ?? "default"
+        let attendees = evento["attendees"] as? [[String: Any]]
+        if exigirParticipantes {
+            guard tipo == "default", attendees?.isEmpty == false else { return nil }
         }
+        guard let id = evento["id"] as? String, !id.isEmpty else { return nil }
 
-        let participantes: [ParticipanteDaReuniao]
-        if let attendees = json["attendees"] as? [[String: Any]] {
-            participantes = attendees.compactMap { a -> ParticipanteDaReuniao? in
-                let email = (a["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let nome = (a["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let isSelf = (a["self"] as? Bool) ?? false
-                let isOrganizer = (a["organizer"] as? Bool) ?? false
-                let status = a["responseStatus"] as? String
-                if (email == nil || email?.isEmpty == true) && (nome == nil || nome?.isEmpty == true) { return nil }
-                return ParticipanteDaReuniao(nome: nome, email: email, isSelf: isSelf, isOrganizer: isOrganizer, responseStatus: status)
-            }
+        let inicio: Date?
+        if let start = evento["start"] as? [String: Any],
+           let dateTime = start["dateTime"] as? String {
+            inicio = ReuniaoExterna.parseDateTime(dateTime)
+        } else if let start = evento["start"] as? [String: Any],
+                  let date = start["date"] as? String {
+            inicio = ReuniaoExterna.parseDate(date)
         } else {
-            participantes = []
+            inicio = nil
         }
+        guard let inicio else { throw FonteGoogleCalendarErro.dataInvalida(id) }
 
-        let descricao = json["description"] as? String
+        let participantes = attendees?.compactMap { participante -> ParticipanteDaReuniao? in
+            let email = (participante["email"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nome = (participante["displayName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard email?.isEmpty == false || nome?.isEmpty == false else { return nil }
+            return ParticipanteDaReuniao(
+                nome: nome,
+                email: email,
+                isSelf: (participante["self"] as? Bool) ?? false,
+                isOrganizer: (participante["organizer"] as? Bool) ?? false,
+                responseStatus: participante["responseStatus"] as? String
+            )
+        } ?? []
 
         return EventoCalendarSimples(
             id: id,
-            titulo: titulo,
+            titulo: (evento["summary"] as? String) ?? "Evento sem título",
             dataHora: inicio,
             participantes: participantes,
-            descricao: descricao
+            descricao: evento["description"] as? String
         )
     }
 }
@@ -227,6 +223,7 @@ enum FonteGoogleCalendarErro: LocalizedError {
     case semToken
     case respostaInesperada
     case reuniaoNaoEncontrada(String)
+    case dataInvalida(String)
 
     var errorDescription: String? {
         switch self {
@@ -236,6 +233,8 @@ enum FonteGoogleCalendarErro: LocalizedError {
             return "O Google Calendar respondeu algo inesperado."
         case let .reuniaoNaoEncontrada(id):
             return "A reunião \(id) não foi encontrada no Google Calendar."
+        case let .dataInvalida(id):
+            return "A reunião \(id) tem uma data inválida no Google Calendar."
         }
     }
 }

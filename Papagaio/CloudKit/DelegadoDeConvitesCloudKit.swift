@@ -4,6 +4,7 @@ import Foundation
 
 extension Notification.Name {
     static let equipeCloudKitAceita = Notification.Name("equipeCloudKitAceita")
+    static let equipeCloudKitFalhou = Notification.Name("equipeCloudKitFalhou")
 }
 
 /// Recebe o convite aberto pelo macOS. A aceitação é feita fora da view para
@@ -13,6 +14,7 @@ final class DelegadoDeConvitesCloudKit: NSObject, NSApplicationDelegate {
         _ application: NSApplication,
         userDidAcceptCloudKitShareWith metadados: CKShare.Metadata
     ) {
+        guard PoliticaDeInicializacaoExterna().permiteServicosExternos else { return }
         Task {
             do {
                 let equipe = try await ServicoDeEquipesCloudKit().aceitar(metadados)
@@ -21,9 +23,12 @@ final class DelegadoDeConvitesCloudKit: NSObject, NSApplicationDelegate {
                     NotificationCenter.default.post(name: .equipeCloudKitAceita, object: equipe)
                 }
             } catch {
-                // A próxima fase apresenta esse erro na interface. Aqui a
-                // prioridade é nunca impedir o lançamento do app por um link
-                // expirado ou por iCloud indisponível.
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .equipeCloudKitFalhou,
+                        object: error.localizedDescription
+                    )
+                }
             }
         }
     }

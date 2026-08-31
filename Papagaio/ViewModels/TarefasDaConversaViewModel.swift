@@ -122,6 +122,13 @@ final class TarefasDaConversaViewModel {
         tarefa.prioridade = prioridadeDaTarefa
         tarefa.prioridadeDefinidaManualmente = true
         tarefa.status = statusDaTarefa
+        // Prazo trocado à mão: o reconhecimento de atraso de uma data
+        // anterior não vale mais pra esta nova data — se a nova também já
+        // estiver vencida, a tarefa deve voltar a contar como "Atrasada"
+        // normalmente. Ver `TarefaDaConversa.atrasoReconhecido`.
+        if tarefa.prazo != prazoDaTarefa {
+            tarefa.atrasoReconhecido = nil
+        }
         tarefa.prazo = prazoDaTarefa
         // Editar e salvar uma sugestão é uma forma de aceitá-la — com os
         // ajustes que a pessoa acabou de fazer. Sem isto, uma sugestão
@@ -139,6 +146,20 @@ final class TarefasDaConversaViewModel {
         tarefaEmEdicaoID = nil
         limparFormulario()
         mostrandoEdicao = false
+    }
+
+    /// Apaga a tarefa que está aberta no formulário de edição — vai para a
+    /// lixeira (a mesma de `LixeiraDeTarefas`, usada pelo Painel de Tarefas
+    /// geral), de onde dá para restaurar depois, em vez de sumir de vez.
+    func excluirTarefaEmEdicao(conversaTitulo: String) {
+        guard let tarefaEmEdicaoID,
+              let tarefa = tarefas.first(where: { $0.id == tarefaEmEdicaoID })
+        else { return }
+
+        tarefas.removeAll { $0.id == tarefaEmEdicaoID }
+        salvar()
+        LixeiraDeTarefas.mover(tarefa, arquivoID: arquivoID, conversaTitulo: conversaTitulo)
+        cancelarEdicao()
     }
 
     // MARK: - Sugestões
@@ -173,6 +194,13 @@ final class TarefasDaConversaViewModel {
     func mover(_ id: UUID, para destino: DestinoDeTarefa) {
         guard let indice = tarefas.firstIndex(where: { $0.id == id }) else { return }
         tarefas[indice].status = destino.status
+        // A pessoa acabou de escolher onde a tarefa fica — mesmo que o
+        // prazo continue vencido, essa escolha vale mais que o cálculo
+        // automático de "Atrasada". Sem isto, soltar uma tarefa vencida em
+        // "Em andamento" mudava o status por baixo mas ela voltava pra
+        // "Atrasada" no mesmo instante, parecendo que nada tinha
+        // acontecido. Ver `TarefaDaConversa.atrasoReconhecido`.
+        tarefas[indice].atrasoReconhecido = true
         tarefas[indice] = RegraDePrazoDaTarefa.ajustada(tarefas[indice])
         salvar()
         notificarPrazoSeNecessario(tarefas[indice])

@@ -43,6 +43,9 @@ final class TarefasDoPainelViewModel {
     func mover(_ id: UUID, para destino: DestinoDeTarefa, em arquivo: Arquivo) {
         atualizar(id, em: arquivo) { editada in
             editada.status = destino.status
+            // O destino foi escolhido explicitamente pela pessoa. Mesmo com
+            // prazo vencido, a tarefa deve permanecer na coluna escolhida.
+            editada.atrasoReconhecido = true
         }
     }
 

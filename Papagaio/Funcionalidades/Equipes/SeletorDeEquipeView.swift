@@ -44,7 +44,7 @@ struct SeletorDeEquipeView: View {
                                 Text(equipe.nome)
                                     .font(.headline)
                                     .foregroundStyle(PapagaioTema.texto)
-                                Text("\(equipe.papel) • \(equipe.quantidadeDeMembros) membros")
+                                Text("\(equipe.papel) • \(equipe.resumoDeMembros)")
                                     .font(.caption)
                                     .foregroundStyle(PapagaioTema.textoSecundario)
                             }

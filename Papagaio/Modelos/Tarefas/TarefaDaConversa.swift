@@ -29,6 +29,17 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
     /// com `nil`, tratado como "ainda não é manual" (mantendo a promoção
     /// automática que já existia para elas).
     var prioridadeDefinidaManualmente: Bool?
+    /// `true` depois que a pessoa arrasta manualmente uma tarefa vencida
+    /// para "Não iniciado", "Em andamento" ou "Concluída" — sem isto, soltar
+    /// numa dessas colunas mudava o status por baixo, mas a tarefa
+    /// continuava vencida e voltava pra "Atrasada" no mesmo instante,
+    /// parecendo que o arraste não tinha feito nada. A escolha da pessoa
+    /// passa a valer mais que o cálculo automático a partir daqui — até ela
+    /// editar o prazo de novo (ver `TarefasView.moverTarefa` e
+    /// `TarefasDaConversaViewModel.mover`, que zeram isto ao trocar o
+    /// prazo). Opcional pelo mesmo motivo dos outros campos novos: tarefas
+    /// antigas decodificam com `nil`, tratado como "ainda não reconhecida".
+    var atrasoReconhecido: Bool?
 
     init(
         id: UUID = UUID(),
@@ -40,7 +51,8 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         prazo: Date?,
         descricao: String? = nil,
         sugestaoPendente: Bool? = nil,
-        prioridadeDefinidaManualmente: Bool? = nil
+        prioridadeDefinidaManualmente: Bool? = nil,
+        atrasoReconhecido: Bool? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -52,6 +64,7 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
         self.descricao = descricao
         self.sugestaoPendente = sugestaoPendente
         self.prioridadeDefinidaManualmente = prioridadeDefinidaManualmente
+        self.atrasoReconhecido = atrasoReconhecido
     }
 
     /// `false` para tarefas nunca editadas por uma pessoa — só aí a régua de
@@ -61,6 +74,9 @@ struct TarefaDaConversa: Identifiable, Codable, Equatable {
     /// `true` enquanto a sugestão espera a pessoa aceitar, editar ou
     /// descartar — ver o comentário de `sugestaoPendente`.
     var pendenteDeRevisao: Bool { sugestaoPendente ?? false }
+
+    /// Ver o comentário de `atrasoReconhecido`.
+    var atrasoFoiReconhecido: Bool { atrasoReconhecido ?? false }
 
     /// O nome do responsável, só quando é um nome de verdade.
     ///

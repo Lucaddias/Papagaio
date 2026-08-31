@@ -15,7 +15,22 @@ struct ColunaDeTarefasGerais: View {
     let aoAlternarConclusao: (TarefaGeral) -> Void
     let aoExcluir: (TarefaGeral) -> Void
     let aoMover: (String, DestinoDeTarefa) -> Void
+    /// Quais tarefas (pelo `id` composto) a pessoa escondeu individualmente
+    /// — independente da coluna estar oculta ou não.
+    let tarefasOcultas: Set<String>
+    let aoOcultarTarefa: (TarefaGeral) -> Void
     let compacto: Bool
+    /// `false` na coluna "Atrasada": ela não é um status de verdade, é um
+    /// recorte calculado (prazo vencido + não concluída) das outras colunas
+    /// — soltar uma tarefa ali não teria pra qual status ir. As tarefas
+    /// continuam arrastáveis pra fora dela, só não aceita soltura.
+    var permiteSoltar = true
+    /// Se a lista de cartões desta coluna está recolhida. A tag do
+    /// cabeçalho continua sempre visível (com a contagem) — só o conteúdo
+    /// abaixo dela some, para o botão de ocultar continuar acessível mesmo
+    /// depois de usado.
+    let oculta: Bool
+    let aoAlternarOcultar: () -> Void
     @State private var recebendoDrop = false
 
     var body: some View {
@@ -36,11 +51,41 @@ struct ColunaDeTarefasGerais: View {
                     .padding(.horizontal, PapagaioTema.Espaco.curto)
                     .padding(.vertical, PapagaioTema.Espaco.minimo)
                     .background(PapagaioTema.superficieSuave, in: Capsule())
+
+                Spacer(minLength: PapagaioTema.Espaco.curto)
+
+                Button(action: aoAlternarOcultar) {
+                    Image(systemName: oculta ? "eye.slash" : "eye")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(oculta ? "Mostrar coluna \(titulo)" : "Ocultar coluna \(titulo)")
             }
             .padding(.horizontal, PapagaioTema.Espaco.curto)
             .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
             .background(PapagaioTema.superficie.opacity(0.48), in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
 
+            if oculta {
+                // Recolhida, mas continua soltável: sem isto a área que
+                // aceita arraste encolhia pra só a faixinha da própria tag
+                // (pouco mais de 30pt) — dava pra soltar aqui, só que era
+                // difícil acertar. Esta faixa mantém um alvo do tamanho de
+                // sempre, coerente com o `.dropDestination` que já envolve
+                // a coluna inteira (ver o fim do arquivo).
+                if permiteSoltar {
+                    Text("Coluna recolhida — pode soltar aqui.")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(
+                            recebendoDrop ? cor.opacity(0.12) : PapagaioTema.superficie.opacity(0.3),
+                            in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        )
+                }
+            } else {
             VStack(spacing: compacto ? PapagaioTema.Espaco.curto : PapagaioTema.Espaco.medio) {
                 if tarefas.isEmpty {
                     Text("Solte uma tarefa aqui.")
@@ -54,16 +99,19 @@ struct ColunaDeTarefasGerais: View {
                             tarefa: tarefa,
                             aoEditar: { aoEditar(tarefa) },
                             aoAlternarConclusao: { aoAlternarConclusao(tarefa) },
-                            aoExcluir: { aoExcluir(tarefa) }
+                            aoExcluir: { aoExcluir(tarefa) },
+                            oculta: tarefasOcultas.contains(tarefa.id),
+                            aoOcultar: { aoOcultarTarefa(tarefa) }
                         )
                         .draggable(tarefa.id)
                     }
                 }
 
-                if compacto {
+                if compacto && permiteSoltar {
                     // Em modo vertical a coluna encolhe para a altura dos
                     // cards. Sem esta faixa, só alguns poucos pixels viravam
                     // destino de soltura e mover uma tarefa era impreciso.
+                    // Some quando a coluna não aceita soltura (Atrasada).
                     Label("Arraste uma tarefa para cá", systemImage: "arrow.down.to.line")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(PapagaioTema.textoSecundario)
@@ -77,8 +125,9 @@ struct ColunaDeTarefasGerais: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 320, alignment: .top)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: compacto ? 0 : 390, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: oculta ? 0 : (compacto ? 0 : 390), alignment: .top)
         // Só vertical — na horizontal, este recuo desalinhava a tarja dos
         // cartões (e o próprio cabeçalho "NÃO INICIADO") em relação a tudo
         // mais na página: "Todas as tarefas" acima, os cards de conversa,
@@ -94,12 +143,34 @@ struct ColunaDeTarefasGerais: View {
             recebendoDrop ? cor.opacity(0.10) : Color.clear,
             in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
         )
-        .dropDestination(for: String.self) { ids, _ in
-            guard let id = ids.first else { return false }
+        .modifier(SoltaTarefaGeral(ativo: permiteSoltar, recebendoDrop: $recebendoDrop) { id in
             aoMover(id, destino)
-            return true
-        } isTargeted: { ativo in
-            recebendoDrop = ativo
+        })
+    }
+}
+
+/// Isola o `.dropDestination` atrás de um `if`/`else` de verdade: aplicar o
+/// modificador condicionalmente com `.modifier(ativo ? ... : ...)` exige que
+/// os dois ramos sejam o mesmo tipo concreto, e aqui um ramo tem
+/// `.dropDestination` e o outro não — tipos diferentes. Um `ViewModifier`
+/// com `@ViewBuilder` resolve isso do mesmo jeito que os outros casos
+/// parecidos nesta sessão.
+private struct SoltaTarefaGeral: ViewModifier {
+    let ativo: Bool
+    @Binding var recebendoDrop: Bool
+    let aoSoltar: (String) -> Void
+
+    func body(content: Content) -> some View {
+        if ativo {
+            content.dropDestination(for: String.self) { ids, _ in
+                guard let id = ids.first else { return false }
+                aoSoltar(id)
+                return true
+            } isTargeted: { ativo in
+                recebendoDrop = ativo
+            }
+        } else {
+            content
         }
     }
 }

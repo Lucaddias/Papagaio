@@ -35,9 +35,14 @@ struct ContentView: View {
     /// A gravação é criada no `App` e passada para cá: o item da barra de menus
     /// precisa observar exatamente o mesmo objeto que a janela.
     let modelo: GravadorViewModel
+    private let politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna
 
-    init(gravador: GravadorViewModel) {
+    init(
+        gravador: GravadorViewModel,
+        politicaDeInicializacaoExterna: PoliticaDeInicializacaoExterna = .init()
+    ) {
         modelo = gravador
+        self.politicaDeInicializacaoExterna = politicaDeInicializacaoExterna
     }
 
     @State private var biblioteca: Biblioteca?
@@ -68,7 +73,12 @@ struct ContentView: View {
     @State private var confirmandoCancelamentoDaGravacao = false
     /// Espaço ocupado pelo player na tela atual, anunciado por quem o desenha.
     @State private var alturaDoPlayer: CGFloat = 0
-    private let servicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
+    /// Criado somente quando uma ação de equipe realmente pede CloudKit.
+    /// Construir `CKContainer` junto com a view derruba o host unsigned dos
+    /// testes antes mesmo de a primeira asserção executar.
+    private var servicoDeEquipesCloudKit: ServicoDeEquipesCloudKit {
+        ServicoDeEquipesCloudKit()
+    }
 
     /// Dentro de uma conversa, onde a base pertence ao player.
     private var seloNoTopo: Bool { !conversaAberta.isEmpty }
@@ -153,6 +163,7 @@ struct ContentView: View {
                         audio: audio,
                         audioSecundario: audioSecundario,
                         importado: importado,
+                        midiaNaoDisponivelNesteMac: arquivo.semAudio && equipeAtiva != nil,
                         estado: estado,
                         processando: processando,
                         naFila: naFila,
@@ -226,15 +237,22 @@ struct ContentView: View {
             equipes = EquipesDoUsuario.carregar()
             usarEquipe(equipe)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitFalhou)) { notificacao in
+            guard let mensagem = notificacao.object as? String else { return }
+            falhaDeAbertura = "Não foi possível aceitar o convite do iCloud: \(mensagem)"
+        }
         .task {
-            notificacoes.preparar()
-            perfil.iniciar()
             await abrir()
+            await politicaDeInicializacaoExterna.executar {
+                notificacoes.preparar()
+                perfil.iniciar()
+                await conectarGoogleCalendarSeAutorizado()
+            }
         }
         // Retorno do navegador quando a autorização do Granola roda no
         // navegador padrão do sistema.
         .onOpenURL { url in
-            GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
+            _ = GerenciadorDeCallbackDeAutorizacao.compartilhado.entregar(url)
         }
         .onChange(of: processamentoAutomatico) { _, novoValor in
             biblioteca?.processamentoAutomatico = novoValor
@@ -319,27 +337,30 @@ struct ContentView: View {
     private var barraSuperior: some View {
         BarraSuperiorPapagaioView(
             consulta: $consulta, legendaAtiva: $legendaDaBarra,
-            // Sem o chevron nas Tarefas nem na Lixeira: as duas já têm um
-            // atalho próprio na barra ("Biblioteca" e "Lixeira", ao lado da
-            // busca), então o botão de voltar virava um segundo caminho
-            // para o mesmo lugar — redundante, e não obrigatório como é
-            // numa conversa aberta ou na captura.
+            // Sem o chevron nas telas que já têm atalho próprio na barra:
+            // Tarefas, Mídias, Configurações e Lixeira. Ali o botão de voltar
+            // seria um segundo caminho para a Biblioteca, redundante e não
+            // obrigatório como é numa conversa aberta ou na captura.
             exibindoBotaoVoltar: !naTelaInicial
                 && telaSelecionada != .tarefas
+                && telaSelecionada != .midias
+                && telaSelecionada != .configuracoes
                 && !(telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira),
             bibliotecaSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca != .lixeira,
             tarefasSelecionada: telaSelecionada == .tarefas,
+            midiasSelecionada: telaSelecionada == .midias,
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
-            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva,
+            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva, equipes: equipes,
             gravando: modelo.gravando && focoNaGravacao, processandoBiblioteca: biblioteca?.processando ?? false,
             quantidadeDeAvisos: notificacoes.naoLidas, notificacoes: notificacoes.itens,
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
             aoMarcarNotificacoesComoLidas: notificacoes.marcarComoLidas, aoLimparNotificacoes: notificacoes.limpar,
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
+            aoAbrirMidias: abrirMidias,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
-            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
+            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: usarEquipe,
             aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
         )
     }
@@ -391,13 +412,14 @@ struct ContentView: View {
                                 aoIgnorarReuniao: { (pendente: ReuniaoPendenteCalendar) in
                                     Task { @MainActor in
                                         googleCalendar?.ignorarPendente(pendente)
-                                        biblioteca?.moverPendenteParaLixeira(pendente)
                                     }
                                 },
                                focoNaGravacao: $focoNaGravacao,
                                aoAbrirFicha: abrirFichaDaEntrevista)
         case .tarefas:
             TarefasView(biblioteca: biblioteca, consulta: consulta)
+        case .midias:
+            MidiasView(biblioteca: biblioteca, consulta: consulta)
         case .configuracoes:
             ConfiguracoesView(processamentoAutomatico: $processamentoAutomatico, exibirFichaAutomaticamente: $exibirFichaAutomaticamente, aparencia: aparencia,
                               granola: granola, googleCalendar: googleCalendar, biblioteca: biblioteca)
@@ -409,8 +431,13 @@ struct ContentView: View {
         case .equipe:
             GestaoDeEquipeView(equipeAtiva: equipeAtiva, equipes: equipes,
                                 aoSelecionarEquipe: usarEquipe,
-                                aoAtualizarQuantidadeDeMembros: atualizarQuantidadeDeMembros,
-                                aoAtualizarConfiguracoes: atualizarConfiguracoesDaEquipe)
+                                aoAtualizarEquipe: atualizarEquipe,
+                                aoExcluirEquipe: excluirEquipe,
+                                nomeDoPerfil: perfil.nome,
+                                estadoDaSincronizacao: biblioteca?.estadoDaSincronizacaoCloudKit ?? .local,
+                                aoRetomarSincronizacao: {
+                                    Task { await biblioteca?.retomarSincronizacaoCloudKit(forcar: true) }
+                                })
         }
     }
 
@@ -431,6 +458,7 @@ struct ContentView: View {
                 nova.marcarFichaPendente(arquivo.id)
             }
             biblioteca = nova
+            await reconciliarEquipesExcluidas()
 
             let conexao = GranolaViewModel()
             conexao.aoNotificar = { titulo, mensagem, tipo in
@@ -443,13 +471,6 @@ struct ContentView: View {
                 notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
             }
             googleCalendar = conexaoGoogle
-
-            // Conecta automaticamente se houver credenciais salvas
-            if CredenciaisGoogle.estaConfigurado {
-                Task {
-                    await conexaoGoogle.conectar(biblioteca: nova)
-                }
-            }
 
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos
@@ -472,7 +493,11 @@ struct ContentView: View {
                     let audioURL = nova.armazenamento.resolver(relativo: pasta)
                         .appendingPathComponent(Armazenamento.Nome.microfone)
                     _ = await gcalCapturado?.importarAudioParaReuniao(
-                        pendente, audioURL: audioURL, biblioteca: nova
+                        pendente,
+                        audioURL: audioURL,
+                        biblioteca: nova,
+                        duracao: duracao,
+                        notas: notas
                     )
                     await MainActor.run { caixaPendente.pendente = nil }
                     await MainActor.run { focoNaGravacao = false }
@@ -504,6 +529,14 @@ struct ContentView: View {
         } catch {
             falhaDeAbertura = "Não foi possível abrir a biblioteca: \(error)"
         }
+    }
+
+    private func conectarGoogleCalendarSeAutorizado() async {
+        guard let googleCalendar, let biblioteca,
+              CredenciaisGoogle.estaConfigurado,
+              googleCalendar.temAutorizacaoPersistida
+        else { return }
+        await googleCalendar.conectar(biblioteca: biblioteca)
     }
 
     private func abrirFichaDaEntrevista(para arquivo: Arquivo) {
@@ -622,6 +655,11 @@ struct ContentView: View {
         secaoDaBiblioteca = .todos
     }
 
+    private func abrirMidias() {
+        telaSelecionada = .midias
+        secaoDaBiblioteca = .todos
+    }
+
     private func abrirPerfil() {
         telaSelecionada = .perfil
         secaoDaBiblioteca = .todos
@@ -653,6 +691,68 @@ struct ContentView: View {
         equipeAtivaID = equipe.id
         garantirEspacoParaEquipe(id: equipe.id)
         atualizarEspacoDaBiblioteca()
+    }
+
+    private func atualizarEquipe(_ equipe: EquipeDisponivel) {
+        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
+        equipes[indice] = equipe
+        EquipesDoUsuario.salvar(equipes)
+    }
+
+    /// Só é chamado depois de o serviço confirmar a exclusão da zona remota.
+    /// Assim a interface não esconde a equipe nem apaga este Mac por uma ação
+    /// que falhou no CloudKit.
+    private func excluirEquipe(_ equipe: EquipeDisponivel) async throws {
+        try await servicoDeEquipesCloudKit.excluirEquipeGlobalmente(equipe)
+        try await limparDadosLocais(da: equipe)
+        MembrosDasEquipes.remover(equipeID: equipe.id)
+        equipes.removeAll { $0.id == equipe.id }
+        EquipesDoUsuario.salvar(equipes)
+
+        if equipeAtivaID == equipe.id || equipes.isEmpty {
+            equipeAtivaID = ""
+            contextoDaConta = .perfil
+            await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
+        }
+    }
+
+    /// A exclusão da zona remota não acorda Macs desligados. Ao abrir o app,
+    /// cada instalação consulta o marcador público e só então remove a cópia
+    /// local, inclusive mídia e itens na lixeira daquele espaço.
+    private func reconciliarEquipesExcluidas() async {
+        let candidatas = equipes.filter { $0.zonaCloudKit != nil }
+        for equipe in candidatas {
+            do {
+                guard try await servicoDeEquipesCloudKit.equipeFoiExcluida(equipe) else { continue }
+                try await limparDadosLocais(da: equipe)
+                MembrosDasEquipes.remover(equipeID: equipe.id)
+                equipes.removeAll { $0.id == equipe.id }
+                if equipeAtivaID == equipe.id {
+                    equipeAtivaID = ""
+                    contextoDaConta = .perfil
+                }
+            } catch {
+                // Uma falha transitória não autoriza apagar conteúdo local.
+                // A próxima abertura ou troca de equipe tenta de novo.
+            }
+        }
+        EquipesDoUsuario.salvar(equipes)
+        if equipeAtivaID.isEmpty {
+            await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
+        }
+    }
+
+    /// Complementa a exclusão do SwiftData: tarefas, anexos, aparência e
+    /// lixeiras vivem em stores locais separados, todos indexados pelo ID da
+    /// conversa. Sem essa cascata a equipe sumiria da biblioteca, mas deixaria
+    /// dados pessoais acessíveis em outros painéis do mesmo Mac.
+    private func limparDadosLocais(da equipe: EquipeDisponivel) async throws {
+        try await biblioteca?.descartarOperacoesPendentes(daEquipeComID: equipe.id)
+        guard let texto = equipe.espacoID, let espaco = UUID(uuidString: texto) else { return }
+        let arquivos = try await biblioteca?.excluirDadosDaConta(espaco: EspacoID(rawValue: espaco)) ?? []
+        for arquivo in arquivos {
+            LimpezaDeArquivo.executar(arquivo)
+        }
     }
 
     private func adicionarEquipe(nome: String) {
@@ -697,26 +797,6 @@ struct ContentView: View {
         }
     }
 
-    private func atualizarConfiguracoesDaEquipe(_ equipe: EquipeDisponivel, configuracoes: ConfiguracoesDaEquipe) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipe.id }) else { return }
-        equipes[indice].configuracoes = configuracoes
-        EquipesDoUsuario.salvar(equipes)
-        guard equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue else { return }
-        Task { @MainActor in
-            do {
-                try await servicoDeEquipesCloudKit.atualizarConfiguracoes(configuracoes, da: equipes[indice])
-            } catch {
-                falhaDeAbertura = "As configurações foram salvas neste Mac, mas não puderam ser sincronizadas: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func atualizarQuantidadeDeMembros(equipeID: String, quantidade: Int) {
-        guard let indice = equipes.firstIndex(where: { $0.id == equipeID }) else { return }
-        equipes[indice].quantidadeDeMembros = quantidade
-        EquipesDoUsuario.salvar(equipes)
-    }
-
     private func garantirEspacoParaEquipe(id: String) {
         guard let indice = equipes.firstIndex(where: { $0.id == id }),
               UUID(uuidString: equipes[indice].espacoID ?? "") == nil
@@ -739,7 +819,26 @@ struct ContentView: View {
             espaco = Biblioteca.espacoPessoal()
             equipeParaSincronizar = nil
         }
-        Task { await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaSincronizar) }
+        Task { @MainActor in
+            var equipeParaUsar = equipeParaSincronizar
+            if let equipeParaSincronizar {
+                do {
+                    let corrigida = try await servicoDeEquipesCloudKit
+                        .completarReferenciaDaZonaCompartilhada(da: equipeParaSincronizar)
+                    equipeParaUsar = corrigida
+                    if corrigida != equipeParaSincronizar,
+                       let indice = equipes.firstIndex(where: { $0.id == corrigida.id }) {
+                        equipes[indice] = corrigida
+                        EquipesDoUsuario.salvar(equipes)
+                    }
+                } catch {
+                    // A fila ainda tenta recuperar a referência antiga por
+                    // conta própria; o estado de sincronização exibirá uma
+                    // falha acionável se a zona não estiver disponível.
+                }
+            }
+            await biblioteca.usarEspaco(espaco, equipeCloudKit: equipeParaUsar)
+        }
     }
 
     private func sairDoPerfil() {
@@ -756,11 +855,20 @@ struct ContentView: View {
             await modelo.cancelar()
         }
 
-        try await biblioteca?.excluirDadosDaConta()
+        await googleCalendar?.encerrarLocalmenteParaExclusaoDoPerfil()
+        await granola?.encerrarLocalmenteParaExclusaoDoPerfil()
 
-        // Todos os stores de dados da conta num caminho só — store novo se
-        // registra lá, não aqui.
-        LimpezaDeConta.executar()
+        // Excluir o perfil pessoal não pode apagar a equipe que por acaso
+        // esteja aberta. O identificador pessoal é capturado antes de remover
+        // sua chave, e a biblioteca devolve exatamente os arquivos do espaço.
+        let espacoPessoalExcluido = Biblioteca.espacoPessoal()
+        let arquivosExcluidos = try await biblioteca?.excluirDadosDaConta(
+            espaco: espacoPessoalExcluido
+        ) ?? []
+
+        LimpezaDeConta.executar(arquivos: arquivosExcluidos)
+        LimpezaDeCredenciaisDaConta.executar()
+        LimpezaDeVinculosDeEquipe.executar(equipes: equipes)
 
         perfil.excluirDadosDaConta()
         notificacoes.limpar()
@@ -773,6 +881,11 @@ struct ContentView: View {
         secaoDaBiblioteca = .todos
         focoNaGravacao = false
         telaSelecionada = .biblioteca
+
+        // A chave do espaço pessoal foi removida pela cascata. Abrir um novo
+        // espaço vazio impede que a interface continue exibindo a equipe que
+        // estava ativa e simula corretamente o próximo relançamento do app.
+        await biblioteca?.usarEspaco(Biblioteca.espacoPessoal())
     }
 
     /// A raiz do app: biblioteca, em "Todas", sem conversa aberta e fora da

@@ -19,8 +19,8 @@
 	<true/>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>$(GOOGLE_CLIENT_ID)</string>
-	<key>GOOGLE_CLIENT_SECRET</key>
-	<string>$(GOOGLE_CLIENT_SECRET)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>O Loro grava o áudio da reunião para transcrever a fala do seu interlocutor.</string>
 </dict>

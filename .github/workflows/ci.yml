@@ -28,6 +28,19 @@ jobs:
       - name: Bootstrap runtimes (Silero VAD)
         run: ./Scripts/bootstrap-runtimes.sh
 
+      - name: Testes isolados do app
+        env:
+          PAPAGAIO_TEST_MODE: "1"
+        run: |
+          xcodebuild test \
+            -project Loro.xcodeproj \
+            -scheme Loro \
+            -destination 'platform=macOS' \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            -derivedDataPath /private/tmp/papagaio-ci-app-tests
+
       - name: xcodebuild build
         run: |
           xcodebuild build \

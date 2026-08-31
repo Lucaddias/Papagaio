@@ -412,7 +412,12 @@ struct ArquivoDetalheView: View {
                             ScrollView {
                                 conteudoDaSecao
                                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                                    .padding(.bottom, deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
+                                    .padding(
+                                        .bottom,
+                                        deveMostrarPlayer || midiaNaoDisponivelNesteMac
+                                            ? alturaMedidaDoPlayer
+                                            : 0
+                                    )
                                     // Reserva para o painel flutuante de busca não cobrir o conteúdo
                                     .padding(.top, mostrandoBuscaTranscricao ? 56 : 0)
                             }
@@ -476,7 +481,11 @@ struct ArquivoDetalheView: View {
         // `alturaMedidaDoPlayer` (medida de verdade, ver o `@State` acima) —
         // zero quando o player não está na tela, e aí o selo volta para o
         // canto de baixo.
-        .alturaDoPlayerPapagaio(deveMostrarPlayer ? alturaMedidaDoPlayer : 0)
+        .alturaDoPlayerPapagaio(
+            deveMostrarPlayer || midiaNaoDisponivelNesteMac
+                ? alturaMedidaDoPlayer
+                : 0
+        )
         .overlay { LegendaGlobalDaBarra(texto: legendaDaBarra) }
         .background(PapagaioTema.fundo.ignoresSafeArea())
         .background {
