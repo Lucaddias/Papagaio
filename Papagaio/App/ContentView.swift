@@ -338,7 +338,7 @@ struct ContentView: View {
             configuracoesSelecionada: telaSelecionada == .configuracoes,
             lixeiraSelecionada: telaSelecionada == .biblioteca && secaoDaBiblioteca == .lixeira,
             perfilConectado: perfil.conectado, perfilVerificando: perfil.verificando,
-            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva,
+            avatarURL: perfil.avatarURL, contextoDaConta: contextoDaConta, equipeAtiva: equipeAtiva, equipes: equipes,
             gravando: modelo.gravando && focoNaGravacao, processandoBiblioteca: biblioteca?.processando ?? false,
             quantidadeDeAvisos: notificacoes.naoLidas, notificacoes: notificacoes.itens,
             aoEntrar: perfil.entrar, aoSair: sairDoPerfil,
@@ -346,7 +346,7 @@ struct ContentView: View {
             aoVoltar: voltar, aoAbrirBiblioteca: voltarParaBiblioteca, aoAbrirTarefas: abrirTarefas,
             aoAbrirMidias: abrirMidias,
             aoAbrirConfiguracoes: { telaSelecionada = .configuracoes }, aoAbrirLixeira: abrirLixeira,
-            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: selecionarEquipe,
+            aoUsarPerfil: selecionarPerfilPessoal, aoUsarEquipe: usarEquipe,
             aoGerenciarPerfil: abrirPerfil, aoGerenciarEquipe: abrirEquipe
         )
     }

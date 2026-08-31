@@ -17,6 +17,7 @@ struct BarraSuperiorPapagaioView: View {
     let avatarURL: URL?
     let contextoDaConta: ContextoDaConta
     let equipeAtiva: EquipeDisponivel?
+    let equipes: [EquipeDisponivel]
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -32,7 +33,7 @@ struct BarraSuperiorPapagaioView: View {
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
     let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: () -> Void
+    let aoUsarEquipe: (EquipeDisponivel) -> Void
     let aoGerenciarPerfil: () -> Void
     let aoGerenciarEquipe: () -> Void
 
@@ -305,13 +306,14 @@ struct BarraSuperiorPapagaioView: View {
                 SeletorDeContextoDaConta(
                     contexto: contextoDaConta,
                     equipeAtiva: equipeAtiva,
+                    equipes: equipes,
                     aoUsarPerfil: {
                         exibindoMenuDePerfil = false
                         aoUsarPerfil()
                     },
-                    aoUsarEquipe: {
+                    aoUsarEquipe: { equipe in
                         exibindoMenuDePerfil = false
-                        aoUsarEquipe()
+                        aoUsarEquipe(equipe)
                     }
                 )
 
