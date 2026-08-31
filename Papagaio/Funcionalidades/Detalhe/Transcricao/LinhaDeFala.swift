@@ -33,6 +33,7 @@ struct LinhaDeFala: View {
                 .monospacedDigit()
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
+                .accessibilityLabel("Início em \(fala.inicio.faladoPorExtenso)")
 
             // `.center` aqui, e não `.top`: o lápis fica ao lado do
             // parágrafo inteiro (cabeçalho + texto), centralizado na altura
@@ -77,11 +78,18 @@ struct LinhaDeFala: View {
         .accessibilityAddTraits(ativo ? [.isSelected] : [])
     }
 
-    /// A voz acústica é a identidade da fala; o canal de origem aparece quando
-    /// a fala veio inteira dele (regra dos dois rótulos — nunca se fundem).
+    /// O canal é a identificação básica confiável; a voz acústica aparece ao
+    /// lado como complemento. Os dois rótulos nunca são fundidos.
     @ViewBuilder
     private var cabecalhoDaFala: some View {
         HStack(spacing: PapagaioTema.Espaco.minimo) {
+            Text(Self.rotuloDoCanal(fala.speaker))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PapagaioTema.texto)
+                .padding(.horizontal, PapagaioTema.Espaco.minimo)
+                .padding(.vertical, 1)
+                .background(PapagaioTema.superficieSuave, in: Capsule())
+
             if let acustico = fala.falanteAcustico {
                 Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
@@ -89,12 +97,27 @@ struct LinhaDeFala: View {
                     .padding(.horizontal, PapagaioTema.Espaco.minimo)
                     .padding(.vertical, 1)
                     .background(PapagaioTema.destaqueSuave, in: Capsule())
-            } else {
-                Text("Voz desconhecida")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PapagaioTema.textoSecundario)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.identidadeAcessivel(fala, nomesDeVoz: nomesDeVoz))
+    }
+
+    static func rotuloDoCanal(_ speaker: String?) -> String {
+        switch speaker {
+        case Speaker.eu: "Eu · microfone"
+        case Speaker.interlocutor: "Interlocutor · áudio do sistema"
+        default: "Canal misto ou desconhecido"
+        }
+    }
+
+    static func identidadeAcessivel(
+        _ fala: FalaDeFalante,
+        nomesDeVoz: [String: String]
+    ) -> String {
+        let canal = rotuloDoCanal(fala.speaker)
+        guard let acustico = fala.falanteAcustico else { return canal }
+        return "\(canal), \(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))"
     }
 
     private var botaoEditar: some View {

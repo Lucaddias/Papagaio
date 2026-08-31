@@ -4,94 +4,82 @@ struct GestaoDeEquipeView: View {
     let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
-    let aoAtualizarQuantidadeDeMembros: (String, Int) -> Void
-    /// Criar equipe é coisa desta tela, não do Perfil — lá só aparece quais
-    /// equipes a pessoa já tem, com o `+` que existia antes movido pra cá.
-    let aoAdicionarEquipe: (String) -> Void
-    @State private var membros: [MembroDaEquipe] = []
-    @State private var pagina = 0
-    @State private var membroEditando: MembroDaEquipe?
-    @State private var mostrandoAdicionar = false
+    let aoAtualizarEquipe: (EquipeDisponivel) -> Void
+    let aoExcluirEquipe: (EquipeDisponivel) async throws -> Void
+    let estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit
+    let aoRetomarSincronizacao: () -> Void
+
     @State private var mostrandoTrocarEquipe = false
-    @State private var mostrandoNovaEquipe = false
-    @State private var nomeDaNovaEquipe = ""
+    @State private var atualizandoEntradaPorCodigo = false
+    @State private var erroDaEntradaPorCodigo: String?
+    @State private var entradaPorCodigoAtualizada = false
+    @State private var participantes: [ParticipanteDaEquipe] = []
+    @State private var carregandoParticipantes = false
+    @State private var erroDosParticipantes: String?
+    @State private var paginaDosParticipantes = 0
+    @State private var configuracoes: ConfiguracoesDaEquipe = .init()
+    @State private var salvandoConfiguracoes = false
+    @State private var erroDasConfiguracoes: String?
+    @State private var participanteParaEditar: ParticipanteDaEquipe?
+    @State private var participanteParaRemover: ParticipanteDaEquipe?
+    @State private var confirmandoRotacaoDoCodigo = false
+    @State private var rotacionandoCodigo = false
+    @State private var confirmandoExclusaoDaEquipe = false
+    @State private var excluindoEquipe = false
+    @State private var erroDaOperacaoCritica: String?
+    private let servicoDeEquipes: ServicoDeEquipesCloudKit
+
+    init(
+        equipeAtiva: EquipeDisponivel?,
+        equipes: [EquipeDisponivel],
+        aoSelecionarEquipe: @escaping (EquipeDisponivel) -> Void,
+        aoAtualizarEquipe: @escaping (EquipeDisponivel) -> Void = { _ in },
+        aoExcluirEquipe: @escaping (EquipeDisponivel) async throws -> Void = { _ in },
+        estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit = .local,
+        aoRetomarSincronizacao: @escaping () -> Void = {},
+        servicoDeEquipes: ServicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
+    ) {
+        self.equipeAtiva = equipeAtiva
+        self.equipes = equipes
+        self.aoSelecionarEquipe = aoSelecionarEquipe
+        self.aoAtualizarEquipe = aoAtualizarEquipe
+        self.aoExcluirEquipe = aoExcluirEquipe
+        self.estadoDaSincronizacao = estadoDaSincronizacao
+        self.aoRetomarSincronizacao = aoRetomarSincronizacao
+        self.servicoDeEquipes = servicoDeEquipes
+    }
 
     var body: some View {
         ScrollView {
-            // Sem equipe não há membro para listar nem nome para exibir: a
-            // tela inteira vira o convite para criar a primeira, aqui mesmo.
-            if equipeAtiva == nil {
-                VStack(spacing: PapagaioTema.Espaco.largo) {
-                    CartaoDeEstadoVazio(
-                        simbolo: "person.3",
-                        titulo: "Nenhuma equipe ainda",
-                        mensagem: "Crie uma equipe para convidar pessoas e distribuir as tarefas das conversas."
-                    )
-
-                    Button("Criar equipe", systemImage: "plus") {
-                        mostrandoNovaEquipe = true
-                    }
-                    .buttonStyle(BotaoPrincipalPapagaio())
-                }
-                .padding(.vertical, PapagaioTema.espacamentoDePagina)
-            } else {
+            if let equipeAtiva {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
-                            cabecalho
-                        }
-
-                        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-                            cabecalho
-                        }
+                    cabecalho(equipeAtiva)
+                    estadoDoICloud
+                    codigoDaEquipe(equipeAtiva)
+                    if podeGerenciar(equipeAtiva) {
+                        participantesDaEquipe(equipeAtiva)
+                        configuracoesDaEquipe(equipeAtiva)
+                        acoesIrreversiveis(equipeAtiva)
+                    } else {
+                        avisoDeMembro
                     }
-
-                    TabelaDaEquipe(
-                        membros: membros,
-                        pagina: pagina,
-                        aoEditar: { membroEditando = $0 },
-                        aoRemover: remover,
-                        aoAlternarPagina: alternarPagina
-                    )
+                    if podeAtualizarEntradaPorCodigo(equipeAtiva) {
+                        atualizacaoDeEquipeExistente(equipeAtiva)
+                    }
                 }
                 .larguraDeConteudoPapagaio()
                 .padding(.horizontal, PapagaioTema.espacamentoDePagina)
                 .padding(.vertical, PapagaioTema.espacamentoDePagina)
+            } else {
+                CartaoDeEstadoVazio(
+                    simbolo: "person.3",
+                    titulo: "Nenhuma equipe ainda",
+                    mensagem: "Crie uma equipe ou entre com um código no seu perfil."
+                )
+                .padding(.vertical, PapagaioTema.espacamentoDePagina)
             }
         }
         .background(PapagaioTema.fundo)
-        .onAppear {
-            carregarMembrosDaEquipe()
-        }
-        .onChange(of: equipeAtiva?.id) { _, _ in
-            carregarMembrosDaEquipe()
-        }
-        .sheet(isPresented: $mostrandoAdicionar) {
-            EditorDeMembroDaEquipe(
-                titulo: "Adicionar membro",
-                membro: MembroDaEquipe(nome: "", email: "", cargo: "Transcritor", status: .ativo),
-                aoCancelar: { mostrandoAdicionar = false },
-                aoSalvar: { novo in
-                    membros.append(novo)
-                    salvarMembrosDaEquipe()
-                    mostrandoAdicionar = false
-                }
-            )
-        }
-        .sheet(item: $membroEditando) { membro in
-            EditorDeMembroDaEquipe(
-                titulo: "Editar membro",
-                membro: membro,
-                aoCancelar: { membroEditando = nil },
-                aoSalvar: { editado in
-                    if let indice = membros.firstIndex(where: { $0.id == editado.id }) {
-                        membros[indice] = editado
-                        salvarMembrosDaEquipe()
-                    }
-                    membroEditando = nil
-                }
-            )
-        }
         .sheet(isPresented: $mostrandoTrocarEquipe) {
             SeletorDeEquipeView(
                 equipeAtiva: equipeAtiva,
@@ -103,90 +91,410 @@ struct GestaoDeEquipeView: View {
                 }
             )
         }
-        .alert("Nova equipe", isPresented: $mostrandoNovaEquipe) {
-            TextField("Nome da equipe", text: $nomeDaNovaEquipe)
-            Button("Cancelar", role: .cancel) {
-                nomeDaNovaEquipe = ""
+        .task(id: equipeAtiva?.id) {
+            guard let equipeAtiva else { return }
+            configuracoes = equipeAtiva.configuracoes
+            paginaDosParticipantes = 0
+            if podeGerenciar(equipeAtiva) {
+                await carregarParticipantes(da: equipeAtiva)
+            } else {
+                participantes = []
             }
-            Button("Criar") {
-                criarEquipe()
+        }
+        .confirmationDialog(
+            "Trocar o código de entrada?",
+            isPresented: $confirmandoRotacaoDoCodigo,
+            titleVisibility: .visible
+        ) {
+            Button("Trocar código e revogar acessos", role: .destructive) {
+                guard let equipeAtiva else { return }
+                Task { await rotacionarCodigo(da: equipeAtiva) }
             }
-            .disabled(nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
-            Text("Dá pra convidar pessoas e distribuir tarefas assim que ela existir.")
+            Text("O código e o link atuais deixarão de funcionar. Por segurança, os participantes aceitos precisarão entrar novamente com o novo código.")
+        }
+        .confirmationDialog(
+            "Excluir esta equipe para todos?",
+            isPresented: $confirmandoExclusaoDaEquipe,
+            titleVisibility: .visible
+        ) {
+            Button("Excluir equipe e dados", role: .destructive) {
+                guard let equipeAtiva else { return }
+                Task { await excluir(equipeAtiva) }
+            }
+        } message: {
+            Text("A zona do CloudKit, as conversas compartilhadas e os dados deste Mac serão apagados. Outros Macs atualizados removem suas cópias ao se conectarem ao iCloud. Esta ação não pode ser desfeita.")
         }
     }
 
-    private func criarEquipe() {
-        let nome = nomeDaNovaEquipe.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !nome.isEmpty else { return }
-        aoAdicionarEquipe(nome)
-        nomeDaNovaEquipe = ""
+    private func cabecalho(_ equipe: EquipeDisponivel) -> some View {
+        HStack(alignment: .bottom, spacing: PapagaioTema.Espaco.largo) {
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+                Text("Gerenciar equipe")
+                    .font(PapagaioTema.Tipo.tituloDePagina)
+                    .foregroundStyle(PapagaioTema.texto)
+                Text("Compartilhe o código para dar acesso ao espaço compartilhado.")
+                    .font(.title3)
+                    .foregroundStyle(PapagaioTema.textoSecundario)
+            }
+            Spacer()
+            Button("Mudar: \(equipe.nome)", systemImage: "arrow.triangle.2.circlepath") {
+                mostrandoTrocarEquipe = true
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+        }
     }
 
-    private var cabecalho: some View {
-        Group {
-                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
-                        Text("Equipe")
-                            .font(PapagaioTema.Tipo.tituloDePagina)
-                            .foregroundStyle(PapagaioTema.texto)
-
-                        Text("Gerencie os membros de \(nomeDaEquipe) e níveis de acesso\nem um ambiente centralizado e colaborativo.")
-                            .font(.title3)
-                            .lineSpacing(6)
-                            .foregroundStyle(PapagaioTema.textoSecundario)
-                    }
-
-                    Spacer()
-
-                    Button("Mudar Equipe: \(nomeDaEquipe)", systemImage: "arrow.triangle.2.circlepath") {
-                        mostrandoTrocarEquipe = true
-                    }
+    private var estadoDoICloud: some View {
+        HStack(spacing: PapagaioTema.Espaco.medio) {
+            switch estadoDaSincronizacao {
+            case .local:
+                Label("Espaço local", systemImage: "internaldrive")
+            case .enviando:
+                ProgressView()
+                Text("Sincronizando com o iCloud…")
+            case .sincronizado:
+                Label("Sincronizado com o iCloud", systemImage: "checkmark.icloud")
+                    .foregroundStyle(PapagaioTema.sucesso)
+            case let .falhou(mensagem):
+                Label(mensagem, systemImage: "exclamationmark.icloud")
+                    .foregroundStyle(PapagaioTema.perigo)
+                Spacer()
+                Button("Tentar agora", action: aoRetomarSincronizacao)
                     .buttonStyle(BotaoDeContornoPapagaio())
+            }
+            if !sincronizacaoFalhou {
+                Spacer()
+            }
+        }
+        .font(.callout)
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
 
-                    Button("Nova Equipe", systemImage: "plus") {
-                        mostrandoNovaEquipe = true
+    private var sincronizacaoFalhou: Bool {
+        if case .falhou = estadoDaSincronizacao { return true }
+        return false
+    }
+
+    private func codigoDaEquipe(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Label("Código de entrada", systemImage: "number").font(.headline)
+            Text(equipe.codigoDeEntrada ?? "Código indisponível para equipes criadas antes desta atualização.")
+                .font(.title2.monospaced().weight(.semibold))
+                .textSelection(.enabled)
+            Text("Compartilhe este código com quem deve entrar. Ao informá-lo no Loro, a pessoa recebe acesso de leitura e escrita à equipe nesta Apple Account.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
+
+    private func participantesDaEquipe(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            HStack {
+                Label("Participantes", systemImage: "person.3")
+                    .font(.headline)
+                Spacer()
+                Button("Atualizar", systemImage: "arrow.clockwise") {
+                    Task { await carregarParticipantes(da: equipe) }
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .disabled(carregandoParticipantes)
+            }
+            Text("A lista vem diretamente do compartilhamento do iCloud. O CloudKit não disponibiliza os e-mails das Apple Accounts.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            if carregandoParticipantes {
+                ProgressView("Carregando participantes…")
+            } else if let erroDosParticipantes {
+                Label(erroDosParticipantes, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            } else {
+                TabelaDaEquipe(
+                    membros: participantes,
+                    pagina: paginaDosParticipantes,
+                    podeGerenciar: true,
+                    aoEditar: { participanteParaEditar = $0 },
+                    aoRemover: { participanteParaRemover = $0 },
+                    aoAlternarPagina: { deslocamento in
+                        paginaDosParticipantes = max(0, paginaDosParticipantes + deslocamento)
                     }
+                )
+            }
+        }
+        .sheet(item: $participanteParaEditar) { participante in
+            EditorDePermissaoDaEquipe(
+                participante: participante,
+                aoSalvar: { permissao in
+                    Task { await atualizarPermissao(permissao, do: participante, na: equipe) }
+                },
+                aoCancelar: { participanteParaEditar = nil }
+            )
+        }
+        .confirmationDialog(
+            "Remover \(participanteParaRemover?.nome ?? "este participante")?",
+            isPresented: Binding(
+                get: { participanteParaRemover != nil },
+                set: { if !$0 { participanteParaRemover = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remover acesso", role: .destructive) {
+                guard let participante = participanteParaRemover else { return }
+                participanteParaRemover = nil
+                Task { await remover(participante, da: equipe) }
+            }
+        } message: {
+            Text("Essa Apple Account não poderá mais ler nem alterar as conversas da equipe.")
+        }
+    }
+
+    private func configuracoesDaEquipe(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Label("Configurações da equipe", systemImage: "gearshape")
+                .font(.headline)
+            Picker("Visibilidade dos arquivos", selection: $configuracoes.visibilidadeDosArquivos) {
+                ForEach(VisibilidadeDosArquivosDaEquipe.allCases) { Text($0.rawValue).tag($0) }
+            }
+            Picker("Recebimento de arquivos", selection: $configuracoes.recebimentoDeArquivos) {
+                ForEach(RecebimentoDeArquivosDaEquipe.allCases) { Text($0.rawValue).tag($0) }
+            }
+            Text("Estas preferências são compartilhadas no iCloud. A política de revisão de recebimento será aplicada ao fluxo de arquivos em uma próxima etapa; ainda não bloqueia automaticamente envios.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            if let erroDasConfiguracoes {
+                Label(erroDasConfiguracoes, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
+            Button("Salvar configurações") {
+                Task { await salvarConfiguracoes(da: equipe) }
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+            .disabled(salvandoConfiguracoes || configuracoes == equipe.configuracoes)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
+
+    private func acoesIrreversiveis(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Label("Acesso e exclusão", systemImage: "lock.trianglebadge.exclamationmark")
+                .font(.headline)
+            Text("Trocar o código cria um novo compartilhamento e exige que os participantes entrem novamente. Excluir a equipe apaga a zona compartilhada e os dados locais deste Mac.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            if let erroDaOperacaoCritica {
+                Label(erroDaOperacaoCritica, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            }
+            HStack {
+                Button("Trocar código de entrada", systemImage: "key") {
+                    confirmandoRotacaoDoCodigo = true
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .disabled(rotacionandoCodigo || excluindoEquipe)
+                Button("Excluir equipe", systemImage: "trash", role: .destructive) {
+                    confirmandoExclusaoDaEquipe = true
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+                .disabled(rotacionandoCodigo || excluindoEquipe)
+            }
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
+
+    private var avisoDeMembro: some View {
+        Label("Somente a conta que criou a equipe pode consultar participantes, alterar configurações, trocar o código ou excluir a equipe.", systemImage: "person.crop.circle.badge.exclamationmark")
+            .font(.callout)
+            .foregroundStyle(PapagaioTema.textoSecundario)
+            .padding(PapagaioTema.Espaco.secao)
+            .cartaoPapagaio()
+    }
+
+    private func atualizacaoDeEquipeExistente(_ equipe: EquipeDisponivel) -> some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
+            Label("Já usava esta equipe antes do acesso por código?", systemImage: "arrow.triangle.2.circlepath")
+                .font(.headline)
+            Text("Use esta ação uma vez para que o código também libere a zona compartilhada no iCloud. Convites pendentes por e-mail deixam de valer.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            if let erroDaEntradaPorCodigo {
+                Label(erroDaEntradaPorCodigo, systemImage: "exclamationmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.perigo)
+            } else if entradaPorCodigoAtualizada {
+                Label("A entrada por código está ativa.", systemImage: "checkmark.icloud")
+                    .font(.callout)
+                    .foregroundStyle(PapagaioTema.sucesso)
+            }
+            Button("Reconfigurar acesso por código") {
+                Task { await ativarEntradaPorCodigo(na: equipe) }
+            }
+            .buttonStyle(BotaoDeContornoPapagaio())
+            .disabled(atualizandoEntradaPorCodigo)
+        }
+        .padding(PapagaioTema.Espaco.secao)
+        .cartaoPapagaio()
+    }
+
+    private func ativarEntradaPorCodigo(na equipe: EquipeDisponivel) async {
+        atualizandoEntradaPorCodigo = true
+        erroDaEntradaPorCodigo = nil
+        defer { atualizandoEntradaPorCodigo = false }
+        do {
+            try await servicoDeEquipes.ativarEntradaPorCodigo(na: equipe)
+            entradaPorCodigoAtualizada = true
+        } catch {
+            erroDaEntradaPorCodigo = error.localizedDescription
+        }
+    }
+
+    private func podeAtualizarEntradaPorCodigo(_ equipe: EquipeDisponivel) -> Bool {
+        equipe.precisaReconfigurarEntradaPorCodigo
+    }
+
+    private func podeGerenciar(_ equipe: EquipeDisponivel) -> Bool {
+        equipe.bancoCloudKit == BancoCloudKitDaEquipe.privado.rawValue
+    }
+
+    private func carregarParticipantes(da equipe: EquipeDisponivel) async {
+        carregandoParticipantes = true
+        erroDosParticipantes = nil
+        defer { carregandoParticipantes = false }
+        do {
+            participantes = try await servicoDeEquipes.participantes(da: equipe)
+            var atualizada = equipe
+            atualizada.quantidadeDeMembros = participantes.count
+            aoAtualizarEquipe(atualizada)
+        } catch {
+            erroDosParticipantes = error.localizedDescription
+        }
+    }
+
+    private func atualizarPermissao(
+        _ permissao: ParticipanteDaEquipe.Permissao,
+        do participante: ParticipanteDaEquipe,
+        na equipe: EquipeDisponivel
+    ) async {
+        do {
+            try await servicoDeEquipes.atualizarPermissao(do: participante.id, para: permissao, na: equipe)
+            participanteParaEditar = nil
+            await carregarParticipantes(da: equipe)
+        } catch {
+            erroDosParticipantes = error.localizedDescription
+        }
+    }
+
+    private func remover(_ participante: ParticipanteDaEquipe, da equipe: EquipeDisponivel) async {
+        do {
+            try await servicoDeEquipes.removerParticipante(participante.id, da: equipe)
+            await carregarParticipantes(da: equipe)
+        } catch {
+            erroDosParticipantes = error.localizedDescription
+        }
+    }
+
+    private func salvarConfiguracoes(da equipe: EquipeDisponivel) async {
+        salvandoConfiguracoes = true
+        erroDasConfiguracoes = nil
+        defer { salvandoConfiguracoes = false }
+        do {
+            try await servicoDeEquipes.atualizarConfiguracoes(configuracoes, da: equipe)
+            var atualizada = equipe
+            atualizada.configuracoes = configuracoes
+            aoAtualizarEquipe(atualizada)
+        } catch {
+            erroDasConfiguracoes = error.localizedDescription
+        }
+    }
+
+    private func rotacionarCodigo(da equipe: EquipeDisponivel) async {
+        rotacionandoCodigo = true
+        erroDaOperacaoCritica = nil
+        defer { rotacionandoCodigo = false }
+        do {
+            let atualizada = try await servicoDeEquipes.rotacionarCodigo(da: equipe)
+            aoAtualizarEquipe(atualizada)
+            await carregarParticipantes(da: atualizada)
+        } catch {
+            erroDaOperacaoCritica = error.localizedDescription
+        }
+    }
+
+    private func excluir(_ equipe: EquipeDisponivel) async {
+        excluindoEquipe = true
+        erroDaOperacaoCritica = nil
+        defer { excluindoEquipe = false }
+        do {
+            try await aoExcluirEquipe(equipe)
+        } catch {
+            erroDaOperacaoCritica = error.localizedDescription
+        }
+    }
+
+}
+
+private struct EditorDePermissaoDaEquipe: View {
+    let participante: ParticipanteDaEquipe
+    let aoSalvar: (ParticipanteDaEquipe.Permissao) -> Void
+    let aoCancelar: () -> Void
+    @State private var permissao: ParticipanteDaEquipe.Permissao
+
+    init(
+        participante: ParticipanteDaEquipe,
+        aoSalvar: @escaping (ParticipanteDaEquipe.Permissao) -> Void,
+        aoCancelar: @escaping () -> Void
+    ) {
+        self.participante = participante
+        self.aoSalvar = aoSalvar
+        self.aoCancelar = aoCancelar
+        _permissao = State(initialValue: participante.permissao)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+            Text("Permissão de \(participante.nome)")
+                .font(.title2.weight(.bold))
+            Picker("Acesso", selection: $permissao) {
+                ForEach(ParticipanteDaEquipe.Permissao.allCases) { Text($0.rawValue).tag($0) }
+            }
+            HStack {
+                Button("Cancelar", action: aoCancelar)
+                Spacer()
+                Button("Salvar") { aoSalvar(permissao) }
                     .buttonStyle(BotaoDeContornoPapagaio())
-
-                    Button("Adicionar Membro", systemImage: "person.badge.plus") {
-                        mostrandoAdicionar = true
-                    }
-                    .buttonStyle(BotaoPrincipalPapagaio())
+            }
         }
+        .padding(PapagaioTema.Espaco.pagina)
+        .frame(width: 420)
     }
+}
 
-    private func remover(_ membro: MembroDaEquipe) {
-        guard !membro.atual else { return }
-        membros.removeAll { $0.id == membro.id }
-        salvarMembrosDaEquipe()
-    }
-
-    private func alternarPagina(_ delta: Int) {
-        let ultima = max(0, (membros.count - 1) / TabelaDaEquipe.itensPorPagina)
-        pagina = min(max(0, pagina + delta), ultima)
-    }
-
-    private var nomeDaEquipe: String {
-        equipeAtiva?.nome ?? ""
-    }
-
-    private func carregarMembrosDaEquipe() {
-        guard let equipeAtiva else {
-            membros = []
-            pagina = 0
-            return
-        }
-        membros = MembrosDasEquipes.carregar(equipeID: equipeAtiva.id)
-        pagina = 0
-        aoAtualizarQuantidadeDeMembros(equipeAtiva.id, membros.count)
-    }
-
-    private func salvarMembrosDaEquipe() {
-        guard let equipeAtiva else { return }
-        MembrosDasEquipes.salvar(membros, equipeID: equipeAtiva.id)
-        let ultima = max(0, (membros.count - 1) / TabelaDaEquipe.itensPorPagina)
-        pagina = min(pagina, ultima)
-        aoAtualizarQuantidadeDeMembros(equipeAtiva.id, membros.count)
-    }
+#Preview("Gerenciar equipe") {
+    GestaoDeEquipeView(
+        equipeAtiva: .init(
+            id: "produto",
+            nome: "Produto",
+            papel: "Administrador",
+            quantidadeDeMembros: 4,
+            codigoDeEntrada: "A7K2M9"
+        ),
+        equipes: [
+            .init(
+                id: "produto",
+                nome: "Produto",
+                papel: "Administrador",
+                quantidadeDeMembros: 4,
+                codigoDeEntrada: "A7K2M9"
+            )
+        ],
+        aoSelecionarEquipe: { _ in }
+    )
+    .frame(width: 1_200, height: 760)
 }

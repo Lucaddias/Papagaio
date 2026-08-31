@@ -7,18 +7,6 @@ proj = Xcodeproj::Project.open(PROJ)
 
 app = proj.targets.find { |t| t.name == "Loro" } || abort("target Loro não encontrado")
 
-if proj.targets.any? { |t| t.name == "PapagaioTests" }
-  # Já existe: garante só o ajuste de link do app (export_dynamic), que é o
-  # que deixa o bundle enxergar os símbolos do módulo hospedeiro.
-  app.build_configurations.each do |cfg|
-    flags = Array(cfg.build_settings["OTHER_LDFLAGS"])
-    flags += ["-Wl,-export_dynamic"] unless flags.include?("-Wl,-export_dynamic")
-    cfg.build_settings["OTHER_LDFLAGS"] = flags
-  end
-  proj.save
-  abort("PapagaioTests já existe — export_dynamic garantido")
-end
-
 # O bundle de testes resolve os símbolos do módulo Papagaio dentro do
 # hospedeiro em runtime; sem export_dynamic o link do bundle falha com
 # "Undefined symbols Papagaio.…".
@@ -34,32 +22,42 @@ app.build_configurations.each do |cfg|
   cfg.build_settings["PRODUCT_MODULE_NAME"] = "Papagaio"
 end
 
-tests = proj.new_target(
-  :unit_test_bundle,
-  "PapagaioTests",
-  :osx,
-  "26.0",
-  nil,
-  :swift
-)
-tests.add_dependency(app)
+tests = proj.targets.find { |t| t.name == "PapagaioTests" }
+target_novo = tests.nil?
+if target_novo
+  tests = proj.new_target(
+    :unit_test_bundle,
+    "PapagaioTests",
+    :osx,
+    "26.0",
+    nil,
+    :swift
+  )
+  tests.add_dependency(app)
+end
 
 # O produto é dinâmico: app e bundle de testes carregam a mesma imagem em vez
 # de cada um incorporar uma cópia estática das classes do PapagaioCore.
 core = app.package_product_dependencies.find { |d| d.product_name == "PapagaioCore" }
-tests.package_product_dependencies << core if core
+if core && !tests.package_product_dependencies.include?(core)
+  tests.package_product_dependencies << core
+end
 
-# Grupo espelhando a pasta no disco.
+# Grupo espelhando a pasta no disco. Todos os testes Swift entram no target;
+# manter uma lista manual foi o que deixou suítes novas órfãs no passado.
 grupo = proj.main_group["PapagaioTests"] ||
         proj.main_group.new_group("PapagaioTests", "PapagaioTests")
-%w[BibliotecaTests.swift InterfaceTests.swift].each do |nome|
-  ref = grupo.new_reference(nome)
-  tests.source_build_phase.add_file_reference(ref)
+Dir.children("PapagaioTests").grep(/\.swift\z/).sort.each do |nome|
+  ref = grupo.files.find { |arquivo| arquivo.path == nome } || grupo.new_reference(nome)
+  unless tests.source_build_phase.files_references.include?(ref)
+    tests.source_build_phase.add_file_reference(ref)
+  end
 end
 
 # Frameworks do app precisam estar visíveis ao bundle de testes.
 tests.build_configurations.each do |cfg|
   s = cfg.build_settings
+  app_cfg = app.build_configurations.find { |candidata| candidata.name == cfg.name }
   s["PRODUCT_BUNDLE_IDENTIFIER"] = "com.papagaio.tests"
   s["PRODUCT_NAME"] = "$(TARGET_NAME)"
   s["GENERATE_INFOPLIST_FILE"] = "YES"
@@ -67,6 +65,9 @@ tests.build_configurations.each do |cfg|
   s["SWIFT_VERSION"] = "6.0"
   s["MACOSX_DEPLOYMENT_TARGET"] = "26.0"
   s["CODE_SIGN_STYLE"] = "Automatic"
+  # Em macOS 27, um bundle ad hoc não pode ser injetado num host assinado por
+  # um time. Herdar o time do app mantém ambos com o mesmo TeamIdentifier.
+  s["DEVELOPMENT_TEAM"] = app_cfg.build_settings["DEVELOPMENT_TEAM"] if app_cfg
   # O bundle compila contra os módulos do host sem relinkar PapagaioCore.
   # Esta busca mantém visíveis os módulos C transitivos do FluidAudio.
   s["FRAMEWORK_SEARCH_PATHS"] = ["$(inherited)", "$(BUILT_PRODUCTS_DIR)/PackageFrameworks"]
@@ -83,9 +84,11 @@ end
 
 # Liga no Test action do scheme Loro.
 scheme_path = File.join(PROJ, "xcshareddata/xcschemes/Loro.xcscheme")
-scheme = Xcodeproj::XCScheme.new(scheme_path)
-scheme.add_test_target(tests)
-scheme.save!
+if target_novo
+  scheme = Xcodeproj::XCScheme.new(scheme_path)
+  scheme.add_test_target(tests)
+  scheme.save!
+end
 
 proj.save
-puts "ok: target PapagaioTests criado e ligado no scheme"
+puts "ok: target PapagaioTests sincronizado e ligado no scheme"

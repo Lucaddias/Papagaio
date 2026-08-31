@@ -115,7 +115,7 @@ struct NovaTarefaDaConversaSheet: View {
                     } label: {
                         HStack(spacing: PapagaioTema.Espaco.curto) {
                             Image(systemName: "person.crop.circle")
-                            Text(responsavel.isEmpty ? "Escolher da equipe" : responsavel)
+                            Text(responsavel.isEmpty ? "Escolher participante" : responsavel)
                                 .lineLimit(1)
                             Spacer()
                             Image(systemName: "chevron.down")

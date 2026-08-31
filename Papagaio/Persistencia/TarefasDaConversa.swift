@@ -35,8 +35,11 @@ enum TarefasDaConversa {
         UserDefaults.standard.set(dados, forKey: chave(arquivoID))
     }
 
-    static func removerTodas() {
-        let defaults = UserDefaults.standard
+    static func remover(_ arquivoID: ArquivoID, em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave(arquivoID))
+    }
+
+    static func removerTodas(em defaults: UserDefaults = .standard) {
         for chave in defaults.dictionaryRepresentation().keys where chave.hasPrefix("tarefasDaConversa.") {
             defaults.removeObject(forKey: chave)
         }

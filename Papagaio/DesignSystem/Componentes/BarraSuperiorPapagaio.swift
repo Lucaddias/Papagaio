@@ -17,10 +17,6 @@ struct BarraSuperiorPapagaioView: View {
     let avatarURL: URL?
     let contextoDaConta: ContextoDaConta
     let equipeAtiva: EquipeDisponivel?
-    /// Todas as equipes da pessoa — não só a ativa. É o que permite trocar
-    /// direto por aqui em vez de precisar ir em "Gerenciar equipe" só para
-    /// mudar de equipe (ver `SeletorDeContextoDaConta`).
-    let equipes: [EquipeDisponivel]
     let gravando: Bool
     let processandoBiblioteca: Bool
     let quantidadeDeAvisos: Int
@@ -36,7 +32,7 @@ struct BarraSuperiorPapagaioView: View {
     let aoAbrirConfiguracoes: () -> Void
     let aoAbrirLixeira: () -> Void
     let aoUsarPerfil: () -> Void
-    let aoUsarEquipe: (EquipeDisponivel) -> Void
+    let aoUsarEquipe: () -> Void
     let aoGerenciarPerfil: () -> Void
     let aoGerenciarEquipe: () -> Void
 
@@ -47,11 +43,12 @@ struct BarraSuperiorPapagaioView: View {
     /// Agora ela se resolve sozinha em três estágios: completa; sem o rótulo da
     /// conta; e, no mais apertado, com os dois grupos de ícones fundidos num
     /// menu "⋯". Nenhuma ação fica inalcançável em nenhuma largura.
-    /// Só some durante a gravação — nem Configurações fica de fora: agora a
-    /// busca filtra as próprias seções da tela (Aparência, Cartões,
-    /// Transcrição, Atalhos...), então esconder ali deixaria de valer a
-    /// mesma promessa que a busca faz em qualquer outra tela.
-    private var exibindoBusca: Bool { !gravando }
+    /// Fora da gravação, e fora de Configurações — ali não há nada para a
+    /// busca filtrar, é uma tela de preferências, não uma lista. O painel de
+    /// tarefas continua incluído: já filtra pelo termo digitado (nome da
+    /// conversa e nome da tarefa), então esconder a busca ali só escondia
+    /// uma funcionalidade que já existia.
+    private var exibindoBusca: Bool { !gravando && !configuracoesSelecionada }
 
     /// "Buscar conversas…" não servia em nenhuma das outras duas telas com
     /// busca: no painel de tarefas o termo casa o nome da tarefa, e na
@@ -61,7 +58,6 @@ struct BarraSuperiorPapagaioView: View {
         if tarefasSelecionada { return "Buscar tarefas…" }
         if midiasSelecionada { return "Buscar mídias…" }
         if lixeiraSelecionada { return "Buscar na lixeira…" }
-        if configuracoesSelecionada { return "Buscar nas configurações…" }
         return "Buscar conversas…"
     }
 
@@ -69,23 +65,6 @@ struct BarraSuperiorPapagaioView: View {
     /// busca no meio, o voltar à esquerda e conta mais ações à direita.
     private var exibindoBuscaCentralizada: Bool {
         exibindoBusca && larguraDaBarra >= 1_040
-    }
-
-    /// Estágio do bloco de ações (notificações, lixeira, configurações,
-    /// perfil), por largura medida da barra — e não mais `ViewThatFits`
-    /// escolhendo sozinho. O `ViewThatFits` nunca chegava a encolher para o
-    /// menu "…": o campo de busca é elástico (`minWidth: 100`) e cedia
-    /// espaço primeiro, deixando o grupo de ações sempre "caber" no estágio
-    /// cheio, por mais estreita que a janela ficasse — a busca simplesmente
-    /// virava um campo minúsculo e o "…" nunca aparecia. Com a decisão
-    /// amarrada à largura da barra, e não ao que sobra depois da busca
-    /// encolher, o menu aparece de verdade nas janelas estreitas.
-    ///
-    /// 0 = ícones com rótulo, 1 = só ícone, 2 = tudo dentro do menu "…".
-    private var estagioDoGrupoDeAcoes: Int {
-        if larguraDaBarra >= 900 { return 0 }
-        if larguraDaBarra >= 640 { return 1 }
-        return 2
     }
 
     var body: some View {
@@ -107,33 +86,28 @@ struct BarraSuperiorPapagaioView: View {
             // logo depois do voltar, e encolhem junto com ela.
             if exibindoBusca, !exibindoBuscaCentralizada {
                 campoDeBusca
-                // Some no estágio mais compacto (menu "…"): ali Biblioteca e
-                // Tarefas já estão dentro do menu, então mantê-las aqui era
-                // repetir o mesmo atalho duas vezes brigando por espaço com
-                // ele — o motivo original desta reclamação.
-                if estagioDoGrupoDeAcoes < 2 {
-                    atalhos
-                }
+                atalhos
             }
 
             Spacer(minLength: PapagaioTema.Espaco.curto)
 
-            // Degradação em três estágios, decidida por `estagioDoGrupoDeAcoes`
-            // (largura medida da barra) — não mais `ViewThatFits` escolhendo
-            // sozinho, pelo motivo explicado ali.
+            // Degradação em três estágios. Depender do tamanho mínimo da janela
+            // não funcionou — `windowResizability(.contentMinSize)` não segurou
+            // o `minWidth` através do `NavigationStack`, e a janela continuava
+            // encolhendo até a barra transbordar pelos dois lados. Aqui a barra
+            // se resolve sozinha em qualquer largura.
             if !gravando {
-                switch estagioDoGrupoDeAcoes {
-                case 0:
+                ViewThatFits(in: .horizontal) {
                     HStack(spacing: PapagaioTema.Espaco.medio) {
                         grupoDeAcoes
                         botaoDePerfil(comRotulo: true)
                     }
-                case 1:
+
                     HStack(spacing: PapagaioTema.Espaco.curto) {
                         grupoDeAcoes
                         botaoDePerfil(comRotulo: false)
                     }
-                default:
+
                     HStack(spacing: PapagaioTema.Espaco.curto) {
                         menuDeAcoesCompacto
                         botaoDePerfil(comRotulo: false)
@@ -210,22 +184,6 @@ struct BarraSuperiorPapagaioView: View {
             }
             .buttonStyle(.plain)
             .help("Lixeira")
-
-            // De volta na barra, e não mais só dentro do menu de conta: a
-            // busca agora filtra as seções de Configurações (ver
-            // `exibindoBusca`), então ela ganhou o mesmo direito de vizinhar
-            // Tarefas/Biblioteca/Lixeira que tinha sido negado a ela antes
-            // por não ter busca nenhuma.
-            Button(action: aoAbrirConfiguracoes) {
-                BotaoDeIconeDaBarra(
-                    simbolo: "gearshape",
-                    legenda: "Configurações",
-                    legendaAtiva: $legendaAtiva,
-                    selecionado: configuracoesSelecionada
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Configurações")
         }
         // Sem cápsula em volta: eram dois contornos concêntricos para a mesma
         // coisa. Cada ícone já se anuncia como botão pelo próprio círculo, e
@@ -254,7 +212,6 @@ struct BarraSuperiorPapagaioView: View {
                 )
             }
             Button("Lixeira", systemImage: "trash", action: aoAbrirLixeira)
-            Button("Configurações", systemImage: "gearshape", action: aoAbrirConfiguracoes)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 15, weight: .semibold))
@@ -336,17 +293,25 @@ struct BarraSuperiorPapagaioView: View {
     private var menuDePerfil: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.medio) {
             if perfilConectado {
+                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
+                    Text("Conta ativa")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PapagaioTema.textoSecundario)
+                    Text(tituloDaContaAtiva)
+                        .font(.headline)
+                        .foregroundStyle(PapagaioTema.texto)
+                }
+
                 SeletorDeContextoDaConta(
                     contexto: contextoDaConta,
                     equipeAtiva: equipeAtiva,
-                    equipes: equipes,
                     aoUsarPerfil: {
                         exibindoMenuDePerfil = false
                         aoUsarPerfil()
                     },
-                    aoUsarEquipe: { equipe in
+                    aoUsarEquipe: {
                         exibindoMenuDePerfil = false
-                        aoUsarEquipe(equipe)
+                        aoUsarEquipe()
                     }
                 )
 
@@ -361,7 +326,30 @@ struct BarraSuperiorPapagaioView: View {
                     exibindoMenuDePerfil = false
                     aoGerenciarEquipe()
                 }
+
+                // Saiu da fileira de ícones ao lado de Lixeira/Tarefas/
+                // Biblioteca: aqueles três têm busca, e Configurações não —
+                // ficar lado a lado prometia o mesmo tipo de tela para os
+                // quatro, e a busca sumia sozinha ao entrar ali, como se
+                // tivesse quebrado. Aqui, dentro do menu de conta, ela não
+                // promete nada que não cumpre.
+                Button("Configurações", systemImage: "gearshape") {
+                    exibindoMenuDePerfil = false
+                    aoAbrirConfiguracoes()
+                }
+
+                Button("Sair", role: .destructive) {
+                    exibindoMenuDePerfil = false
+                    aoSair()
+                }
             } else {
+                Button("Configurações", systemImage: "gearshape") {
+                    exibindoMenuDePerfil = false
+                    aoAbrirConfiguracoes()
+                }
+
+                Divider()
+
                 Button("Entrar com Apple") {
                     exibindoMenuDePerfil = false
                     aoEntrar()
@@ -370,9 +358,6 @@ struct BarraSuperiorPapagaioView: View {
             }
         }
         .padding(PapagaioTema.Espaco.medio)
-        // Largura fixa: o `SeletorDeContextoDaConta` agora é uma coluna só
-        // (Perfil pessoal + uma linha "Equipe" com um pulldown), então não
-        // precisa mais alargar o menu quando há equipes.
         .frame(width: 280, alignment: .leading)
     }
 
@@ -389,12 +374,6 @@ struct BarraSuperiorPapagaioView: View {
                 .textFieldStyle(.plain)
                 .foregroundStyle(PapagaioTema.texto)
                 .accessibilityLabel(placeholderDeBusca)
-                // Em janela estreita, o placeholder mais longo ("Buscar nas
-                // configurações…") pode não caber. Sem isto, o AppKit corta
-                // no meio da palavra sem reticências, como as demais telas —
-                // com isto, corta igual a qualquer outro texto do app.
-                .lineLimit(1)
-                .truncationMode(.tail)
         }
         // Único elemento elástico da barra: cresce até 620 e cede até 100.
         // Sem `layoutPriority` — ele deve ser servido depois dos grupos de

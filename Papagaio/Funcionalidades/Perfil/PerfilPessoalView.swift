@@ -6,6 +6,8 @@ struct PerfilPessoalView: View {
     let equipeAtiva: EquipeDisponivel?
     let equipes: [EquipeDisponivel]
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
+    let aoAdicionarEquipe: (String) -> Void
+    let aoEntrarComCodigo: (String) -> Void
     let aoSair: () -> Void
     let aoExcluirConta: () async throws -> Void
     @State private var nome: String = ""
@@ -17,49 +19,63 @@ struct PerfilPessoalView: View {
 
     var body: some View {
         ScrollView {
-            // Duas colunas: a da esquerda empilha identidade, Informações
-            // Pessoais e Segurança, todas do mesmo tamanho (ver
-            // `colunaEsquerdaDoPerfil`); a de Equipes ocupa o vão que sobra à
-            // direita.
-            //
-            // Sem `.frame(maxHeight: .infinity)` nela: esticar o cartão até
-            // a mesma altura da coluna da esquerda parecia bom com uma
-            // lista grande de equipes, mas com poucas (ou nenhuma) sobrava
-            // uma faixa enorme e vazia no fim do cartão — pior do que só
-            // deixá-lo do tamanho do próprio conteúdo, que já cresce
-            // sozinho conforme mais equipes entram (a grade dentro dele é
-            // quem decide a altura, ver `EquipesDoPerfil`).
-            //
-            // `ViewThatFits` troca para a versão empilhada (uma coluna só)
-            // quando a janela não tem largura para as duas lado a lado.
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: PapagaioTema.Espaco.secao) {
-                    colunaEsquerdaDoPerfil
+            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
+                Text("Meu Perfil")
+                    .font(PapagaioTema.Tipo.tituloDePagina)
+                    .foregroundStyle(PapagaioTema.texto)
 
-                    EquipesDoPerfil(
-                        equipeAtiva: equipeAtiva,
-                        equipes: equipes,
-                        aoSelecionar: aoSelecionarEquipe
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                CartaoDeIdentidadeDoPerfil(
+                    nome: nome,
+                    email: email,
+                    avatarURL: perfil.avatarURL,
+                    aoEditarAvatar: escolherAvatar
+                )
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: PapagaioTema.Espaco.secao) {
+                        InformacoesPessoaisDoPerfil(
+                            nome: $nome,
+                            email: $email,
+                            aoSalvar: salvarDados
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        EquipesDoPerfil(
+                            equipeAtiva: equipeAtiva,
+                            equipes: equipes,
+                            aoSelecionar: aoSelecionarEquipe,
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
+                        )
+                        .frame(width: 330)
+                    }
+
+                    VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+                        InformacoesPessoaisDoPerfil(
+                            nome: $nome,
+                            email: $email,
+                            aoSalvar: salvarDados
+                        )
+
+                        EquipesDoPerfil(
+                            equipeAtiva: equipeAtiva,
+                            equipes: equipes,
+                            aoSelecionar: aoSelecionarEquipe,
+                            aoAdicionarEquipe: aoAdicionarEquipe,
+                            aoEntrarComCodigo: aoEntrarComCodigo
+                        )
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-                    colunaEsquerdaDoPerfil
-
-                    EquipesDoPerfil(
-                        equipeAtiva: equipeAtiva,
-                        equipes: equipes,
-                        aoSelecionar: aoSelecionarEquipe
-                    )
-                }
+                SegurancaDoPerfil(
+                    aoAlterarSenha: { mostrandoAvisoDeSenha = true },
+                    aoSair: aoSair,
+                    aoExcluirConta: { mostrandoConfirmacaoDeExclusao = true },
+                    excluindoConta: excluindoConta
+                )
+                .frame(maxWidth: 690)
             }
-            // Sem centralizar: `larguraDeConteudoPapagaio()` centraliza a
-            // coluna inteira numa janela larga, sobrando o mesmo respiro dos
-            // dois lados — aqui os cartões ficam melhor grudados à esquerda,
-            // como o resto da página, em vez de flutuando no meio da janela.
-            .frame(maxWidth: PapagaioTema.larguraMaximaDeConteudo, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .larguraDeConteudoPapagaio()
             .padding(.horizontal, PapagaioTema.espacamentoDePagina)
             .padding(.vertical, PapagaioTema.espacamentoDePagina)
         }
@@ -78,13 +94,13 @@ struct PerfilPessoalView: View {
         } message: {
             Text("A senha é gerenciada pelo seu ID Apple. Para alterar, use os ajustes da sua conta Apple.")
         }
-        .alert("Excluir conta permanentemente?", isPresented: $mostrandoConfirmacaoDeExclusao) {
+        .alert("Excluir perfil deste Mac?", isPresented: $mostrandoConfirmacaoDeExclusao) {
             Button("Cancelar", role: .cancel) {}
-            Button("Excluir conta e arquivos", role: .destructive) {
+            Button("Excluir perfil e dados pessoais", role: .destructive) {
                 Task { await excluirConta() }
             }
         } message: {
-            Text("Esta ação não pode ser desfeita. Seu perfil, conversas, áudios, transcrições, notas, tarefas e equipes deste Mac serão removidos.")
+            Text("Esta ação não pode ser desfeita. Seu perfil, conversas pessoais, áudios, transcrições, notas, tarefas, vínculos de equipe e conexões com Google Calendar e Granola serão removidos deste Mac. Os dados dos espaços de equipe, as preferências do app e os compartilhamentos do iCloud serão preservados.")
         }
         .alert("Não foi possível excluir a conta", isPresented: Binding(
             get: { erroDeExclusao != nil },
@@ -94,38 +110,6 @@ struct PerfilPessoalView: View {
         } message: {
             Text(erroDeExclusao ?? "")
         }
-    }
-
-    /// Identidade, Informações Pessoais e Segurança — a coluna inteira da
-    /// esquerda, sempre com 990pt de largura (o mesmo teto que
-    /// `CartaoDeIdentidadeDoPerfil` já usa por conta própria), pra as bordas
-    /// — esquerda e direita, dos três cartões — caírem no mesmo lugar em vez
-    /// de um esticar mais que o outro.
-    private var colunaEsquerdaDoPerfil: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.pagina) {
-            CartaoDeIdentidadeDoPerfil(
-                nome: nome,
-                email: email,
-                avatarURL: perfil.avatarURL,
-                aoEditarAvatar: escolherAvatar
-            )
-
-            InformacoesPessoaisDoPerfil(
-                nome: $nome,
-                email: $email,
-                aoSalvar: salvarDados
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            SegurancaDoPerfil(
-                aoAlterarSenha: { mostrandoAvisoDeSenha = true },
-                aoSair: aoSair,
-                aoExcluirConta: { mostrandoConfirmacaoDeExclusao = true },
-                excluindoConta: excluindoConta
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: 990, alignment: .leading)
     }
 
     private func salvarDados() {

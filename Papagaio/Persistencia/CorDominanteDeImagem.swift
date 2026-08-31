@@ -34,6 +34,11 @@ enum CorDominanteDeImagem {
         memoria.removeValue(forKey: chave)
     }
 
+    @MainActor
+    static func esquecerTudo() {
+        memoria.removeAll()
+    }
+
     /// Reduz a imagem a uma grade pequena e escolhe o pixel mais vivo dela.
     ///
     /// A redução é o filtro: em 16x16 cada pixel já é a média de uma região

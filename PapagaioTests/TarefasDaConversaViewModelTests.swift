@@ -72,7 +72,7 @@ func cargaCriaBaseDosProximosPassos() {
     #expect(vm.tarefas[0].prioridade == .alta)
     #expect(vm.tarefas[1].prioridade == .alta)
     #expect(vm.tarefas[2].prioridade == .media)
-    #expect(vm.tarefas.allSatisfy { $0.status == .emAndamento })
+    #expect(vm.tarefas.allSatisfy { $0.status == .naoIniciado })
     #expect(vm.tarefas.allSatisfy { $0.origem == "Kickoff" })
 }
 
@@ -93,4 +93,42 @@ func recargaNaoDuplica() {
 
     // Já havia tarefas salvas: a base do resumo não entra de novo.
     #expect(outra.tarefas.map(\.titulo) == ["Criada à mão"])
+}
+
+@Test("Responsáveis vêm da ficha local com nomes e e-mails pareados")
+func responsaveisVemDaFicha() {
+    let metadados = MetadadosVisuaisDoArquivo(
+        entrevistado: "Ana Silva",
+        emailDoEntrevistado: "ana@empresa.com",
+        entrevistadores: "João Lima\nMaria Souza",
+        emailDosEntrevistadores: "joao@empresa.com\n",
+        descricao: "",
+        formato: "",
+        participantes: 3
+    )
+
+    let pessoas = ResponsavelDaTarefa.disponiveis(em: metadados)
+
+    #expect(pessoas.map(\.nome) == ["João Lima", "Maria Souza", "Ana Silva"])
+    #expect(pessoas.map(\.email) == ["joao@empresa.com", "", "ana@empresa.com"])
+    #expect(Set(pessoas.map(\.id)).count == 3)
+}
+
+@Test("Responsáveis repetidos na ficha aparecem uma única vez")
+func responsaveisDaFichaNaoDuplicam() {
+    let metadados = MetadadosVisuaisDoArquivo(
+        entrevistado: "Ána Silva",
+        emailDoEntrevistado: "",
+        entrevistadores: "ana silva\nPessoa sem nome",
+        emailDosEntrevistadores: "\ncontato@empresa.com",
+        descricao: "",
+        formato: "",
+        participantes: nil
+    )
+
+    let pessoas = ResponsavelDaTarefa.disponiveis(em: metadados)
+
+    #expect(pessoas.count == 2)
+    #expect(pessoas[0].nome == "ana silva")
+    #expect(pessoas[1].email == "contato@empresa.com")
 }

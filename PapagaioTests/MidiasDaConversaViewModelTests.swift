@@ -45,3 +45,28 @@ func mensagemGenericaPreservaDescricao() {
 
     #expect(mensagem.contains("O disco está cheio."))
 }
+
+@MainActor
+@Test("Falha ao registrar importação remove a cópia recém-criada")
+func importarMidiaDesfazCopiaQuandoPersistenciaFalha() throws {
+    let raiz = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let origem = raiz.appendingPathComponent("origem.txt")
+    let conversa = raiz.appendingPathComponent("conversa", isDirectory: true)
+    try FileManager.default.createDirectory(at: conversa, withIntermediateDirectories: true)
+    try Data("conteúdo".utf8).write(to: origem)
+    defer { try? FileManager.default.removeItem(at: raiz) }
+
+    struct FalhaDePersistencia: Error {}
+    #expect(throws: FalhaDePersistencia.self) {
+        try MidiasDaConversa.copiar(
+            origem,
+            para: conversa,
+            tituloDaConversa: "Conversa",
+            aposCopiar: { _ in throw FalhaDePersistencia() }
+        )
+    }
+
+    let pastaDeMidia = conversa.appendingPathComponent(NomeDeArquivoSeguro.gerar(de: "Conversa"))
+    #expect(FileManager.default.fileExists(atPath: origem.path))
+    #expect((try FileManager.default.contentsOfDirectory(atPath: pastaDeMidia.path)).isEmpty)
+}

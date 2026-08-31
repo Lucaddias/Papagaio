@@ -34,8 +34,19 @@ enum LixeiraDeTarefas {
         itens().forEach { restaurar($0, arquivos: arquivos) }
     }
 
-    static func esvaziar() {
-        UserDefaults.standard.removeObject(forKey: chave)
+    static func esvaziar(em defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: chave)
+    }
+
+    static func removerRegistros(
+        do arquivoID: ArquivoID,
+        em defaults: UserDefaults = .standard
+    ) {
+        guard let dados = defaults.data(forKey: chave),
+              let atuais = try? JSONDecoder().decode([TarefaNaLixeira].self, from: dados),
+              let novos = try? JSONEncoder().encode(atuais.filter { $0.arquivoID != arquivoID })
+        else { return }
+        defaults.set(novos, forKey: chave)
     }
 
     private static func salvar(_ itens: [TarefaNaLixeira]) {
