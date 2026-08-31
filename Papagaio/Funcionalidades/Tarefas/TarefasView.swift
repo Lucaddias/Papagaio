@@ -290,11 +290,16 @@ struct TarefasView: View {
                 .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
 
+            // Nudge de +3pt: mesmo com `alignment: .center`, o círculo do
+            // "i" ficava visivelmente acima do centro óptico da letra bold
+            // de 30pt (ver o mesmo ajuste e comentário em
+            // `BibliotecaHomeView.cabecalhoDaBiblioteca`).
             BotaoDeAjudaPapagaio(
                 texto: "Gerencie as tarefas geradas a partir das suas conversas.",
                 ajuda: "Sobre o painel de tarefas",
                 largura: 280
             )
+            .offset(y: 3)
 
             Spacer(minLength: 0)
         }

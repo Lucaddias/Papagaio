@@ -699,25 +699,49 @@ CartaoReuniaoPendente(
         }
     }
 
-    /// Título, filtros e pastas encontradas — só o cabeçalho, num painel
-    /// próprio.
+    /// Título, filtros e pastas encontradas — o cabeçalho inteiro, num
+    /// painel só.
     ///
-    /// A grade de conversas **não** mora aqui dentro. Antes ela vivia no
-    /// mesmo painel do título e dos filtros, e as duas coisas liam como um
-    /// bloco só — um retângulo enorme sem separação nenhuma entre "o que
-    /// filtra" e "o que foi filtrado". Cabeçalho e grade são duas seções,
-    /// não uma: o cabeçalho fica num cartão com nome, a grade solta por
-    /// baixo dele, com o mesmo respiro que qualquer outra seção da página.
+    /// A grade de conversas **não** mora aqui dentro — ela é irmã deste
+    /// cartão, com o mesmo respiro que qualquer outra seção da página.
+    ///
+    /// `.center`, e não `.firstTextBaseline`: com a letra do título maior
+    /// (`PapagaioTema.Tipo.tituloDePagina`), alinhar pela linha de base do
+    /// texto deixava o círculo do botão "i" — que não tem linha de base
+    /// própria, e cai no próprio centro — visivelmente mais baixo que o
+    /// meio da palavra. Centralizado, os dois ficam na mesma altura.
     private var cabecalhoDaBiblioteca: some View {
         VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
-            HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+            HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
+                // Sem `.lineLimit(1)` + `.minimumScaleFactor`, a letra maior
+                // (`tituloDePagina`) quebrava "Biblioteca de Conversas" em
+                // duas linhas numa janela estreita — e o botão "i", alinhado
+                // ao centro do `HStack` inteiro, ficava flutuando no meio das
+                // duas linhas, sem grudar em nenhuma das duas. Encolhendo em
+                // vez de quebrar, o título continua numa linha só e o "i"
+                // continua ao lado dela, não no meio de um parágrafo de duas
+                // linhas.
                 Text(tituloDaBibliotecaComFiltro)
-                    .font(.title2.weight(.semibold))
+                    .font(PapagaioTema.Tipo.tituloDePagina)
                     .foregroundStyle(PapagaioTema.texto)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .layoutPriority(1)
 
                 // Ao lado do título, e não dos filtros: o que ele explica é o
                 // que a seção é, não como ela está recortada.
+                //
+                // Nudge manual de +3pt: mesmo com `alignment: .center` no
+                // `HStack`, o círculo do "i" (22×22, sem ascendente nem
+                // descendente) ficava visivelmente acima do meio óptico da
+                // letra bold de 30pt — a caixa do texto é mais alta que a
+                // altura real dos caracteres (reserva espaço para acento e
+                // descendente que "Biblioteca de Conversas" não usa), então
+                // seu centro geométrico fica mais alto que o centro visual
+                // das letras. Sem uma forma melhor de medir isso, o ajuste
+                // é este valor fixo.
                 ajudaDaBiblioteca
+                    .offset(y: 3)
 
                 Spacer(minLength: 0)
             }
@@ -802,16 +826,23 @@ CartaoReuniaoPendente(
     }
 
     private func linhaDaLixeira(somenteIcone: Bool = false) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: PapagaioTema.Espaco.medio) {
+        HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
             Text(tituloDaPagina)
-                .font(.title2.weight(.semibold))
+                .font(PapagaioTema.Tipo.tituloDePagina)
                 .foregroundStyle(PapagaioTema.texto)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .layoutPriority(1)
 
+            // Nudge de +3pt: mesmo ajuste de `cabecalhoDaBiblioteca` — o
+            // círculo do "i" ficava acima do centro óptico da letra bold de
+            // 30pt mesmo com `alignment: .center`.
             BotaoDeAjudaPapagaio(
                 texto: subtitulo,
                 ajuda: "Sobre a lixeira",
                 largura: 320
             )
+            .offset(y: 3)
 
             Spacer(minLength: 16)
 
