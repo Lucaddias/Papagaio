@@ -6,6 +6,7 @@ struct GestaoDeEquipeView: View {
     let aoSelecionarEquipe: (EquipeDisponivel) -> Void
     let aoAtualizarEquipe: (EquipeDisponivel) -> Void
     let aoExcluirEquipe: (EquipeDisponivel) async throws -> Void
+    let nomeDoPerfil: String
     let estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit
     let aoRetomarSincronizacao: () -> Void
 
@@ -21,6 +22,7 @@ struct GestaoDeEquipeView: View {
     @State private var salvandoConfiguracoes = false
     @State private var erroDasConfiguracoes: String?
     @State private var participanteParaEditar: ParticipanteDaEquipe?
+    @State private var participanteParaRenomear: ParticipanteDaEquipe?
     @State private var participanteParaRemover: ParticipanteDaEquipe?
     @State private var confirmandoRotacaoDoCodigo = false
     @State private var rotacionandoCodigo = false
@@ -35,6 +37,7 @@ struct GestaoDeEquipeView: View {
         aoSelecionarEquipe: @escaping (EquipeDisponivel) -> Void,
         aoAtualizarEquipe: @escaping (EquipeDisponivel) -> Void = { _ in },
         aoExcluirEquipe: @escaping (EquipeDisponivel) async throws -> Void = { _ in },
+        nomeDoPerfil: String = "",
         estadoDaSincronizacao: EstadoDaSincronizacaoCloudKit = .local,
         aoRetomarSincronizacao: @escaping () -> Void = {},
         servicoDeEquipes: ServicoDeEquipesCloudKit = ServicoDeEquipesCloudKit()
@@ -44,6 +47,7 @@ struct GestaoDeEquipeView: View {
         self.aoSelecionarEquipe = aoSelecionarEquipe
         self.aoAtualizarEquipe = aoAtualizarEquipe
         self.aoExcluirEquipe = aoExcluirEquipe
+        self.nomeDoPerfil = nomeDoPerfil
         self.estadoDaSincronizacao = estadoDaSincronizacao
         self.aoRetomarSincronizacao = aoRetomarSincronizacao
         self.servicoDeEquipes = servicoDeEquipes
@@ -56,8 +60,8 @@ struct GestaoDeEquipeView: View {
                     cabecalho(equipeAtiva)
                     estadoDoICloud
                     codigoDaEquipe(equipeAtiva)
+                    participantesDaEquipe(equipeAtiva)
                     if podeGerenciar(equipeAtiva) {
-                        participantesDaEquipe(equipeAtiva)
                         configuracoesDaEquipe(equipeAtiva)
                         acoesIrreversiveis(equipeAtiva)
                     } else {
@@ -95,11 +99,7 @@ struct GestaoDeEquipeView: View {
             guard let equipeAtiva else { return }
             configuracoes = equipeAtiva.configuracoes
             paginaDosParticipantes = 0
-            if podeGerenciar(equipeAtiva) {
-                await carregarParticipantes(da: equipeAtiva)
-            } else {
-                participantes = []
-            }
+            await carregarParticipantes(da: equipeAtiva)
         }
         .confirmationDialog(
             "Trocar o código de entrada?",
@@ -216,7 +216,8 @@ struct GestaoDeEquipeView: View {
                 TabelaDaEquipe(
                     membros: participantes,
                     pagina: paginaDosParticipantes,
-                    podeGerenciar: true,
+                    podeGerenciar: podeGerenciar(equipe),
+                    aoEditarNome: { participanteParaRenomear = $0 },
                     aoEditar: { participanteParaEditar = $0 },
                     aoRemover: { participanteParaRemover = $0 },
                     aoAlternarPagina: { deslocamento in
@@ -232,6 +233,17 @@ struct GestaoDeEquipeView: View {
                     Task { await atualizarPermissao(permissao, do: participante, na: equipe) }
                 },
                 aoCancelar: { participanteParaEditar = nil }
+            )
+        }
+        .sheet(item: $participanteParaRenomear) { participante in
+            EditorDeNomeDaEquipe(
+                participante: participante,
+                nomeInicial: participante.eAtual && !nomeDoPerfil.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? nomeDoPerfil : participante.nome,
+                aoSalvar: { nome in
+                    Task { await atualizarNome(nome, do: participante, na: equipe) }
+                },
+                aoCancelar: { participanteParaRenomear = nil }
             )
         }
         .confirmationDialog(
@@ -368,12 +380,33 @@ struct GestaoDeEquipeView: View {
         erroDosParticipantes = nil
         defer { carregandoParticipantes = false }
         do {
-            participantes = try await servicoDeEquipes.participantes(da: equipe)
+            if podeGerenciar(equipe) {
+                participantes = try await servicoDeEquipes.participantes(da: equipe)
+            } else {
+                participantes = [try await servicoDeEquipes.meuParticipante(
+                    da: equipe,
+                    nomePadrao: nomeDoPerfil
+                )]
+            }
             var atualizada = equipe
             atualizada.quantidadeDeMembros = participantes.count
             aoAtualizarEquipe(atualizada)
         } catch {
-            erroDosParticipantes = error.localizedDescription
+            erroDosParticipantes = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
+        }
+    }
+
+    private func atualizarNome(
+        _ nome: String,
+        do participante: ParticipanteDaEquipe,
+        na equipe: EquipeDisponivel
+    ) async {
+        do {
+            try await servicoDeEquipes.atualizarNome(de: participante.id, para: nome, na: equipe)
+            participanteParaRenomear = nil
+            await carregarParticipantes(da: equipe)
+        } catch {
+            erroDosParticipantes = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -387,7 +420,7 @@ struct GestaoDeEquipeView: View {
             participanteParaEditar = nil
             await carregarParticipantes(da: equipe)
         } catch {
-            erroDosParticipantes = error.localizedDescription
+            erroDosParticipantes = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -396,7 +429,7 @@ struct GestaoDeEquipeView: View {
             try await servicoDeEquipes.removerParticipante(participante.id, da: equipe)
             await carregarParticipantes(da: equipe)
         } catch {
-            erroDosParticipantes = error.localizedDescription
+            erroDosParticipantes = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -410,7 +443,7 @@ struct GestaoDeEquipeView: View {
             atualizada.configuracoes = configuracoes
             aoAtualizarEquipe(atualizada)
         } catch {
-            erroDasConfiguracoes = error.localizedDescription
+            erroDasConfiguracoes = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -423,7 +456,7 @@ struct GestaoDeEquipeView: View {
             aoAtualizarEquipe(atualizada)
             await carregarParticipantes(da: atualizada)
         } catch {
-            erroDaOperacaoCritica = error.localizedDescription
+            erroDaOperacaoCritica = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -434,7 +467,7 @@ struct GestaoDeEquipeView: View {
         do {
             try await aoExcluirEquipe(equipe)
         } catch {
-            erroDaOperacaoCritica = error.localizedDescription
+            erroDaOperacaoCritica = DiagnosticoDaSincronizacaoCloudKit.mensagem(para: error)
         }
     }
 
@@ -469,6 +502,45 @@ private struct EditorDePermissaoDaEquipe: View {
                 Spacer()
                 Button("Salvar") { aoSalvar(permissao) }
                     .buttonStyle(BotaoDeContornoPapagaio())
+            }
+        }
+        .padding(PapagaioTema.Espaco.pagina)
+        .frame(width: 420)
+    }
+}
+
+private struct EditorDeNomeDaEquipe: View {
+    let participante: ParticipanteDaEquipe
+    let aoSalvar: (String) -> Void
+    let aoCancelar: () -> Void
+    @State private var nome: String
+
+    init(
+        participante: ParticipanteDaEquipe,
+        nomeInicial: String,
+        aoSalvar: @escaping (String) -> Void,
+        aoCancelar: @escaping () -> Void
+    ) {
+        self.participante = participante
+        self.aoSalvar = aoSalvar
+        self.aoCancelar = aoCancelar
+        _nome = State(initialValue: nomeInicial)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.secao) {
+            Text("Nome na equipe")
+                .font(.title2.weight(.bold))
+            TextField("Nome", text: $nome)
+            Text("Este nome será exibido para todas as pessoas desta equipe.")
+                .font(.callout)
+                .foregroundStyle(PapagaioTema.textoSecundario)
+            HStack {
+                Button("Cancelar", action: aoCancelar)
+                Spacer()
+                Button("Salvar") { aoSalvar(nome) }
+                    .buttonStyle(BotaoDeContornoPapagaio())
+                    .disabled(nome.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(PapagaioTema.Espaco.pagina)

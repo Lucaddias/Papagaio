@@ -91,6 +91,10 @@ público `EquipeExcluida`, com `equipeID` (String), `excluidaEm` (Date) e
 marcador permite que instalações de participantes removam a cópia local ao se
 conectarem novamente depois que a zona compartilhada foi apagada.
 
+No tipo `Equipe` da zona compartilhada, publique também o campo `nomesDosParticipantes`
+como `Bytes`. Ele guarda o mapa de nomes exibidos pela equipe; cada participante
+altera somente o próprio nome, enquanto o proprietário pode corrigir qualquer um.
+
 ## Validar localmente
 
 ```bash

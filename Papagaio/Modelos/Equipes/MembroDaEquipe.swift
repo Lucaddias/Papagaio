@@ -16,6 +16,7 @@ struct ParticipanteDaEquipe: Identifiable, Hashable, Sendable {
     let id: String
     let nome: String
     let eProprietario: Bool
+    let eAtual: Bool
     let permissao: Permissao
 
     var descricaoDaPermissao: String {

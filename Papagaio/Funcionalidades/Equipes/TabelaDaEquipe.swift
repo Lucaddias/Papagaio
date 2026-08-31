@@ -6,6 +6,7 @@ struct TabelaDaEquipe: View {
     let membros: [ParticipanteDaEquipe]
     let pagina: Int
     let podeGerenciar: Bool
+    let aoEditarNome: (ParticipanteDaEquipe) -> Void
     let aoEditar: (ParticipanteDaEquipe) -> Void
     let aoRemover: (ParticipanteDaEquipe) -> Void
     let aoAlternarPagina: (Int) -> Void
@@ -44,6 +45,7 @@ struct TabelaDaEquipe: View {
                     LinhaDeMembroDaEquipe(
                         membro: membro,
                         podeGerenciar: podeGerenciar,
+                        aoEditarNome: { aoEditarNome(membro) },
                         aoEditar: { aoEditar(membro) },
                         aoRemover: { aoRemover(membro) }
                     )
@@ -116,6 +118,7 @@ struct CabecalhoDeColuna: View {
 struct LinhaDeMembroDaEquipe: View {
     let membro: ParticipanteDaEquipe
     let podeGerenciar: Bool
+    let aoEditarNome: () -> Void
     let aoEditar: () -> Void
     let aoRemover: () -> Void
 
@@ -150,10 +153,13 @@ struct LinhaDeMembroDaEquipe: View {
 
             Spacer()
 
-            if podeGerenciar && !membro.eProprietario {
+            if podeGerenciar || membro.eAtual {
                 Menu {
-                    Button("Alterar permissão", systemImage: "pencil", action: aoEditar)
-                    Button("Remover", systemImage: "trash", role: .destructive, action: aoRemover)
+                    Button("Editar nome", systemImage: "pencil", action: aoEditarNome)
+                    if podeGerenciar && !membro.eProprietario {
+                        Button("Alterar permissão", systemImage: "lock", action: aoEditar)
+                        Button("Remover", systemImage: "trash", role: .destructive, action: aoRemover)
+                    }
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 24, weight: .bold))
