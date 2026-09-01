@@ -83,10 +83,28 @@ public struct WhisperEngine: TranscriptionEngine {
         func transcrever(_ janelas: [DetectorDeAtividadeDeVoz.JanelaEmFluxo]) async throws {
             for janela in janelas where !janela.amostras.isEmpty {
                 try Task.checkCancellation()
-                let segmentos = try await contexto.transcrever(
+                let segmentosBrutos = try await contexto.transcrever(
                     amostras: janela.amostras,
                     initialPrompt: initialPrompt
                 )
+                // Remove palavras que são puramente emoji (alucinação do
+                // Whisper em silêncio/ruído) e descarta segmentos que ficaram
+                // vazios depois da limpeza.
+                let segmentos = segmentosBrutos.compactMap { seg -> SegmentoWhisper? in
+                    let palavrasFiltradas = seg.palavras.filter { !$0.texto.ehSomenteEmoji }
+                    guard !palavrasFiltradas.isEmpty else { return nil }
+                    let textoLimpo = seg.texto.removendoEmojis()
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !textoLimpo.isEmpty else { return nil }
+                    return SegmentoWhisper(
+                        start: seg.start,
+                        end: seg.end,
+                        texto: textoLimpo,
+                        palavras: palavrasFiltradas,
+                        confianca: seg.confianca,
+                        noSpeechProb: seg.noSpeechProb
+                    )
+                }
                 // O Whisper devolve t0/t1 relativos ao início da janela.
                 await acumulador.incluir(segmentos, na: janela, speaker: speaker)
             }

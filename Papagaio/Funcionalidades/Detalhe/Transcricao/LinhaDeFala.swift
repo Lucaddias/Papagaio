@@ -33,11 +33,59 @@ struct LinhaDeFala: View {
     var falantePreservado: String? = nil
     var mostrarConfianca: Bool = false
     var mostrarPorcentagemConfianca: Bool = true
+    /// Indica se está em modo de edição inline
+    var estaEditando: Bool = false
+    /// Texto sendo editado inline
+    @Binding var textoEditado: String
+    /// Callback ao salvar edição inline
+    var aoSalvarEdicao: () -> Void = {}
+    /// Callback ao cancelar edição inline
+    var aoCancelarEdicao: () -> Void = {}
+
+    @FocusState private var focoEditor: Bool
+
+    @ViewBuilder
+    private var editorInline: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            TextEditor(text: $textoEditado)
+                .font(.body)
+                .foregroundStyle(PapagaioTema.texto)
+                .scrollContentBackground(.hidden)
+                .textEditorStyle(.plain)
+                .padding(PapagaioTema.Espaco.medio)
+                .frame(minHeight: 120)
+                .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+                .focused($focoEditor)
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Spacer()
+                Button("Cancelar") {
+                    aoCancelarEdicao()
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+
+                Button("Salvar") {
+                    aoSalvarEdicao()
+                }
+                .buttonStyle(BotaoPrincipalPapagaio())
+                .keyboardShortcut(.return, modifiers: [.command])
+            }
+            .onAppear {
+                focoEditor = true
+            }
+            .onDisappear {
+                focoEditor = false
+            }
+        }
+    }
 
     private var isBaixaConfiancaFala: Bool {
         guard mostrarConfianca, let c = fala.confianca else { return false }
         if let nsp = fala.palavras.first?.palavra.noSpeechProb, nsp > 0.6 { return false }
-        // Usa mesmo threshold da palavra para consistência
         return c < 0.6
     }
 
@@ -55,14 +103,15 @@ struct LinhaDeFala: View {
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            // `.center` aqui, e não `.top`: o lápis fica ao lado do
-            // parágrafo inteiro (cabeçalho + texto), centralizado na altura
-            // dele — não colado só na linha do cabeçalho lá em cima.
             HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
                     cabecalhoDaFala
 
-                    corpoDaFala
+                    if estaEditando {
+                        editorInline
+                    } else {
+                        corpoDaFala
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -103,13 +152,7 @@ struct LinhaDeFala: View {
     @ViewBuilder
     private var cabecalhoDaFala: some View {
         let exibido = fala.falanteAcustico ?? falantePreservado
-        return HStack(spacing: PapagaioTema.Espaco.minimo) {
-            Text(Self.rotuloDoCanal(fala.speaker))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PapagaioTema.texto)
-                .padding(.horizontal, PapagaioTema.Espaco.minimo)
-                .padding(.vertical, 1)
-                .background(PapagaioTema.superficieSuave, in: Capsule())
+        HStack(spacing: PapagaioTema.Espaco.minimo) {
             if let acustico = exibido {
                 Text(RotuloDeVoz.exibicao(acustico, nomes: nomesDeVoz))
                     .font(.caption.weight(.semibold))
@@ -151,7 +194,9 @@ struct LinhaDeFala: View {
     }
 
     private var botaoEditar: some View {
-        Button(action: aoEditar) {
+        Button(action: {
+            aoEditar()
+        }) {
             Image(systemName: "pencil")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -189,8 +234,6 @@ struct LinhaDeFala: View {
                 }
             }
         } else {
-            // Fala sem palavras: trecho legado ou editado à mão. Cai no
-            // parágrafo inteiro, como sempre foi.
             let destaca = !termoDeBusca.isEmpty && fala.texto.casaComBusca(termoDeBusca)
             let ehAtual = destaca && idOcorrenciaAtual == fala.id
             Text(fala.texto)
@@ -199,6 +242,7 @@ struct LinhaDeFala: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .padding(.horizontal, destaca ? 4 : 0)
                 .padding(.vertical, destaca ? 1 : 0)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
                 .background(
                     ehAtual ? PapagaioTema.destaque : (destaca ? Color.yellow.opacity(0.45) : Color.clear),
                     in: RoundedRectangle(cornerRadius: 4, style: .continuous)

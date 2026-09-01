@@ -256,6 +256,10 @@ public actor ContextoWhisper {
             let conf: Float? = confiancasDaPalavra.isEmpty ? nil : confiancasDaPalavra.reduce(0, +) / Float(confiancasDaPalavra.count)
             confiancasDaPalavra.removeAll(keepingCapacity: true)
             guard !texto.isEmpty else { return }
+            // O Whisper gera caracteres de emoji (💕, 😊, 🎵) como texto
+            // quando processa silêncio ou ruído de fundo. Descarta palavras
+            // que são puramente emoji.
+            guard !palavraEhSomenteEmoji(texto) else { return }
             palavras.append(PalavraWhisper(
                 start: inicioDaPalavra,
                 end: fimDaPalavra,
@@ -310,6 +314,33 @@ public actor ContextoWhisper {
         }
         fecharPalavra()
         return palavras
+    }
+
+    /// Verifica se um texto é composto exclusivamente por caracteres de emoji.
+    ///
+    /// Usado para descartar palavras hallucinadas pelo Whisper em silêncio ou
+    /// ruído (💕, 😊, 🎵 etc.). Não importa `PapagaioCore` para ter acesso
+    /// ao `Character.ehEmoji`, então replica a lógica de ranges Unicode.
+    private nonisolated func palavraEhSomenteEmoji(_ texto: String) -> Bool {
+        for caracter in texto {
+            guard caracter.unicodeScalars.allSatisfy({ scalar in
+                let b = scalar.value
+                return (0x1F600...0x1F64F).contains(b) ||
+                    (0x1F300...0x1F5FF).contains(b) ||
+                    (0x1F680...0x1F6FF).contains(b) ||
+                    (0x1F1E0...0x1F1FF).contains(b) ||
+                    (0x1F900...0x1F9FF).contains(b) ||
+                    (0x1FA00...0x1FA6F).contains(b) ||
+                    (0x1FA70...0x1FAFF).contains(b) ||
+                    (0x2600...0x26FF).contains(b) ||
+                    (0x2700...0x27BF).contains(b) ||
+                    (0xFE00...0xFE0F).contains(b) ||
+                    b == 0x200D ||
+                    b == 0x20E3 ||
+                    (0xE0020...0xE007F).contains(b)
+            }) else { return false }
+        }
+        return !texto.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// Capacidades do build, para diagnóstico.

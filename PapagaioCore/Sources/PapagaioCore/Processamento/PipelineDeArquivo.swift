@@ -228,15 +228,32 @@ public struct PipelineDeArquivo: Sendable {
 
         let trechos = arquivo.trechos.map { trecho -> Trecho in
             guard !trecho.palavras.isEmpty else { return trecho }
-            let segmentos: [SegmentoDeFalante]
+            let segmentosBrutos: [SegmentoDeFalante]
+            let canalPrefixo: String?
             if let speaker = trecho.speaker {
-                segmentos = speaker == Speaker.eu ? microfone : sistema
+                segmentosBrutos = speaker == Speaker.eu ? microfone : sistema
+                canalPrefixo = speaker
             } else {
                 // Sem canal de origem não há de onde escolher: as vozes da
                 // mixagem são a única atribuição possível.
-                segmentos = mixagem
+                segmentosBrutos = mixagem
+                canalPrefixo = nil
             }
-            guard !segmentos.isEmpty else { return trecho }
+            guard !segmentosBrutos.isEmpty else { return trecho }
+            // Namespacing: prefixa o falanteId com o canal de origem para que
+            // labels independentes (S1 no microfone vs S1 no sistema) nunca
+            // colidam. O microfone é sempre "eu"; o sistema é sempre
+            // "interlocutor"; mixagem (canal único) fica sem prefixo.
+            let segmentos = segmentosBrutos.map { seg in
+                if let prefixo = canalPrefixo {
+                    return SegmentoDeFalante(
+                        falanteId: "\(prefixo)-\(seg.falanteId)",
+                        inicio: seg.inicio,
+                        fim: seg.fim
+                    )
+                }
+                return seg
+            }
             return trecho.comPalavras(
                 AlinhamentoDeFalantes.atribuir(palavras: trecho.palavras, a: segmentos)
             )

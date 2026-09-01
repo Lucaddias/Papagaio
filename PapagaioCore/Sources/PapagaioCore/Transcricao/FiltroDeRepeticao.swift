@@ -42,11 +42,13 @@ public enum FiltroDeRepeticao {
     private static func limpar(_ trecho: Trecho) -> Trecho? {
         let frases = frasesEm(trecho.texto)
         guard !frases.isEmpty else {
-            let texto = trecho.texto.trimmingCharacters(in: .whitespacesAndNewlines)
+            let texto = trecho.texto.removendoEmojis()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !texto.isEmpty else { return nil }
+            let palavrasLimpa = trecho.palavras.filter { !$0.texto.ehSomenteEmoji }
             return Trecho(
                 id: trecho.id, start: trecho.start, end: trecho.end,
-                texto: texto, speaker: trecho.speaker, palavras: trecho.palavras
+                texto: texto, speaker: trecho.speaker, palavras: palavrasLimpa
             )
         }
 
@@ -71,7 +73,8 @@ public enum FiltroDeRepeticao {
             return trecho
         }
 
-        let texto = mantidas.joined(separator: " ")
+        let texto = mantidas.joined(separator: " ").removendoEmojis()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !texto.isEmpty else { return nil }
         return Trecho(
             id: trecho.id, start: trecho.start, end: trecho.end,

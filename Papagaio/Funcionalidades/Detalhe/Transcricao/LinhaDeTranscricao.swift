@@ -26,6 +26,16 @@ struct LinhaDeTranscricao: View {
     var falantePreservado: String? = nil
     var mostrarConfianca: Bool = false
     var mostrarPorcentagemConfianca: Bool = true
+    /// Indica se está em modo de edição inline
+    var estaEditando: Bool = false
+    /// Texto sendo editado inline
+    @Binding var textoEditado: String
+    /// Callback ao salvar edição inline
+    var aoSalvarEdicao: () -> Void = {}
+    /// Callback ao cancelar edição inline
+    var aoCancelarEdicao: () -> Void = {}
+
+    @FocusState private var focoEditor: Bool
 
     private var isBaixaConfiancaTrecho: Bool {
         guard mostrarConfianca, let c = trecho.confianca else { return false }
@@ -39,6 +49,45 @@ struct LinhaDeTranscricao: View {
         return PapagaioTema.superficie
     }
 
+    @ViewBuilder
+    private var editorInline: some View {
+        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.curto) {
+            TextEditor(text: $textoEditado)
+                .font(.body)
+                .foregroundStyle(PapagaioTema.texto)
+                .scrollContentBackground(.hidden)
+                .textEditorStyle(.plain)
+                .padding(PapagaioTema.Espaco.medio)
+                .frame(minHeight: 120)
+                .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        .stroke(PapagaioTema.borda, lineWidth: 1)
+                }
+                .focused($focoEditor)
+
+            HStack(spacing: PapagaioTema.Espaco.curto) {
+                Spacer()
+                Button("Cancelar") {
+                    aoCancelarEdicao()
+                }
+                .buttonStyle(BotaoDeContornoPapagaio())
+
+                Button("Salvar") {
+                    aoSalvarEdicao()
+                }
+                .buttonStyle(BotaoPrincipalPapagaio())
+                .keyboardShortcut(.return, modifiers: [.command])
+            }
+            .onAppear {
+                focoEditor = true
+            }
+            .onDisappear {
+                focoEditor = false
+            }
+        }
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: PapagaioTema.Espaco.medio) {
             Text(trecho.start.comoRelogio)
@@ -47,16 +96,8 @@ struct LinhaDeTranscricao: View {
                 .foregroundStyle(ativo ? PapagaioTema.destaqueEscuro : PapagaioTema.textoSecundario)
                 .frame(width: 52, alignment: .trailing)
 
-            // `.center` aqui, e não `.top`: o lápis fica ao lado do
-            // parágrafo inteiro (cabeçalho + texto), centralizado na altura
-            // dele — não colado só na linha do cabeçalho lá em cima.
             HStack(alignment: .center, spacing: PapagaioTema.Espaco.medio) {
                 VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                    // Falante acústico (diarização): aparece só quando o
-                    // canal carrega mais de uma voz — canal de uma voz só não
-                    // precisa do chip. O rótulo "Eu"/"Interlocutor" que vinha
-                    // ao lado saiu — a voz acústica já identifica quem fala.
-                    // Para trechos editados (palavras vazias) mostra o falante preservado, se houver
                     let falanteParaExibir: String? = {
                         if trecho.temVozesDistintas, let d = trecho.falanteAcusticoDominante { return d }
                         if let p = falantePreservado, !p.isEmpty { return p }
@@ -85,7 +126,11 @@ struct LinhaDeTranscricao: View {
                         }
                     }
 
-                    corpoDaTranscricao
+                    if estaEditando {
+                        editorInline
+                    } else {
+                        corpoDaTranscricao
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -113,8 +158,6 @@ struct LinhaDeTranscricao: View {
         .onTapGesture {
             aoTocarLinha()
         }
-        // `contain` em vez de `combine`: com palavras clicáveis, juntar tudo
-        // num elemento só engoliria os botões do VoiceOver.
         .accessibilityElement(children: .contain)
         .accessibilityAction {
             aoTocarLinha()
@@ -124,7 +167,9 @@ struct LinhaDeTranscricao: View {
     }
 
     private var botaoEditar: some View {
-        Button(action: aoEditar) {
+        Button(action: {
+            aoEditar()
+        }) {
             Image(systemName: "pencil")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(PapagaioTema.destaqueEscuro)
@@ -161,8 +206,6 @@ struct LinhaDeTranscricao: View {
                 }
             }
         } else {
-            // Transcrição legada (salva antes das palavras existirem): cai no
-            // parágrafo inteiro, como sempre foi.
             let destaca = !termoDeBusca.isEmpty && trecho.texto.casaComBusca(termoDeBusca)
             let ehAtual = destaca && idOcorrenciaAtual == trecho.id
             Text(trecho.texto)
@@ -171,6 +214,7 @@ struct LinhaDeTranscricao: View {
                 .foregroundStyle(PapagaioTema.texto)
                 .padding(.horizontal, destaca ? 4 : 0)
                 .padding(.vertical, destaca ? 1 : 0)
+                .padding(.vertical, PapagaioTema.Espaco.minimo)
                 .background(
                     ehAtual ? PapagaioTema.destaque : (destaca ? Color.yellow.opacity(0.45) : Color.clear),
                     in: RoundedRectangle(cornerRadius: 4, style: .continuous)
@@ -205,23 +249,19 @@ struct BotaoDePalavra: View {
                         .foregroundStyle(confidenceColor)
                 }
             }
-                // Peso constante: a palavra ativa não pode ocupar mais espaço
-                // que as outras. Semiforte alarga o glifo e o parágrafo inteiro
-                // se remexe a cada palavra nova — o destaque vive só na cor e
-                // no fundo, que não custam largura nenhuma.
-                .foregroundStyle(foregroundColor)
-                .padding(.vertical, 1.5)
-                .padding(.horizontal, PapagaioTema.Espaco.minimo)
-                .background(
-                    backgroundColor,
-                    in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                )
-                .overlay {
-                    if ehOcorrenciaAtual {
-                        RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                            .stroke(PapagaioTema.destaque, lineWidth: 1.5)
-                    }
+            .foregroundStyle(foregroundColor)
+            .padding(.vertical, 1.5)
+            .padding(.horizontal, PapagaioTema.Espaco.minimo)
+            .background(
+                backgroundColor,
+                in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+            )
+            .overlay {
+                if ehOcorrenciaAtual {
+                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
+                        .stroke(PapagaioTema.destaque, lineWidth: 1.5)
                 }
+            }
         }
         .buttonStyle(.plain)
         .animation(animacao, value: ativa)

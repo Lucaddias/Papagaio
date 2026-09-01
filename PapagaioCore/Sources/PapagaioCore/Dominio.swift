@@ -363,6 +363,50 @@ extension String {
         let resto = String(self[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
         return resto.isEmpty ? self : resto
     }
+
+    /// Remove caracteres de emoji preservando texto legível.
+    ///
+    /// O Whisper às vezes gera emojis (💕, 😊, 🎵) como texto quando processa
+    /// silêncio ou ruído de fundo. Esta função remove sem perder o resto.
+    func removendoEmojis() -> String {
+        String(filter { !$0.ehEmoji })
+    }
+
+    /// `true` quando o texto é composto exclusivamente por emojis (sem letras,
+    /// números ou pontuação visível).
+    var ehSomenteEmoji: Bool {
+        removendoEmojis().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+extension Character {
+    /// `true` quando o caractere é um emoji Unicode.
+    ///
+    /// Verifica as escalares do caractere: se qualquer uma cai num range
+    /// conhecido de emoji, o caractere inteiro é emoji. Funciona para emojis
+    /// simples (😊) e compostos (👨‍👩‍👧, que usa zero-width joiners).
+    var ehEmoji: Bool {
+        for scalar in unicodeScalars {
+            let block = scalar.value
+            if (0x1F600...0x1F64F).contains(block) ||   // Emoticons
+               (0x1F300...0x1F5FF).contains(block) ||   // Símbolos e pictogramas
+               (0x1F680...0x1F6FF).contains(block) ||   // Transporte e mapas
+               (0x1F1E0...0x1F1FF).contains(block) ||   // Bandeiras
+               (0x1F900...0x1F9FF).contains(block) ||   // Supplemental symbols
+               (0x1FA00...0x1FA6F).contains(block) ||   // Chess symbols
+               (0x1FA70...0x1FAFF).contains(block) ||   // Symbols and pictographs ext-A
+               (0x2600...0x26FF).contains(block) ||     // Misc symbols
+               (0x2700...0x27BF).contains(block) ||     // Dingbats
+               (0xFE00...0xFE0F).contains(block) ||     // Variation selectors
+               block == 0x200D ||                        // Zero-width joiner
+               block == 0x20E3 ||                        // Combining enclosing keycap
+               (0xE0020...0xE007F).contains(block)      // Tags
+            {
+                return true
+            }
+        }
+        return false
+    }
 }
 
 public struct Tema: Sendable, Codable, Equatable {

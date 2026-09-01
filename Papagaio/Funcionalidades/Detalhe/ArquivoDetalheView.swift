@@ -3,6 +3,12 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Tipo de item sendo editado inline
+enum ItemEmEdicao: Equatable {
+    case trecho(UUID)
+    case fala(UUID)
+}
+
 /// Superfície do Passo 10: ouvir a gravação e navegar por trecho.
 ///
 /// Clicar num trecho salta o áudio para o `start` dele; o trecho que está
@@ -76,9 +82,8 @@ struct ArquivoDetalheView: View {
     @State private var ditado = DitadoDeNota()
     /// O picker não retém o delegate; sem esta referência "Salvar em…" some.
     @State private var delegadoDeCompartilhamento: OpcoesDeCompartilhamento?
-    @State private var trechoEmEdicao: UUID?
-    @State private var textoDoTrechoEmEdicao = ""
-    @State private var falaEmEdicao: UUID?
+    @State private var itemEmEdicao: ItemEmEdicao?
+    @State private var textoEmEdicao = ""
     @State private var buscaTranscricao = ""
     @AppStorage("mostrarConfiancaTranscricao") private var mostrarConfianca = false
     @AppStorage("mostrarPorcentagemConfianca") private var mostrarPorcentagemConfianca = true
@@ -559,12 +564,6 @@ struct ArquivoDetalheView: View {
             Button("OK", role: .cancel) { midiasDaConversaVM.erro = nil }
         } message: {
             Text(midiasDaConversaVM.erro ?? "")
-        }
-        .sheet(isPresented: Binding(
-            get: { trechoEmEdicao != nil || falaEmEdicao != nil },
-            set: { if !$0 { cancelarEdicaoDoTrecho(); cancelarEdicaoDaFala() } }
-        )) {
-            folhaDeCorrecaoDoTrecho
         }
         .sheet(isPresented: $editandoInformacoes) {
             EditorDeInformacoesDoCard(
@@ -1493,7 +1492,11 @@ struct ArquivoDetalheView: View {
                         idOcorrenciaAtual: idAtual,
                         falantePreservado: preservado,
                         mostrarConfianca: mostrarConfianca,
-                        mostrarPorcentagemConfianca: mostrarPorcentagemConfianca
+                        mostrarPorcentagemConfianca: mostrarPorcentagemConfianca,
+                        estaEditando: itemEmEdicao == .fala(fala.id),
+                        textoEditado: $textoEmEdicao,
+                        aoSalvarEdicao: { salvarEdicaoDaFala(fala) },
+                        aoCancelarEdicao: { cancelarEdicaoDaFala() }
                     )
                     .id(fala.id)
                 }
@@ -1578,7 +1581,11 @@ struct ArquivoDetalheView: View {
                             idOcorrenciaAtual: idAtual,
                             falantePreservado: preservado,
                             mostrarConfianca: mostrarConfianca,
-                            mostrarPorcentagemConfianca: mostrarPorcentagemConfianca
+                            mostrarPorcentagemConfianca: mostrarPorcentagemConfianca,
+                            estaEditando: itemEmEdicao == .trecho(trecho.id),
+                            textoEditado: $textoEmEdicao,
+                            aoSalvarEdicao: { salvarEdicaoDoTrecho(trecho) },
+                            aoCancelarEdicao: { cancelarEdicaoDoTrecho() }
                         )
                         .id(trecho.id)
                 }
@@ -1598,103 +1605,28 @@ struct ArquivoDetalheView: View {
         }
     }
 
-    /// Correção em folha, e não dentro da lista.
-    ///
-    /// Na lista o campo abria mas não recebia o teclado: a linha é um alvo de
-    /// toque para tocar o trecho, e a rolagem automática do trecho ativo
-    /// reposicionava tudo embaixo do cursor. Numa folha o foco é só dele.
-    ///
-    /// Serve para o trecho e para a fala: ao salvar uma fala, os trechos de
-    /// onde ela saiu são fundidos num só com o texto corrigido, e as palavras
-    /// são descartadas (os tempos do Whisper deixam de valer).
-    private var folhaDeCorrecaoDoTrecho: some View {
-        VStack(alignment: .leading, spacing: PapagaioTema.Espaco.largo) {
-            VStack(alignment: .leading, spacing: PapagaioTema.Espaco.minimo) {
-                Text(trechoSendoCorrigido != nil ? "Corrigir trecho" : "Corrigir fala")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(PapagaioTema.texto)
-
-                if let trecho = trechoSendoCorrigido {
-                    Text("Em \(trecho.start.comoRelogio) da conversa")
-                        .font(.callout)
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                } else if let fala = falaSendoCorrigida {
-                    Text("Em \(fala.inicio.comoRelogio) da conversa")
-                        .font(.callout)
-                        .foregroundStyle(PapagaioTema.textoSecundario)
-                }
-            }
-
-            TextEditor(text: $textoDoTrechoEmEdicao)
-                .font(.system(size: 16))
-                .foregroundStyle(PapagaioTema.texto)
-                .scrollContentBackground(.hidden)
-                .textEditorStyle(.plain)
-                .padding(PapagaioTema.Espaco.medio)
-                .frame(minHeight: 160)
-                .background(PapagaioTema.superficie, in: RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: PapagaioTema.raioDeControle, style: .continuous)
-                        .stroke(PapagaioTema.borda, lineWidth: 1)
-                }
-
-            Text("O falante será mantido; o tempo da palavra será aproximado para não virar “voz desconhecida”.")
-                .font(.caption)
-                .foregroundStyle(PapagaioTema.textoSecundario)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: PapagaioTema.Espaco.medio) {
-                Spacer()
-
-                Button("Cancelar") { cancelarEdicaoDoTrecho(); cancelarEdicaoDaFala() }
-                    .buttonStyle(BotaoDeContornoPapagaio())
-
-                Button("Salvar") {
-                    if let trecho = trechoSendoCorrigido {
-                        salvarEdicaoDoTrecho(trecho)
-                    } else if let fala = falaSendoCorrigida {
-                        salvarEdicaoDaFala(fala)
-                    }
-                }
-                .buttonStyle(BotaoPrincipalPapagaio())
-                .keyboardShortcut(.return, modifiers: [.command])
-            }
-        }
-        .padding(PapagaioTema.Espaco.secao)
-        .frame(minWidth: 460, idealWidth: 560, alignment: .leading)
-        .background(PapagaioTema.fundo)
-    }
-
-    private var trechoSendoCorrigido: Trecho? {
-        trechos.first { $0.id == trechoEmEdicao }
-    }
-
-    private var falaSendoCorrigida: FalaDeFalante? {
-        falas?.first { $0.id == falaEmEdicao }
-    }
-
     private func iniciarEdicaoDoTrecho(_ trecho: Trecho) {
-        textoDoTrechoEmEdicao = trecho.texto
-        trechoEmEdicao = trecho.id
+        textoEmEdicao = trecho.texto
+        itemEmEdicao = .trecho(trecho.id)
     }
 
     private func cancelarEdicaoDoTrecho() {
-        trechoEmEdicao = nil
-        textoDoTrechoEmEdicao = ""
+        itemEmEdicao = nil
+        textoEmEdicao = ""
     }
 
     private func iniciarEdicaoDaFala(_ fala: FalaDeFalante) {
-        textoDoTrechoEmEdicao = fala.texto
-        falaEmEdicao = fala.id
+        textoEmEdicao = fala.texto
+        itemEmEdicao = .fala(fala.id)
     }
 
     private func cancelarEdicaoDaFala() {
-        falaEmEdicao = nil
-        textoDoTrechoEmEdicao = ""
+        itemEmEdicao = nil
+        textoEmEdicao = ""
     }
 
     private func salvarEdicaoDoTrecho(_ trecho: Trecho) {
-        let limpo = textoDoTrechoEmEdicao.trimmingCharacters(in: .whitespacesAndNewlines)
+        let limpo = textoEmEdicao.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelarEdicaoDoTrecho()
         guard !limpo.isEmpty, limpo != trecho.texto else { return }
 
@@ -1730,7 +1662,7 @@ struct ArquivoDetalheView: View {
     /// originais são mantidos: a janela da fala não muda, só o texto). O falante
     /// acústico é preservado com timestamp aproximado para não virar "voz desconhecida".
     private func salvarEdicaoDaFala(_ fala: FalaDeFalante) {
-        let limpo = textoDoTrechoEmEdicao.trimmingCharacters(in: .whitespacesAndNewlines)
+        let limpo = textoEmEdicao.trimmingCharacters(in: .whitespacesAndNewlines)
         cancelarEdicaoDaFala()
         guard !limpo.isEmpty, limpo != fala.texto else { return }
 
@@ -1740,7 +1672,18 @@ struct ArquivoDetalheView: View {
         else { return }
 
         let fundidoId = UUID()
-        if let falante = fala.falanteAcustico {
+        // Preserva o falante: tenta o acústico direto da fala, e se não
+        // tiver (fala já editada, sem palavras), busca o preservado dos
+        // trechos anteriores para não virar "voz desconhecida".
+        let falantePreservado: String? = fala.falanteAcustico ?? {
+            for tid in fala.trechoIds {
+                if let p = FalantePreservadoParaTrecho.obter(para: tid, arquivo: arquivo.id) {
+                    return p
+                }
+            }
+            return nil
+        }()
+        if let falante = falantePreservado {
             FalantePreservadoParaTrecho.definir(falante, para: fundidoId, arquivo: arquivo.id)
         }
         let fundido = Trecho(
@@ -1780,7 +1723,9 @@ struct ArquivoDetalheView: View {
                 palavras: restantes
             ))
         }
-        atualizados.sort { $0.start < $1.start }
+        // `atualizados` já está na ordem original — percorre `trechos` em
+        // ordem e só remove/substitui os que pertencem a esta fala. Não
+        // reordenar: o sort por `start` bagunça trechos com mesmo instante.
         atualizados.insert(fundido, at: indiceDeInsercao(fundido, em: atualizados))
 
         Task { @MainActor in
