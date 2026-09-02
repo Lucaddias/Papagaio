@@ -86,7 +86,18 @@ public enum Segmentacao {
         microfone: [Trecho],
         sistema: [Trecho]
     ) -> [Trecho] {
-        let microfoneMarcado = microfone.map { marcar($0, como: Speaker.eu) }
+        // Remove trechos do microfone que são provavelmente silêncio/ruído
+        // (Whisper alucina texto em áudio limpo pós-AEC).
+        let microfoneLimpo = microfone.filter { trecho in
+            // Se o Whisper indica alta probabilidade de "sem fala", descarta.
+            if let p = trecho.noSpeechProb, p > 0.6 { return false }
+            // Trechos muito curtos (< 0.5s) no microfone com sistema ativo
+            // costumam ser ruído residual.
+            if trecho.end - trecho.start < 0.5 { return false }
+            return true
+        }
+
+        let microfoneMarcado = microfoneLimpo.map { marcar($0, como: Speaker.eu) }
         let sistemaMarcado = sistema.map { marcar($0, como: Speaker.interlocutor) }
 
         // Eco: texto igual e simultâneo nos dois canais. A versão anterior
@@ -100,7 +111,7 @@ public enum Segmentacao {
             let tokensDoMicrofone = tokensDe(trechoDoMicrofone.texto)
             return !sistemaComTokens.contains { item in
                 sobrepoe(trechoDoMicrofone, item.trecho)
-                    && jaccard(tokensDoMicrofone, item.tokens) >= 0.86
+                    && jaccard(tokensDoMicrofone, item.tokens) >= 0.75
             }
         }
         let comFalante = microfoneSemEco + sistemaMarcado

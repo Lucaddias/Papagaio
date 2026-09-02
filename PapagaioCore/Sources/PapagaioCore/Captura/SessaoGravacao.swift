@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 /// Uma sessão de gravação — backend portado do Eko (`RecordingController`).
@@ -24,6 +25,10 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
         /// Tamanho em bytes do arquivo principal de áudio (`microfone.wav`).
         public let bytesMixagem: Int
         public let avisos: [String]
+        /// Se o usuário estava com fones de ouvido (ou Bluetooth) no momento
+        /// da gravação. Usado pelo pipeline para decidir se aplica cancelamento
+        /// de eco no microfone.
+        public let usavaFones: Bool
 
         public init(
             id: UUID,
@@ -31,7 +36,8 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
             duracao: TimeInterval,
             capturouAudioDoSistema: Bool,
             bytesMixagem: Int,
-            avisos: [String]
+            avisos: [String],
+            usavaFones: Bool = false
         ) {
             self.id = id
             self.pastaRelativa = pastaRelativa
@@ -39,6 +45,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
             self.capturouAudioDoSistema = capturouAudioDoSistema
             self.bytesMixagem = bytesMixagem
             self.avisos = avisos
+            self.usavaFones = usavaFones
         }
     }
 
@@ -61,6 +68,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
     private var systemTap: SystemAudioTap?
     private var sistemaURL: URL?
     private var capturouSistema = false
+    private var estavamFonesNoInicio = false
     #endif
 
     /// Tempo de áudio gravado até agora, em segundos (o `currentTime` do
@@ -113,6 +121,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
 
         // 2. Áudio do sistema — desejável, não obrigatório. Sem crash, com aviso.
         #if os(macOS)
+        estavamFonesNoInicio = Self.detectarFonesDeOuvido()
         iniciarSistemaSePossivel()
         #endif
 
@@ -257,7 +266,8 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
             duracao: duracao,
             capturouAudioDoSistema: sistemaOk,
             bytesMixagem: bytes,
-            avisos: avisos
+            avisos: avisos,
+            usavaFones: estavamFonesNoInicio
         )
     }
 
@@ -283,6 +293,50 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
         return true
     }
     #endif
+
+    /// Detecta se o dispositivo de saída padrão é um fone de ouvido ou
+    /// Bluetooth, consultando o CoreAudio.
+    private static func detectarFonesDeOuvido() -> Bool {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var deviceID: AudioDeviceID = 0
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0, nil,
+            &dataSize, &deviceID
+        )
+
+        guard deviceID != kAudioDeviceUnknown else { return false }
+
+        propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transportType: UInt32 = 0
+        dataSize = UInt32(MemoryLayout<UInt32>.size)
+        let status = AudioObjectGetPropertyData(
+            deviceID,
+            &propertyAddress,
+            0, nil,
+            &dataSize, &transportType
+        )
+        guard status == noErr else { return false }
+
+        switch transportType {
+        case kAudioDeviceTransportTypeBluetooth,
+             kAudioDeviceTransportTypeBluetoothLE,
+             kAudioDeviceTransportTypeUSB:
+            return true
+        default:
+            return false
+        }
+    }
 
     private func encerrarCaptura() -> SystemAudioTap.Statistics? {
         timer?.invalidate()

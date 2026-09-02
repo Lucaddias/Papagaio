@@ -169,7 +169,19 @@ public struct PipelineDeArquivo: Sendable {
         let temSistema = canais.sistema != nil
 
         if temMicrofone {
-            let doMicrofone = try await transcrever(canais.microfone!, Speaker.eu)
+            // Aplica AEC quando o usuário NÃO estava com fones e há áudio do
+            // sistema — o eco do alto-falante vaza para o microfone e prejudica
+            // a transcrição. Com fones, o eco não existe e o AEC é desnecessário.
+            var urlMicrofone = canais.microfone!
+            if arquivo.usavaFones == false, temSistema {
+                let pasta = armazenamento.resolver(relativo: arquivo.pastaRelativa)
+                urlMicrofone = try await aplicarAEC(
+                    microfoneURL: canais.microfone!,
+                    sistemaURL: canais.sistema!,
+                    pasta: pasta
+                )
+            }
+            let doMicrofone = try await transcrever(urlMicrofone, Speaker.eu)
             // O canal do sistema é acessório: se ele estiver corrompido — tap
             // que morreu no meio, arquivo só com cabeçalho — a conversa ainda
             // tem o microfone, que é o principal. Deixar o erro subir aqui
@@ -279,7 +291,8 @@ public struct PipelineDeArquivo: Sendable {
             // `criadoEm` (a data real da gravação, possivelmente antiga).
             // O cartão não desaparecia de verdade, só ia parar longe do
             // topo da grade, ordenado pela data errada.
-            importadoEm: arquivo.importadoEm
+            importadoEm: arquivo.importadoEm,
+            usavaFones: arquivo.usavaFones
         )
         // Costura de vozes iguais: fala duvidosa entre dois pedaços da MESMA
         // voz recebe o rótulo dela sem custo de modelo — é a leitura acústica
@@ -346,5 +359,36 @@ public struct PipelineDeArquivo: Sendable {
             return importado
         }
         return mixagem
+    }
+
+    /// Aplica cancelamento de eco acústico no sinal do microfone usando o
+    /// sinal do sistema como referência. Devolve a URL de um arquivo PCM
+    /// temporário com o microfone limpo.
+    private func aplicarAEC(
+        microfoneURL: URL,
+        sistemaURL: URL,
+        pasta: URL
+    ) async throws -> URL {
+        let micAmostras = try await DecodificadorDeAudio.amostras(de: microfoneURL)
+        let sisAmostras = try await DecodificadorDeAudio.amostras(de: sistemaURL)
+
+        let cancelador = CanceladorDeEco(tamanhoBloco: 512, comprimentoFiltro: 4096)
+        let bloco = cancelador.tamanhoBloco
+        let total = min(micAmostras.count, sisAmostras.count)
+        var limpa = [Float](repeating: 0, count: total)
+
+        var offset = 0
+        while offset + bloco <= total {
+            let micBloco = Array(micAmostras[offset..<(offset + bloco)])
+            let sisBloco = Array(sisAmostras[offset..<(offset + bloco)])
+            let resultado = cancelador.processar(blocoMicrofone: micBloco, blocoSistema: sisBloco)
+            for i in 0..<bloco { limpa[offset + i] = resultado[i] }
+            offset += bloco
+        }
+
+        let urlLimpa = pasta.appendingPathComponent("microfone_aec.pcm")
+        let dados = limpa.withUnsafeBytes { Data($0) }
+        try dados.write(to: urlLimpa, options: .atomic)
+        return urlLimpa
     }
 }

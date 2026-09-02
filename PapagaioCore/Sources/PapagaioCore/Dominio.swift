@@ -477,6 +477,12 @@ public struct Arquivo: Sendable, Identifiable, Codable, Equatable {
     /// mesma coisa, e um segundo campo só repetiria `criadoEm`.
     public var importadoEm: Date?
 
+    /// Se o usuário estava com fones de ouvido (ou Bluetooth) durante a
+    /// gravação. Quando `true`, o áudio do sistema não vaza para o microfone
+    /// e o cancelamento de eco não é necessário. `nil` para arquivos
+    /// importados ou gravações anteriores à esta feature.
+    public var usavaFones: Bool?
+
     /// O critério certo para ordenar "mais recente primeiro" na biblioteca.
     ///
     /// Não é `criadoEm`: numa importação, `criadoEm` passou a valer a data
@@ -512,7 +518,8 @@ public struct Arquivo: Sendable, Identifiable, Codable, Equatable {
         engineResumo: String? = nil,
         apagadoEm: Date? = nil,
         idExterno: String? = nil,
-        importadoEm: Date? = nil
+        importadoEm: Date? = nil,
+        usavaFones: Bool? = nil
     ) {
         self.id = id
         self.titulo = titulo
@@ -528,5 +535,6 @@ public struct Arquivo: Sendable, Identifiable, Codable, Equatable {
         self.apagadoEm = apagadoEm
         self.idExterno = idExterno
         self.importadoEm = importadoEm
+        self.usavaFones = usavaFones
     }
 }
