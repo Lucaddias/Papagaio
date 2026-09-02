@@ -450,7 +450,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Loro;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ōmu";
+				INFOPLIST_KEY_CFBundleName = "Ōmu";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "O Papagaio usa eventos do calendário para reconhecer participantes e o contexto da reunião.";
@@ -486,7 +487,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Config/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Loro;
+				INFOPLIST_KEY_CFBundleDisplayName = "Ōmu";
+				INFOPLIST_KEY_CFBundleName = "Ōmu";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "O Papagaio usa eventos do calendário para reconhecer participantes e o contexto da reunião.";

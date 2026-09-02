@@ -11,7 +11,7 @@ public enum ErroAudioFile: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .armazenamentoIndisponivel:
-            "Não foi possível acessar o armazenamento local do Papagaio."
+            "Não foi possível acessar o armazenamento local do Ōmu."
         case .arquivoSemAudio:
             "O arquivo selecionado não contém uma faixa de áudio válida."
         case .arquivoNaoBaixadoDoICloud:

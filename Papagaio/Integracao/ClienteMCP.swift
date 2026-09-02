@@ -81,7 +81,7 @@ final class ClienteMCP: @unchecked Sendable {
                 "protocolVersion": "2025-03-26",
                 "capabilities": [:],
                 "clientInfo": [
-                    "name": "Papagaio",
+                    "name": "Ōmu",
                     "version": "1.0",
                 ],
             ],

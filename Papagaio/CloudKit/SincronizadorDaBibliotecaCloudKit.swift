@@ -108,7 +108,7 @@ enum DiagnosticoDaSincronizacaoCloudKit {
         }
         if normalizado.contains("type is not marked indexable")
             && normalizado.contains("conversa") {
-            return "A versão instalada ainda tenta consultar o tipo de registro “Conversa”, mas ele não está indexado no CloudKit. Atualize o Papagaio para a versão que sincroniza diretamente a zona compartilhada; suas alterações locais permanecem neste Mac."
+            return "A versão instalada ainda tenta consultar o tipo de registro “Conversa”, mas ele não está indexado no CloudKit. Atualize o Ōmu para a versão que sincroniza diretamente a zona compartilhada; suas alterações locais permanecem neste Mac."
         }
         return texto
     }

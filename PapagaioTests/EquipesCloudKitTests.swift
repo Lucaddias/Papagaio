@@ -232,7 +232,7 @@ func diagnosticoCloudKitExplicaErroDeIndiceDeConversa() {
         paraTexto: "Type is not marked indexable: Conversa"
     )
 
-    #expect(mensagem.contains("Atualize o Papagaio"))
+    #expect(mensagem.contains("Atualize o Ōmu"))
     #expect(mensagem.contains("zona compartilhada"))
 }
 

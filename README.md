@@ -1,4 +1,4 @@
-# Papagaio
+# Ōmu
 
 > Reuniões gravadas, transcritas e transformadas em contexto acionável — com
 > processamento local e espaços de equipe no iCloud.
@@ -8,7 +8,7 @@
 [![Swift](https://img.shields.io/badge/Swift-6-F05138.svg)](https://www.swift.org/)
 [![Licença](https://img.shields.io/badge/licença-não%20definida-lightgrey.svg)](#licença)
 
-O Papagaio é um aplicativo macOS para capturar ou importar áudios de reuniões,
+O Ōmu é um aplicativo macOS para capturar ou importar áudios de reuniões,
 organizar a biblioteca resultante e gerar transcrições, resumos, notas e tarefas.
 O fluxo individual permanece no dispositivo; equipes usam um espaço CloudKit
 compartilhado para sincronizar os dados textuais das conversas.
@@ -25,7 +25,7 @@ compartilhado para sincronizar os dados textuais das conversas.
 ## Capturas da build atual
 
 <p align="center">
-  <img src="docs/assets/biblioteca-vazia.jpeg" alt="Biblioteca do Papagaio pronta para gravar ou importar uma conversa" width="49%" />
+  <img src="docs/assets/biblioteca-vazia.jpeg" alt="Biblioteca do Ōmu pronta para gravar ou importar uma conversa" width="49%" />
   <img src="docs/assets/equipe-cloudkit-anonimizada.png" alt="Tela de gerenciamento de equipe com código de entrada protegido" width="49%" />
 </p>
 
@@ -58,8 +58,9 @@ SwiftData; cada equipe recebe uma custom zone CloudKit compartilhada por
 `CKShare`. O processamento de áudio e IA é executado no Mac com `whisper.cpp`,
 `llama.cpp`, ONNX Runtime/Silero VAD e FluidAudio.
 
-`Loro.xcodeproj` e o scheme `Loro` são os nomes técnicos mantidos por
-compatibilidade; o produto e a documentação usam o nome Papagaio.
+`Loro.xcodeproj`, o scheme `Loro` e os diretórios `Papagaio*` são nomes
+técnicos mantidos por compatibilidade; o produto — o nome exibido no app e na
+App Store — é Ōmu.
 
 ## Requisitos
 

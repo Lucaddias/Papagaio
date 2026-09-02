@@ -32,7 +32,7 @@ enum ErroOAuthGoogle: LocalizedError, Equatable {
         case .semRefreshToken:
             return "A sessão expirou e não há refresh token. Conecte de novo."
         case .navegadorNaoAbriu:
-            return "O navegador não abriu — confira se o Papagaio pode abrir janelas e tente de novo."
+            return "O navegador não abriu — confira se o Ōmu pode abrir janelas e tente de novo."
         case .tempoEsgotado:
             return "Tempo esgotado esperando sua autorização — volte ao navegador e tente de novo."
         case let .servidorLocalFalhou(msg):
@@ -529,8 +529,8 @@ actor ServidorOAuthLocal {
     ) throws {
         let sucesso = status.hasPrefix("200")
         let corpo = sucesso
-            ? "<html><body><h1>Autorização concluída</h1><p>Pode fechar esta janela e voltar ao Papagaio.</p></body></html>"
-            : "<html><body><h1>Autorização recusada</h1><p>Volte ao Papagaio e tente novamente.</p></body></html>"
+            ? "<html><body><h1>Autorização concluída</h1><p>Pode fechar esta janela e voltar ao Ōmu.</p></body></html>"
+            : "<html><body><h1>Autorização recusada</h1><p>Volte ao Ōmu e tente novamente.</p></body></html>"
         let corpoData = Data(corpo.utf8)
         var resposta = Data("HTTP/1.1 \(status)\r\n".utf8)
         resposta.append(Data("Content-Type: text/html; charset=utf-8\r\n".utf8))
