@@ -47,6 +47,7 @@ public actor SwiftDataRepository: ArquivoRepository {
         persistido.duracao = a.duracao
         persistido.pastaRelativa = a.pastaRelativa
         persistido.idExterno = a.idExterno
+        persistido.usavaFones = a.usavaFones
         persistido.engineTranscricao = a.engineTranscricao
         persistido.engineResumo = a.engineResumo
         // Uma atualização tardia do pipeline não pode ressuscitar um item que
@@ -503,7 +504,8 @@ public actor SwiftDataRepository: ArquivoRepository {
             engineResumo: p.engineResumo,
             apagadoEm: p.apagadoEm,
             idExterno: p.idExterno,
-            importadoEm: p.importadoEm
+            importadoEm: p.importadoEm,
+            usavaFones: p.usavaFones
         )
     }
 }

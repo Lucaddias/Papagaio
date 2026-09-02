@@ -423,11 +423,23 @@ struct ContentView: View {
             }
             granola = conexao
 
-            let conexaoGoogle = GoogleCalendarViewModel()
+let conexaoGoogle = GoogleCalendarViewModel()
             conexaoGoogle.aoNotificar = { titulo, mensagem, tipo in
                 notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: tipo)
             }
             googleCalendar = conexaoGoogle
+
+            // Conecta automaticamente se o usuário já autenticou antes
+            // (tem refresh token salvo). Na primeira vez, só conecta
+            // pelo botão nas configurações para não abrir o navegador
+            // toda vez que o app inicia.
+            let temTokenSalvo = CofreDeTokens(servico: "papagaio:google-calendar")
+                .carregar(conta: "refresh_token") != nil
+            if CredenciaisGoogle.estaConfigurado && temTokenSalvo {
+                Task {
+                    await conexaoGoogle.conectar(biblioteca: nova)
+                }
+            }
 
             let gerenciador = ModelosViewModel(
                 pastaDoContainer: nova.armazenamento.pastaDeModelos

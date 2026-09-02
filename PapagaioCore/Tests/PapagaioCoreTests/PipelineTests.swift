@@ -230,8 +230,9 @@ func pipelineDiarizaPorCanal() async throws {
     // O rótulo do canal não muda — diarização não é o speaker.
     #expect(final.trechos[0].speaker == Speaker.eu)
     #expect(final.trechos[1].speaker == Speaker.interlocutor)
-    // As palavras herdaram o falante acústico.
-    #expect(final.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "S1" })
+    // As palavras herdaram o falante acústico com namespace do canal.
+    #expect(final.trechos[0].palavras.allSatisfy { $0.falanteAcustico == "eu-S1" })
+    #expect(final.trechos[1].palavras.allSatisfy { $0.falanteAcustico == "interlocutor-S1" })
 }
 
 @Test("Falha de diarização nunca derruba transcrição nem resumo")
@@ -351,8 +352,9 @@ func pipelineDiarizaExistenteSemRetranscrever() async throws {
     // Leve: nada de Whisper nem de Qwen.
     #expect(transcreveu.withLock { $0 } == false)
     #expect(resumiu.withLock { $0 } == false)
-    // Só a diarização casou os falantes com as palavras já existentes.
-    #expect(diarizado.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "S1" })
+    // Só a diarização casou os falantes com as palavras já existentes,
+    // com namespace do canal de origem.
+    #expect(diarizado.trechos.flatMap(\.palavras).allSatisfy { $0.falanteAcustico == "eu-S1" })
     #expect(diarizado.resumo?.titulo == "Resumo")
 }
 
@@ -407,12 +409,15 @@ func pipelineDiarizaExistenteResolvePorContexto() async throws {
             let trechos = arquivo.trechos.map { umTrecho in
                 umTrecho.comPalavras(umTrecho.palavras.map { palavra in
                     guard palavra.falanteAcustico == nil else { return palavra }
+                    // O namespace do canal já veio da diarização ("eu-S1").
+                    // A resolução usa o mesmo prefixo para o segundo falante.
+                    let canalPrefixo = umTrecho.speaker.map { "\($0)-" } ?? ""
                     return Palavra(
                         id: palavra.id,
                         start: palavra.start,
                         end: palavra.end,
                         texto: palavra.texto,
-                        falanteAcustico: "S2"
+                        falanteAcustico: "\(canalPrefixo)S2"
                     )
                 })
             }
@@ -436,10 +441,10 @@ func pipelineDiarizaExistenteResolvePorContexto() async throws {
     let diarizado = await pipeline.diarizarExistente(antigo)
 
     // A resolução contextual rodou em cima do resultado da diarização: "oi"
-    // veio rotulado S1 e continuou intacto; "sim" ganhou S2.
+    // veio rotulado eu-S1 e continuou intacto; "sim" ganhou eu-S2.
     #expect(resolverChamado.withLock { $0 } == true)
-    #expect(diarizado.trechos[0].palavras[0].falanteAcustico == "S1")
-    #expect(diarizado.trechos[0].palavras[1].falanteAcustico == "S2")
+    #expect(diarizado.trechos[0].palavras[0].falanteAcustico == "eu-S1")
+    #expect(diarizado.trechos[0].palavras[1].falanteAcustico == "eu-S2")
 }
 
 @Test("Silêncio total não vira resumo inventado")

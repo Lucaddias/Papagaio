@@ -286,7 +286,9 @@ public enum ResolvedorDeFalantes {
             engineTranscricao: arquivo.engineTranscricao,
             engineResumo: arquivo.engineResumo,
             apagadoEm: arquivo.apagadoEm,
-            idExterno: arquivo.idExterno
+            idExterno: arquivo.idExterno,
+            importadoEm: arquivo.importadoEm,
+            usavaFones: arquivo.usavaFones
         )
     }
 

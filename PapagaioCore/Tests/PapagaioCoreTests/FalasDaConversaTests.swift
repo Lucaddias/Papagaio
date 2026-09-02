@@ -162,20 +162,57 @@ func falasCarregamCanalUniforme() {
 
 @Test("Fala mista entre microfone e sistema fica sem canal de origem")
 func falasMistasPerdemCanal() {
+    // Com labels namespaced (resultado do pipeline), "eu-S1" e
+    // "interlocutor-S1" são labels diferentes — never se fundem.
     let mic = trecho(UUID(), 0, 3, palavras: [
-        palavra("oi", 0, 1, falante: "S1"),
+        palavra("oi", 0, 1, falante: "eu-S1"),
     ], speaker: Speaker.eu)
     let sis = trecho(UUID(), 3, 6, palavras: [
-        palavra("bem", 3, 4, falante: "S1"),
+        palavra("bem", 3, 4, falante: "interlocutor-S1"),
     ], speaker: Speaker.interlocutor)
 
     let falas = FalasDaConversa.agrupar([mic, sis])
-    #expect(falas?.count == 1)
-    #expect(falas?.first?.falanteAcustico == "S1")
-    #expect(falas?.first?.speaker == nil)
+    #expect(falas?.count == 2)
+    #expect(falas?.first?.falanteAcustico == "eu-S1")
+    #expect(falas?.first?.speaker == Speaker.eu)
+    #expect(falas?.last?.falanteAcustico == "interlocutor-S1")
+    #expect(falas?.last?.speaker == Speaker.interlocutor)
 }
 
 @Test("Trechos vazios devolvem nil, não falas vazias")
 func falasSemTrechosDevolveNil() {
     #expect(FalasDaConversa.agrupar([]) == nil)
+}
+
+@Test("Nomes do mesmo canal com labels namespaced encadeiam na mesma fala")
+func falasMesmoCanalNamespacedEncadeiam() {
+    let trechos = [
+        trecho(UUID(), 0, 3, palavras: [
+            palavra("oi", 0, 1, falante: "eu-S1"),
+            palavra("tudo", 1, 2, falante: "eu-S1"),
+        ], speaker: Speaker.eu),
+        trecho(UUID(), 3, 6, palavras: [
+            palavra("bem", 3, 4, falante: "eu-S1"),
+        ], speaker: Speaker.eu),
+    ]
+
+    let falas = FalasDaConversa.agrupar(trechos)
+    #expect(falas?.count == 1)
+    #expect(falas?.first?.falanteAcustico == "eu-S1")
+    #expect(falas?.first?.speaker == Speaker.eu)
+}
+
+@Test("Canais diferentes com mesmo número S separados pelo namespace")
+func namespacesSepararCanaisMesmoNumero() {
+    let mic = trecho(UUID(), 0, 3, palavras: [
+        palavra("oi", 0, 1, falante: "eu-S1"),
+    ], speaker: Speaker.eu)
+    let sis = trecho(UUID(), 3, 6, palavras: [
+        palavra("bem", 3, 4, falante: "interlocutor-S1"),
+    ], speaker: Speaker.interlocutor)
+
+    let falas = FalasDaConversa.agrupar([mic, sis])
+    #expect(falas?.count == 2)
+    #expect(falas?.first?.falanteAcustico == "eu-S1")
+    #expect(falas?.last?.falanteAcustico == "interlocutor-S1")
 }

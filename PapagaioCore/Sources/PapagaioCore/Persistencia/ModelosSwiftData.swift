@@ -55,6 +55,10 @@ public final class ArquivoPersistido {
     /// em qualquer registro salvo antes deste campo existir.
     public var importadoEm: Date?
 
+    /// Se o usuário estava com fones de ouvido durante a gravação.
+    /// `nil` para arquivos importados ou gravações anteriores à esta feature.
+    public var usavaFones: Bool?
+
     /// Título e visão geral do resumo. O resto do `Resumo` vira `InsightPersistido`.
     ///
     /// **Não opcionais, com default.** Um `String?` obrigaria o predicado de
