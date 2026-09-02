@@ -183,7 +183,7 @@ struct GestaoDeEquipeView: View {
             Text(equipe.codigoDeEntrada ?? "Código indisponível para equipes criadas antes desta atualização.")
                 .font(.title2.monospaced().weight(.semibold))
                 .textSelection(.enabled)
-            Text("Compartilhe este código com quem deve entrar. Ao informá-lo no Loro, a pessoa recebe acesso de leitura e escrita à equipe nesta Apple Account.")
+            Text("Compartilhe este código com quem deve entrar. Ao informá-lo no Ōmu, a pessoa recebe acesso de leitura e escrita à equipe nesta Apple Account.")
                 .font(.callout)
                 .foregroundStyle(PapagaioTema.textoSecundario)
         }

@@ -228,7 +228,7 @@ public final class SessaoGravacao: NSObject, AVAudioRecorderDelegate {
             sistemaOk = false
             capturouSistema = false
             if let urlDoSistema { try? FileManager.default.removeItem(at: urlDoSistema) }
-            avisos.append("Áudio do sistema não recebeu callbacks. Verifique a permissão de Captura de Áudio do Sistema para este Papagaio.")
+            avisos.append("Áudio do sistema não recebeu callbacks. Verifique a permissão de Captura de Áudio do Sistema para este Ōmu.")
         } else if let pico = estatisticasDoSistema?.peak, pico < 0.000_1 {
             sistemaOk = false
             capturouSistema = false

@@ -114,7 +114,7 @@ struct ApresentadorDeTerminal: ApresentadorDeAutorizacaoOAuth {
 
     func autorizar(url: URL) async throws -> String {
         print()
-        print("Autorização necessária — autorize o Papagaio no navegador:")
+        print("Autorização necessária — autorize o Ōmu no navegador:")
         print()
         print("  \(url.absoluteString)")
         print()

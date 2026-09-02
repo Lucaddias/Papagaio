@@ -29,15 +29,15 @@ enum ErroOAuth: LocalizedError, Equatable {
         case .semCodigoDeAutorizacao:
             "O navegador voltou sem o código de autorização. Tente de novo."
         case .registroFalhou:
-            "Não foi possível registrar o Papagaio no servidor do Granola."
+            "Não foi possível registrar o Ōmu no servidor do Granola."
         case .respostaInvalida:
             "O servidor de autorização respondeu de forma inesperada."
         case let .servidor(mensagem):
             "O servidor respondeu: \(mensagem)."
         case .semRefreshToken:
-            "A sessão expirou e o Papagaio não tem como renová-la. Conecte de novo."
+            "A sessão expirou e o Ōmu não tem como renová-la. Conecte de novo."
         case .navegadorNaoAbriu:
-            "O navegador não abriu — confira se o Papagaio pode abrir janelas e tente de novo."
+            "O navegador não abriu — confira se o Ōmu pode abrir janelas e tente de novo."
         case .tempoEsgotado:
             "Tempo esgotado esperando sua autorização — volte ao navegador e tente de novo."
         }
@@ -191,7 +191,7 @@ final class SessaoOAuth: Sendable {
         return credenciais.accessToken
     }
 
-    /// DCR (RFC 7591): o Papagaio se registra como cliente novo na primeira
+    /// DCR (RFC 7591): o Ōmu se registra como cliente novo na primeira
     /// conexão. O registro é guardado — sem ele o refresh não funciona depois.
     private func registrar(metadados: MetadadosDoServidor) async throws -> ClienteRegistrado {
         if let guardado: ClienteRegistrado = cofre.carregar(conta: "client")
@@ -200,7 +200,7 @@ final class SessaoOAuth: Sendable {
         }
 
         let parametros: [String: Any] = [
-            "client_name": "Papagaio",
+            "client_name": "Ōmu",
             "redirect_uris": ["papagaio://oauth/callback"],
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],

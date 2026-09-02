@@ -63,7 +63,7 @@ public enum ResultadoPreflight: Sendable, Equatable {
         case .pronto:
             "Tudo pronto."
         case let .ramInsuficiente(instalada, minima):
-            "O Papagaio precisa de \(Preflight.gb(minima)) de memória e este Mac tem "
+            "O Ōmu precisa de \(Preflight.gb(minima)) de memória e este Mac tem "
                 + "\(Preflight.gb(instalada)). Não há modo reduzido: a transcrição e o resumo "
                 + "rodam inteiramente no seu Mac, e os modelos não cabem."
         case let .discoInsuficiente(livre, minimo):

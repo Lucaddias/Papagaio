@@ -93,7 +93,7 @@ enum FonteGranolaErro: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .respostaInesperada:
-            "O Granola respondeu algo que o Papagaio não reconheceu."
+            "O Granola respondeu algo que o Ōmu não reconheceu."
         case let .reuniaoNaoEncontrada(id):
             "A reunião \(id) não foi encontrada no Granola."
         }

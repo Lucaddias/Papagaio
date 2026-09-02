@@ -163,7 +163,7 @@ struct ConfiguracoesView: View {
                         .font(PapagaioTema.Tipo.corpo.weight(.semibold))
                         .foregroundStyle(PapagaioTema.texto)
 
-                    Text("Uma janela pequena, sempre visível por cima dos outros apps, para anotar, pausar e finalizar sem voltar ao Papagaio.")
+                    Text("Uma janela pequena, sempre visível por cima dos outros apps, para anotar, pausar e finalizar sem voltar ao Ōmu.")
                         .font(PapagaioTema.Tipo.apoio)
                         .foregroundStyle(PapagaioTema.textoSecundario)
                         .fixedSize(horizontal: false, vertical: true)
@@ -232,7 +232,7 @@ struct ConfiguracoesView: View {
                     listaDeReunioes(granola)
                 }
 
-                Text("Conectado, o Papagaio pode ver suas reuniões do Granola e importá-las para a biblioteca — notas e resumo sempre; a transcrição quando o seu plano incluir. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Granola.")
+                Text("Conectado, o Ōmu pode ver suas reuniões do Granola e importá-las para a biblioteca — notas e resumo sempre; a transcrição quando o seu plano incluir. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Granola.")
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)
@@ -274,7 +274,7 @@ struct ConfiguracoesView: View {
                     listaDeReunioesGoogleCalendar(googleCalendar)
                 }
 
-                Text("Conectado, o Papagaio pode ver suas reuniões futuras do Google Calendar e importá-las para a biblioteca — apenas título, data e participantes. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Google.")
+                Text("Conectado, o Ōmu pode ver suas reuniões futuras do Google Calendar e importá-las para a biblioteca — apenas título, data e participantes. Nada é enviado para fora do seu Mac além do fluxo de autorização e das chamadas ao próprio Google.")
                     .font(PapagaioTema.Tipo.apoio)
                     .foregroundStyle(PapagaioTema.textoSecundario)
                     .fixedSize(horizontal: false, vertical: true)
@@ -315,14 +315,14 @@ struct ConfiguracoesView: View {
                 } label: {
                     Label("Conectar conta Granola…", systemImage: "person.badge.plus")
                 }
-                .help("Abre o navegador do macOS para autorizar o Papagaio na sua conta do Granola.")
+                .help("Abre o navegador do macOS para autorizar o Ōmu na sua conta do Granola.")
             }
 
         case .conectando:
             HStack(spacing: PapagaioTema.Espaco.medio) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Autorize no navegador e volte ao Papagaio…")
+                Text("Autorize no navegador e volte ao Ōmu…")
                     .font(PapagaioTema.Tipo.corpo)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }
@@ -502,14 +502,14 @@ struct ConfiguracoesView: View {
                     Label("Conectar conta Google…", systemImage: "person.badge.plus")
                 }
                 .disabled(!CredenciaisGoogle.estaConfigurado)
-                .help("Abre o navegador para autorizar o Papagaio na sua conta Google.")
+                .help("Abre o navegador para autorizar o Ōmu na sua conta Google.")
             }
 
         case .conectando:
             HStack(spacing: PapagaioTema.Espaco.medio) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Autorize no navegador e volte ao Papagaio…")
+                Text("Autorize no navegador e volte ao Ōmu…")
                     .font(PapagaioTema.Tipo.corpo)
                     .foregroundStyle(PapagaioTema.textoSecundario)
             }

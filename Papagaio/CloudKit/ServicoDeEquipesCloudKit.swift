@@ -44,7 +44,7 @@ actor ServicoDeEquipesCloudKit {
     /// Cria o workspace e o compartilhamento da zona de uma equipe nova.
     ///
     /// O código de entrada resolve o link do compartilhamento e concede acesso
-    /// de edição à zona inteira para a Apple Account que o informar no Loro.
+    /// de edição à zona inteira para a Apple Account que o informar no Ōmu.
     func criarWorkspace(para equipe: EquipeDisponivel) async throws -> EquipeDisponivel {
         try await garantirContaICloudDisponivel()
 
@@ -576,7 +576,7 @@ enum ErroDeEquipeCloudKit: LocalizedError {
         case .equipeAindaLocal:
             "Esta equipe ainda não foi publicada no CloudKit."
         case .registroDaEquipeInvalido:
-            "O convite não contém uma equipe válida do Papagaio."
+            "O convite não contém uma equipe válida do Ōmu."
         case .zonaCompartilhadaIndisponivel:
             "Não encontrei a zona compartilhada desta equipe no iCloud. Entre novamente com o código da equipe."
         case .codigoInvalido:
