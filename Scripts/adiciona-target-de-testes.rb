@@ -17,7 +17,7 @@ app.build_configurations.each do |cfg|
 end
 
 # O app compila como módulo "Papagaio" para os testes usarem
-# `@testable import Papagaio` como escrito (o produto segue sendo Loro.app).
+# `@testable import Papagaio` como escrito (o produto é Ōmu.app).
 app.build_configurations.each do |cfg|
   cfg.build_settings["PRODUCT_MODULE_NAME"] = "Papagaio"
 end
@@ -61,7 +61,7 @@ tests.build_configurations.each do |cfg|
   s["PRODUCT_BUNDLE_IDENTIFIER"] = "com.papagaio.tests"
   s["PRODUCT_NAME"] = "$(TARGET_NAME)"
   s["GENERATE_INFOPLIST_FILE"] = "YES"
-  s["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro"
+  s["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/Ōmu.app/Contents/MacOS/Ōmu"
   s["SWIFT_VERSION"] = "6.0"
   s["MACOSX_DEPLOYMENT_TARGET"] = "26.0"
   s["CODE_SIGN_STYLE"] = "Automatic"

@@ -58,9 +58,10 @@ SwiftData; cada equipe recebe uma custom zone CloudKit compartilhada por
 `CKShare`. O processamento de áudio e IA é executado no Mac com `whisper.cpp`,
 `llama.cpp`, ONNX Runtime/Silero VAD e FluidAudio.
 
-`Loro.xcodeproj`, o scheme `Loro` e os diretórios `Papagaio*` são nomes
-técnicos mantidos por compatibilidade; o produto — o nome exibido no app e na
-App Store — é Ōmu.
+`Loro.xcodeproj`, o scheme `Loro`, o target `Loro` e os diretórios `Papagaio*`
+são nomes técnicos mantidos por compatibilidade. O produto se chama Ōmu: o
+`PRODUCT_NAME` é `Ōmu`, então a build gera `Ōmu.app` — e é o nome do arquivo do
+bundle, não `CFBundleDisplayName`, que o Finder e o Dock exibem no macOS.
 
 ## Requisitos
 

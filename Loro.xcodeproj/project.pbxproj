@@ -80,7 +80,7 @@
 		EFC95792D15A8E5CF5FEE225 /* PastasDaBibliotecaTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PastasDaBibliotecaTests.swift; sourceTree = "<group>"; };
 		F42B4CC7E5D3B0A8B6FB1109 /* PapagaioTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PapagaioTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F978E98D2CF3C2643BF64AF8 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
-		PA00000000000000000006 /* Loro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		PA00000000000000000006 /* Ōmu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Ōmu.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		PA00000000000000000013 /* Papagaio.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Papagaio.entitlements; sourceTree = "<group>"; };
 		PA00000000000000000020 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -164,7 +164,7 @@
 		PA00000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				PA00000000000000000006 /* Loro.app */,
+				PA00000000000000000006 /* Ōmu.app */,
 				F42B4CC7E5D3B0A8B6FB1109 /* PapagaioTests.xctest */,
 			);
 			name = Products;
@@ -236,7 +236,7 @@
 				PA00000000000000000011 /* PapagaioCore */,
 			);
 			productName = Papagaio;
-			productReference = PA00000000000000000006 /* Loro.app */;
+			productReference = PA00000000000000000006 /* Ōmu.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -358,7 +358,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ōmu.app/Contents/MacOS/Ōmu";
 			};
 			name = Release;
 		};
@@ -381,7 +381,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_VERSION = 6.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Loro.app/Contents/MacOS/Loro";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Ōmu.app/Contents/MacOS/Ōmu";
 			};
 			name = Debug;
 		};
@@ -467,7 +467,7 @@
 				OTHER_LDFLAGS = "-Wl,-export_dynamic";
 				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
 				PRODUCT_MODULE_NAME = Papagaio;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Ōmu";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -504,7 +504,7 @@
 				OTHER_LDFLAGS = "-Wl,-export_dynamic";
 				PRODUCT_BUNDLE_IDENTIFIER = com.papagaio.Papagaio;
 				PRODUCT_MODULE_NAME = Papagaio;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Ōmu";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
