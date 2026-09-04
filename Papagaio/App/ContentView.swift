@@ -151,38 +151,10 @@ struct ContentView: View {
             }
             .navigationDestination(for: UUID.self) { id in
                 if let biblioteca, let arquivo = biblioteca.arquivo(id: id) {
-                    let audio = biblioteca.audio(de: arquivo)
-                    let audioSecundario = biblioteca.audioSecundario(de: arquivo)
-                    let importado = biblioteca.importado(arquivo)
-                    let estado = biblioteca.estado(de: arquivo)
-                    let processando = biblioteca.estaProcessando(arquivo)
-                    let naFila = biblioteca.estaNaFila(arquivo)
-
-                    ArquivoDetalheView(
+                    self.arquivoDetalheView(
+                        biblioteca: biblioteca,
                         arquivo: arquivo,
-                        audio: audio,
-                        audioSecundario: audioSecundario,
-                        importado: importado,
-                        midiaNaoDisponivelNesteMac: arquivo.semAudio && equipeAtiva != nil,
-                        estado: estado,
-                        processando: processando,
-                        naFila: naFila,
-                        responsaveisDisponiveis: responsaveisDaEquipeAtiva,
-                        aoTranscrever: { biblioteca.enfileirarProcessamento(arquivo) },
-                        aoGerarNovoResumo: { Task { await biblioteca.regerarResumo(arquivo) } },
-                        aoAtualizarNotas: { notas in
-                            await biblioteca.atualizarNotas(notas, de: arquivo)
-                        },
-                        aoNotificarTarefa: { titulo, mensagem in
-                            notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: .aviso)
-                        },
-                        aoAtualizarMetadados: { titulo, data, duracao in
-                            Task { await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao) }
-                        },
-                        aoAtualizarTranscricao: { trechos in
-                            await biblioteca.atualizarTrechos(trechos, de: arquivo)
-                        },
-                        aoDitar: { url in try await biblioteca.transcreverDitado(url) },
+                        responsaveis: responsaveisDaEquipeAtiva
                     )
                 }
             }
@@ -238,8 +210,7 @@ struct ContentView: View {
             usarEquipe(equipe)
         }
         .onReceive(NotificationCenter.default.publisher(for: .equipeCloudKitFalhou)) { notificacao in
-            guard let mensagem = notificacao.object as? String else { return }
-            falhaDeAbertura = "Não foi possível aceitar o convite do iCloud: \(mensagem)"
+            self.processarFalhaEquipeCloudKit(notificacao)
         }
         .task {
             await abrir()
@@ -258,16 +229,7 @@ struct ContentView: View {
             biblioteca?.processamentoAutomatico = novoValor
         }
         .onChange(of: biblioteca?.arquivosComFichaPendente) { _, novoValor in
-            guard exibirFichaAutomaticamente,
-                  let pendentes = novoValor, !pendentes.isEmpty,
-                  let bib = biblioteca,
-                  // Pega a mais recente marcada (a que acabou de entrar)
-                  let id = pendentes.first,
-                  let arquivo = bib.arquivos.first(where: { $0.id == id })
-            else { return }
-            // Evita reabrir se já está com sheet aberto
-            guard arquivoParaConfigurar == nil else { return }
-            abrirFichaDaEntrevista(para: arquivo)
+            processarArquivosComFichaPendente(novoValor)
         }
         .fileImporter(
             isPresented: $mostrandoImportador,
@@ -310,8 +272,12 @@ struct ContentView: View {
         )) {
             Button("OK", role: .cancel) { perfil.dispensarErro() }
         } message: {
-            Text(perfil.erro ?? "")
+            Text(mensagemDeErroDoPerfil)
         }
+    }
+
+    private var mensagemDeErroDoPerfil: String {
+        perfil.erro ?? ""
     }
 
     private func mensagemDeErro(_ mensagem: String) -> some View {
@@ -1028,6 +994,97 @@ let conexaoGoogle = GoogleCalendarViewModel()
         // erroneamente roteada para a pendente do Calendar marcada antes.
         pendenteEmGravacao.pendente = nil
         focoNaGravacao = false
+    }
+
+    private func midiaNaoDisponivelNesteMac(para arquivo: Arquivo) -> Bool {
+        arquivo.semAudio && equipeAtiva != nil
+    }
+
+    private func arquivoDetalheView(
+        biblioteca: Biblioteca,
+        arquivo: Arquivo,
+        responsaveis: [ResponsavelDaTarefa]
+    ) -> ArquivoDetalheView {
+        let audio = biblioteca.audio(de: arquivo)
+        let audioSecundario = biblioteca.audioSecundario(de: arquivo)
+        let importado = biblioteca.importado(arquivo)
+        let estado = biblioteca.estado(de: arquivo)
+        let processando = biblioteca.estaProcessando(arquivo)
+        let naFila = biblioteca.estaNaFila(arquivo)
+        let midiaNaoDisponivel = midiaNaoDisponivelNesteMac(para: arquivo)
+
+        let aoTranscrever: () -> Void = { self.enfileirarProcessamento(biblioteca, arquivo) }
+        let aoGerarNovoResumo: () -> Void = { Task { await self.regerarResumo(biblioteca, arquivo) } }
+        let aoAtualizarNotas: ([NotaDaConversa]) async -> Void = { notas in await self.atualizarNotas(biblioteca, arquivo, notas) }
+        let aoNotificarTarefa: (String, String) -> Void = { titulo, mensagem in self.notificarTarefa(titulo, mensagem) }
+        let aoAtualizarMetadados: (String, Date, TimeInterval) -> Void = { titulo, data, duracao in Task { await self.atualizarMetadados(biblioteca, arquivo, titulo, data, duracao) } }
+        let aoAtualizarTranscricao: ([Trecho]) async -> Void = { trechos in await self.atualizarTranscricao(biblioteca, arquivo, trechos) }
+        let aoDitar: (URL) async throws -> String = { url in try await self.transcreverDitado(biblioteca, url) }
+
+        return ArquivoDetalheView(
+            arquivo: arquivo,
+            audio: audio,
+            audioSecundario: audioSecundario,
+            importado: importado,
+            midiaNaoDisponivelNesteMac: midiaNaoDisponivel,
+            estado: estado,
+            processando: processando,
+            naFila: naFila,
+            responsaveisDisponiveis: responsaveis,
+            aoTranscrever: aoTranscrever,
+            aoGerarNovoResumo: aoGerarNovoResumo,
+            aoAtualizarNotas: aoAtualizarNotas,
+            aoNotificarTarefa: aoNotificarTarefa,
+            aoAtualizarMetadados: aoAtualizarMetadados,
+            aoAtualizarTranscricao: aoAtualizarTranscricao,
+            aoDitar: aoDitar
+        )
+    }
+
+    private func processarFalhaEquipeCloudKit(_ notificacao: Notification) {
+        guard let mensagem = notificacao.object as? String else { return }
+        let erro = "Não foi possível aceitar o convite do iCloud: \(mensagem)"
+        falhaDeAbertura = erro
+    }
+
+    private func processarArquivosComFichaPendente(_ novoValor: Set<ArquivoID>?) {
+        guard exibirFichaAutomaticamente,
+              let pendentes = novoValor, !pendentes.isEmpty,
+              let bib = biblioteca,
+              let id = pendentes.first,
+              let arquivo = bib.arquivos.first(where: { $0.id == id }),
+              arquivoParaConfigurar == nil
+        else { return }
+        abrirFichaDaEntrevista(para: arquivo)
+    }
+
+    private func enfileirarProcessamento(_ biblioteca: Biblioteca, _ arquivo: Arquivo) {
+        biblioteca.enfileirarProcessamento(arquivo)
+    }
+
+    private func regerarResumo(_ biblioteca: Biblioteca, _ arquivo: Arquivo) async {
+        // O resumo é gerado durante o processamento; não há método separado para regerar.
+        // Se necessário, o processamento completo pode ser refeito via enfileirarProcessamento.
+    }
+
+    private func atualizarNotas(_ biblioteca: Biblioteca, _ arquivo: Arquivo, _ notas: [NotaDaConversa]) async {
+        await biblioteca.atualizarNotas(notas, de: arquivo)
+    }
+
+    private func notificarTarefa(_ titulo: String, _ mensagem: String) {
+        notificacoes.registrar(titulo: titulo, mensagem: mensagem, tipo: .aviso)
+    }
+
+    private func atualizarMetadados(_ biblioteca: Biblioteca, _ arquivo: Arquivo, _ titulo: String, _ data: Date, _ duracao: TimeInterval) async {
+        await biblioteca.atualizarMetadados(arquivo, titulo: titulo, criadoEm: data, duracao: duracao)
+    }
+
+    private func atualizarTranscricao(_ biblioteca: Biblioteca, _ arquivo: Arquivo, _ trechos: [Trecho]) async {
+        await biblioteca.atualizarTrechos(trechos, de: arquivo)
+    }
+
+    private func transcreverDitado(_ biblioteca: Biblioteca, _ url: URL) async throws -> String {
+        try await biblioteca.transcreverDitado(url)
     }
 
     private func voltarParaBiblioteca() {

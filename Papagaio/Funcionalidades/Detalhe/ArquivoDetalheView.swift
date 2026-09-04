@@ -22,6 +22,9 @@ struct ArquivoDetalheView: View {
     /// Veio de um arquivo escolhido pela pessoa, em vez de uma gravação feita
     /// dentro do app.
     let importado: Bool
+    /// O áudio não está disponível neste Mac (ex.: arquivo de equipe sem mídia
+    /// local). Usado para reservar espaço do player mesmo sem áudio.
+    let midiaNaoDisponivelNesteMac: Bool
     /// Texto de status vindo da `Biblioteca` — "transcrevendo…", um erro, ou
     /// "transcrito e resumido".
     let estado: EstadoDoArquivo
@@ -97,6 +100,7 @@ struct ArquivoDetalheView: View {
         audio: URL,
         audioSecundario: URL?,
         importado: Bool,
+        midiaNaoDisponivelNesteMac: Bool,
         estado: EstadoDoArquivo,
         processando: Bool,
         naFila: Bool,
@@ -113,6 +117,7 @@ struct ArquivoDetalheView: View {
         self.audio = audio
         self.audioSecundario = audioSecundario
         self.importado = importado
+        self.midiaNaoDisponivelNesteMac = midiaNaoDisponivelNesteMac
         self.estado = estado
         self.processando = processando
         self.naFila = naFila
